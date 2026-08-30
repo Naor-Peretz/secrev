@@ -7,20 +7,41 @@
 # checkbox; it is a property the codebase has to keep continuously.
 #
 # Blocks with exit 2 so the message reaches Claude rather than the user's log.
+#
+# JSON is read by lib/hook_input.py, not jq (STACK.md §2). Every path that
+# cannot complete the check exits 2, never 0 (H-1): a missing interpreter and
+# an unreadable payload are both "I did not check", and a guard that says 0
+# there has told the caller the write is safe without looking at it.
 
 set -eu
 INPUT=$(cat)
 
-path=$(printf '%s' "$INPUT" | jq -r '.tool_input.file_path // ""')
+ROOT="${CLAUDE_PROJECT_DIR:-.}"
+READER="$ROOT/.claude/hooks/lib/hook_input.py"
+
+PY=$(command -v python3 2>/dev/null) || {
+    echo "self-application-guard: no python3 — cannot check (STACK.md §8 H-1)." >&2
+    exit 2
+}
+[ -f "$READER" ] || {
+    echo "self-application-guard: $READER is missing — cannot check (H-1)." >&2
+    exit 2
+}
+
+read_field() {
+    printf '%s' "$INPUT" | "$PY" "$READER" "$1" || {
+        echo "self-application-guard: unreadable hook payload — refusing (H-1)." >&2
+        exit 2
+    }
+}
+
+path=$(read_field file_path)
 case "$path" in
   */src/secrev/*.py) ;;
   *) exit 0 ;;
 esac
 
-body=$(printf '%s' "$INPUT" | jq -r '
-  [.tool_input.content?, .tool_input.new_string?, (.tool_input.edits? // [])[]?.new_string]
-  | map(select(. != null)) | join("\n")
-')
+body=$(read_field body)
 [ -n "$body" ] || exit 0
 
 violation=""

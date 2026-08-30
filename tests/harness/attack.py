@@ -22,6 +22,7 @@ never a shell string. The strings below that look like violations -- `eval(`,
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 import tempfile
@@ -76,6 +77,19 @@ def asks(stdout: str) -> bool:
     return bool(hook_out.get("permissionDecision") == "ask")
 
 
+def invokes_jq(script: Path) -> bool:
+    """True when a shell script actually calls jq, ignoring prose about it.
+
+    Comments explaining why jq was removed are not calls. Checking the raw text
+    would make the removal untestable in any hook that documents it.
+    """
+    for line in script.read_text(encoding="utf-8").splitlines():
+        code = line.split("#", 1)[0]
+        if re.search(r"\bjq\b", code):
+            return True
+    return False
+
+
 def milestone_tree(value: str) -> tempfile.TemporaryDirectory[str]:
     """A throwaway project dir holding nothing but .claude/MILESTONE."""
     tmp = tempfile.TemporaryDirectory()
@@ -114,6 +128,35 @@ def test_self_application_permits_clean_source() -> None:
         write_payload(ABS_SRC, "def sweep(root: Path) -> None:\n    return None\n"),
     )
     assert rc == PASS_THROUGH, f"clean source must pass, got rc={rc}"
+
+
+def test_self_application_uses_no_jq() -> None:
+    """STACK.md §2 removed jq: a non-Python external dependency, undeclared, in
+    a repository that requires a written reason for every dependency."""
+    assert not invokes_jq(HOOKS / "self-application-guard.sh"), (
+        "self-application-guard.sh still shells out to jq"
+    )
+
+
+def test_self_application_refuses_malformed_payload() -> None:
+    """H-1: a check that cannot run exits 2, never 0.
+
+    With jq this exited 5 -- jq's parse-error code leaking through `set -e`.
+    The PreToolUse protocol assigns meaning to 0 and 2; 5 is undefined, so the
+    guard's answer to a payload it could not read was not an answer at all.
+    """
+    proc = subprocess.run(
+        ["sh", str(HOOKS / "self-application-guard.sh")],
+        input="{not json at all",
+        capture_output=True,
+        text=True,
+        env={"PATH": "/usr/bin:/bin:/usr/local/bin", "CLAUDE_PROJECT_DIR": str(REPO)},
+        cwd=str(REPO),
+        check=False,
+    )
+    assert proc.returncode == BLOCK, (
+        f"malformed payload must refuse, got rc={proc.returncode}"
+    )
 
 
 # ------------------------------------------------------------------ scope-guard

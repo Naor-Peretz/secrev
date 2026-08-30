@@ -26,10 +26,23 @@ One task per iteration. Do not start a second.
       *Files:* `tests/harness/attack.py`.
       *Accept:* green against the unmodified harness; red if any guard's exit code is edited.
 
-- [ ] **TASK-002 — `hook_input.py` + one hook off `jq`.** The shared stdin-JSON reader, proven on
+- [x] **TASK-002 — `hook_input.py` + one hook off `jq`.** The shared stdin-JSON reader, proven on
       `self-application-guard.sh`. Owns parsing only; knows no policy.
-      *Files:* `.claude/hooks/lib/hook_input.py`, `.claude/hooks/self-application-guard.sh`.
-      *Accept:* attack.py green; `grep jq .claude/hooks/self-application-guard.sh` empty.
+      *Files:* `.claude/hooks/lib/hook_input.py`, `.claude/hooks/self-application-guard.sh`,
+      `tests/harness/attack.py` (the assertion; the original list omitted it, which would have
+      left a behaviour change unasserted).
+      *Accept:* attack.py green; the hook makes no `jq` call. Not a raw `grep jq` — the comment
+      recording the removal contains the word, and a criterion that forbids documenting the
+      change is the wrong criterion.
+
+- [ ] **TASK-002B — Wire the instrument into the gate.** `attack.py` is stdlib, so this needs no
+      `.venv` and is not blocked behind TASK-005. Until it lands, the guard assertions run only
+      when someone remembers to run them — a check whose result no one sees is not a check
+      (`async-check-report.sh`'s own header). Runs before the pytest stage; a missing `python3`
+      exits 2, never 0 (H-1).
+      *Files:* `scripts/check.sh`.
+      *Accept:* `sh scripts/check.sh` runs the 16 assertions and reports them; defeating a guard
+      turns the gate red, not just the driver.
 
 - [ ] **TASK-003 — `bash_guard.py`, the allowlist.** Item 1, highest severity. Allowlist of
       read-only commands (H-2); no write-verb list anywhere in the file. **Redirection and
