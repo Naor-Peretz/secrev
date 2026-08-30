@@ -35,13 +35,13 @@ One task per iteration. Do not start a second.
       recording the removal contains the word, and a criterion that forbids documenting the
       change is the wrong criterion.
 
-- [ ] **TASK-002B — Wire the instrument into the gate.** `attack.py` is stdlib, so this needs no
+- [x] **TASK-002B — Wire the instrument into the gate.** `attack.py` is stdlib, so this needs no
       `.venv` and is not blocked behind TASK-005. Until it lands, the guard assertions run only
       when someone remembers to run them — a check whose result no one sees is not a check
       (`async-check-report.sh`'s own header). Runs before the pytest stage; a missing `python3`
       exits 2, never 0 (H-1).
-      *Files:* `scripts/check.sh`.
-      *Accept:* `sh scripts/check.sh` runs the 16 assertions and reports them; defeating a guard
+      *Files:* `scripts/check.sh`, `tests/harness/attack.py` (the wiring assertion).
+      *Accept:* `sh scripts/check.sh` runs the assertions and reports them; defeating a guard
       turns the gate red, not just the driver.
 
 - [ ] **TASK-003 — `bash_guard.py`, the allowlist.** Item 1, highest severity. Allowlist of

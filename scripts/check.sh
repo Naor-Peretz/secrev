@@ -54,7 +54,26 @@ else
     skip "pytest" "no tests/ or pytest not installed"
 fi
 
-# ------------------------------------------- 4. self-application (STACK §2.1)
+# ------------------------------------------- 4. harness guards (STACK.md §8)
+# H-8: a guard nobody has tried to defeat is an assumption, not a control. The
+# driver attempts the bypass against every guard and fails if one stops
+# refusing. It is stdlib-only and runs on the system interpreter, so it works
+# before .venv exists -- the guards are what stand between an agent and this
+# repository, and gating their check on an environment that may be missing
+# would be the H-1 mistake this stage exists to catch.
+printf '\n\033[1m── harness guards (STACK.md §8 H-8)\033[0m\n'
+if [ -f tests/harness/attack.py ]; then
+    if guard_out=$("$PY" tests/harness/attack.py 2>&1); then
+        printf '%s\n' "$guard_out" | tail -1
+    else
+        printf '%s\n' "$guard_out"
+        fail=1
+    fi
+else
+    echo "no tests/harness/attack.py — nothing to check"
+fi
+
+# ------------------------------------------- 5. self-application (STACK §2.1)
 # Grep-shaped and deliberately crude. It is a backstop for the ruff bandit
 # rules above, and it stays until `secrev sweep src/secrev/` can do the job
 # properly (AC-10). Both must pass; neither replaces the other.
@@ -69,7 +88,7 @@ else
     echo "no src/secrev yet — nothing to check"
 fi
 
-# ------------------------------------------------ 5. determinism (NFR-3)
+# ------------------------------------------------ 6. determinism (NFR-3)
 # Two runs of every generation script on the same input must be byte-identical.
 # This is the hard requirement of M1; it is checked here rather than trusted.
 printf '\n\033[1m── determinism (NFR-3)\033[0m\n'

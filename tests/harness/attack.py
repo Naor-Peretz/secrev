@@ -290,6 +290,20 @@ def test_known_open_scope_guard_exits_silently_off_m1() -> None:
     )
 
 
+def test_gate_runs_the_attack_driver() -> None:
+    """The instrument has to be wired to the gate, or it is a check nobody sees.
+
+    Reads scripts/check.sh rather than running it: the gate invokes this file,
+    so executing it here would recurse. The claim that the wiring actually
+    fires is verified by defeating a guard and watching the gate go red -- a
+    text check cannot establish that, and does not pretend to.
+    """
+    gate = (REPO / "scripts" / "check.sh").read_text(encoding="utf-8")
+    assert "tests/harness/attack.py" in gate, (
+        "scripts/check.sh does not run the guard assertions"
+    )
+
+
 # ------------------------------------------------------------------- runner
 
 
