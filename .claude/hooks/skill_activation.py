@@ -21,7 +21,7 @@ from pathlib import Path
 MAX_SUGGESTIONS = 3
 
 
-def main() -> int:
+def main() -> int:  # noqa: PLR0912
     root = Path(os.environ.get("CLAUDE_PROJECT_DIR", "."))
     rules_path = root / ".claude" / "skills" / "skill-rules.json"
     if not rules_path.is_file():
@@ -75,5 +75,5 @@ def main() -> int:
 if __name__ == "__main__":
     try:
         sys.exit(main())
-    except Exception:  # noqa: BLE001 - a hook must never break the turn
+    except Exception:
         sys.exit(0)

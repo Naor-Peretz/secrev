@@ -49,18 +49,38 @@ if [ -f "$STAMP" ]; then
 fi
 echo "$now" > "$STAMP"
 
+# The quality checks run from .venv and nowhere else. System python3 has no
+# ruff or pytest, so falling back to it produced three "no module named …"
+# lines that the `|| true` below then swallowed: the hook reported nothing and
+# meant nothing. Reading the payload is different and deliberately still uses
+# system python3 — lib/hook_input.py is stdlib, and a guard that stops working
+# because .venv is missing is worse than one that works everywhere.
 PY="$ROOT/.venv/bin/python"
-[ -x "$PY" ] || PY=$(command -v python3 || true)
-[ -n "$PY" ] || exit 0
+if [ ! -x "$PY" ]; then
+    {
+        echo "=== environment ==="
+        echo "No .venv, so ruff, pytest and the self-application check did NOT run."
+        echo "This is \"I did not check\", not \"I checked and it is fine\" (STACK.md §8 H-1)."
+        echo "Run: python3 -m venv .venv && .venv/bin/pip install ruff pytest mypy"
+    } > "$LOG" 2>&1
+    exit 0
+fi
 
+# Each check records its own outcome. No `|| true`: a tool that is absent and a
+# tool that passed are different states, and collapsing them is the H-1 breach
+# this hook used to commit three times per run.
 (
     {
-        echo "=== ruff ==="
-        "$PY" -m ruff check "$ROOT" 2>&1 | head -30 || true
-        echo "=== pytest ==="
-        "$PY" -m pytest -x -q "$ROOT" 2>&1 | tail -20 || true
-        echo "=== self-application ==="
-        "$PY" "$ROOT/scripts/self_check.py" 2>&1 | head -20 || true
+        for check in ruff pytest self-application; do
+            echo "=== $check ==="
+            case "$check" in
+              ruff)    "$PY" -m ruff check "$ROOT" 2>&1 | head -30 ;;
+              pytest)  "$PY" -m pytest -x -q "$ROOT" 2>&1 | tail -20 ;;
+              *)       "$PY" "$ROOT/scripts/self_check.py" 2>&1 | head -20 ;;
+            esac
+            status=$?
+            [ "$status" = 0 ] && echo "[ok] $check" || echo "[FAILED] $check — exit $status"
+        done
     } > "$LOG" 2>&1
 ) &
 

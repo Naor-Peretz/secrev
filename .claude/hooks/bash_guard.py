@@ -49,6 +49,12 @@ import re
 import shlex
 import sys
 
+# The only two values PreToolUse gives meaning to (STACK.md §8 H-9). Named
+# because a guard that answers outside the protocol's vocabulary has not
+# answered — this milestone found three doing exactly that.
+PERMIT = 0
+REFUSE = 2
+
 # STACK.md §8 H-4. Note H-5 and every existing hook say `src/secrev/`; H-4 says
 # `src/`. Taking the broader one -- STACK.md wins on mechanism -- and the
 # divergence is open question 5.
@@ -106,46 +112,51 @@ def is_read_only(segment: list[str]) -> bool:
     return command in READ_ONLY
 
 
-def evaluate(command: str) -> tuple[int, str]:
-    if not command.strip():
-        return 0, ""
-
-    tokens = tokenize(command)
-
-    if tokens is None:
-        # Cannot parse, so cannot answer. Refusing is the only honest outcome
-        # (H-1); the raw string is not consulted, because a guard that falls
-        # back to substring matching when its parser fails is guessing.
-        return 2, "the command could not be parsed, so it could not be checked"
-
-    if not any(mentions_protected(token) for token in tokens):
-        return 0, ""
-
+def _syntax_refusal(command: str, tokens: list[str]) -> str | None:
+    """Shell syntax that performs, or hides, a write."""
     if any(marker in command for marker in SUBSTITUTION):
-        return 2, "command substitution — the guard cannot establish what runs"
-
+        return "command substitution — the guard cannot establish what runs"
     for token in tokens:
-        if token in SAFE_SEPARATORS:
-            continue
-        if not token.strip():
+        if token in SAFE_SEPARATORS or not token.strip():
             continue
         # A pure-punctuation token that is not an allowlisted separator is
         # redirection or grouping: the write primitive itself.
         if all(char in "();<>|&" for char in token):
-            return 2, f"shell operator {token!r} — redirection and grouping are writes"
+            return f"shell operator {token!r} — redirection and grouping are writes"
+    return None
 
+
+def _command_refusal(tokens: list[str]) -> str | None:
+    """A command outside the read-only set."""
     for segment in segments(tokens):
         if not is_read_only(segment):
-            return 2, f"{segment[0]!r} is not in the read-only set"
+            return f"{segment[0]!r} is not in the read-only set"
+    return None
 
-    return 0, ""
+
+def evaluate(command: str) -> tuple[int, str]:
+    if not command.strip():
+        return PERMIT, ""
+
+    tokens = tokenize(command)
+    if tokens is None:
+        # Cannot parse, so cannot answer. Refusing is the only honest outcome
+        # (H-1); the raw string is not consulted, because a guard that falls
+        # back to substring matching when its parser fails is guessing.
+        return REFUSE, "the command could not be parsed, so it could not be checked"
+
+    if not any(mentions_protected(token) for token in tokens):
+        return PERMIT, ""
+
+    refusal = _syntax_refusal(command, tokens) or _command_refusal(tokens)
+    return (REFUSE, refusal) if refusal else (PERMIT, "")
 
 
 def main() -> int:
     command = sys.stdin.read()
     code, reason = evaluate(command)
-    if code == 0:
-        return 0
+    if code == PERMIT:
+        return PERMIT
     sys.stderr.write(
         "BLOCKED — this command touches src/, patterns/ or scripts/ and "
         f"{reason}.\n\n"
@@ -155,7 +166,7 @@ def main() -> int:
         "Reading these paths through Bash is unaffected: cat, grep, head, tail, "
         "wc, ls, rg, git diff and git log are permitted.\n"
     )
-    return 2
+    return REFUSE
 
 
 if __name__ == "__main__":

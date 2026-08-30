@@ -15,7 +15,12 @@ dependencies = ["PyYAML>=6.0"]      # STACK.md §2 — the only runtime dependen
 [project.scripts]
 secrev = "secrev.cli:main"          # STACK.md §3 — one entry point, subcommands
 
-[dependency-groups]
+# STACK.md §2 — dev only. Declared as an optional-dependencies extra rather than
+# a [dependency-groups] entry: §3 makes stdlib venv + pip the default, and pip
+# 24 cannot read dependency-groups at all (no --group until 25.1), so the dev
+# set was unreachable by the very path the document specifies. Extras are
+# understood by pip and uv alike.
+[project.optional-dependencies]
 dev = ["pytest>=8.0", "ruff>=0.6", "mypy>=1.11"]
 
 [tool.setuptools.packages.find]
@@ -26,7 +31,7 @@ where = ["src"]
 testpaths = ["tests"]
 addopts = "-q --strict-markers"
 # Golden tests compare bytes; keep output diffable rather than truncated.
-python_files = ["test_*.py"]
+python_files = ["test_*.py", "attack.py"]   # the guard driver keeps its name (H-8)
 
 # --- mypy -----------------------------------------------------------------
 [tool.mypy]
@@ -81,6 +86,13 @@ ignore = [
 # data, not code — linting them would mean the seed patterns cannot be tested.
 "tests/fixtures/**" = ["ALL"]
 "tests/**" = ["S101", "PLR2004"]   # assert, magic values
+# The attack driver exists to execute the guards and read their exit codes
+# (STACK.md §8 H-8). S603 asks whether the input to subprocess is trusted;
+# here the argv is built in-file from a literal interpreter path and a
+# repo-relative hook name, with no caller input reaching it. S607 does not
+# appear: the interpreter is absolute rather than a PATH lookup. Scoped to
+# this directory so a future test elsewhere does not inherit the exemption.
+"tests/harness/**" = ["S603"]
 
 [tool.ruff.lint.flake8-tidy-imports]
 ban-relative-imports = "all"

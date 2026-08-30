@@ -100,12 +100,18 @@ One task per iteration. Do not start a second.
       *Accept:* a live in-session heredoc to `src/secrev/cli.py` is refused (H-8), and
       `sh scripts/check.sh` still runs.
 
-- [ ] **TASK-005 — `.venv`, and hooks that resolve it.** Decided: `python3-venv` + stdlib `venv`,
+- [x] **TASK-005 — `.venv`, and hooks that resolve it.** Decided: `python3-venv` + stdlib `venv`,
       not `uv`. Requires one command with `sudo`, which is the user's to run:
       `sudo apt install python3-venv`, then `python3 -m venv .venv` and
       `.venv/bin/pip install ruff pytest mypy`.
-      *Files:* `.claude/hooks/async-check.sh`, `determinism-guard.sh`, `skill-activation.sh`.
-      *Accept:* `.venv/bin/python -m ruff --version` succeeds; no hook falls back to `PATH`.
+      *Files:* the three hooks, plus `pyproject.toml` (dev deps moved from `[dependency-groups]`,
+      which pip 24 cannot read, to `[project.optional-dependencies]`; and `attack.py` added to
+      `python_files` so it is genuinely collected), `.github/workflows/ci.yml`, and the lint
+      fallout from ruff running for the first time.
+      *Accept:* `.venv/bin/python -m ruff --version` succeeds; the two quality-check hooks
+      resolve `.venv` and neither swallows a status. `skill-activation.sh` keeps its fallback —
+      it is a router, not a gate, and bricking every prompt to report a missing suggestion is
+      not what H-1 asks for.
 
 - [ ] **TASK-006 — The gate stops lying about missing tools.** Today `check.sh` prints
       `skipped: not installed` for ruff, mypy and pytest and still reaches `all gates pass`.

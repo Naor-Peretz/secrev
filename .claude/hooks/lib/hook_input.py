@@ -24,6 +24,11 @@ import json
 import sys
 from typing import Any
 
+OK = 0
+UNREADABLE = 2
+# argv is (program, field). Named so the comparison says what it checks.
+ARGV_WITH_FIELD = 2
+
 
 def _file_path(payload: dict[str, Any]) -> str:
     tool_input = payload.get("tool_input")
@@ -83,19 +88,19 @@ FIELDS = {
 
 
 def main(argv: list[str]) -> int:
-    if len(argv) != 2 or argv[1] not in FIELDS:
+    if len(argv) != ARGV_WITH_FIELD or argv[1] not in FIELDS:
         sys.stderr.write(f"usage: hook_input.py {{{'|'.join(sorted(FIELDS))}}}\n")
-        return 2
+        return UNREADABLE
     try:
         payload = json.loads(sys.stdin.read())
     except (json.JSONDecodeError, UnicodeDecodeError) as exc:
         sys.stderr.write(f"hook_input.py: unreadable payload: {exc}\n")
-        return 2
+        return UNREADABLE
     if not isinstance(payload, dict):
         sys.stderr.write("hook_input.py: payload is not an object\n")
-        return 2
+        return UNREADABLE
     sys.stdout.write(FIELDS[argv[1]](payload))
-    return 0
+    return OK
 
 
 if __name__ == "__main__":

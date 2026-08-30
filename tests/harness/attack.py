@@ -33,6 +33,12 @@ REPO = Path(__file__).resolve().parent.parent.parent
 HOOKS = REPO / ".claude" / "hooks"
 
 # Exit codes the PreToolUse protocol assigns meaning to.
+# Absolute, not a PATH lookup: the guards under test are what stands between
+# an agent and this repository, and resolving their interpreter through an
+# environment variable is a dependency the test does not need. /bin/sh exists
+# on both supported platforms (STACK.md §4).
+SH = "/bin/sh"
+
 PASS_THROUGH = 0  # guard had no opinion, or returned an `ask` payload on stdout
 BLOCK = 2  # guard refused; stderr reaches the agent
 
@@ -51,7 +57,7 @@ def run_hook(
     """
     root = project_dir if project_dir is not None else REPO
     proc = subprocess.run(
-        ["sh", str(HOOKS / hook)],
+        [SH, str(HOOKS / hook)],
         input=json.dumps(payload),
         capture_output=True,
         text=True,
@@ -118,9 +124,7 @@ ABS_SRC = str(REPO / "src" / "secrev" / "cli.py")
 
 
 def test_self_application_blocks_eval() -> None:
-    rc, _, err = run_hook(
-        "self-application-guard.sh", write_payload(ABS_SRC, "x = eval('1')\n")
-    )
+    rc, _, err = run_hook("self-application-guard.sh", write_payload(ABS_SRC, "x = eval('1')\n"))
     assert rc == BLOCK, f"eval into src/secrev must be refused, got rc={rc}"
     assert "eval(" in err, "the refusal must name the construct it caught"
 
@@ -159,7 +163,7 @@ def test_self_application_refuses_malformed_payload() -> None:
     guard's answer to a payload it could not read was not an answer at all.
     """
     proc = subprocess.run(
-        ["sh", str(HOOKS / "self-application-guard.sh")],
+        [SH, str(HOOKS / "self-application-guard.sh")],
         input="{not json at all",
         capture_output=True,
         text=True,
@@ -167,9 +171,7 @@ def test_self_application_refuses_malformed_payload() -> None:
         cwd=str(REPO),
         check=False,
     )
-    assert proc.returncode == BLOCK, (
-        f"malformed payload must refuse, got rc={proc.returncode}"
-    )
+    assert proc.returncode == BLOCK, f"malformed payload must refuse, got rc={proc.returncode}"
 
 
 # ------------------------------------------------------------------ scope-guard
@@ -207,9 +209,7 @@ def test_spec_guard_asks_on_stack_edit() -> None:
 
 
 def test_spec_guard_ignores_ordinary_files() -> None:
-    rc, out, _ = run_hook(
-        "spec-guard.sh", write_payload(str(REPO / "CLAUDE.md"), "# notes\n")
-    )
+    rc, out, _ = run_hook("spec-guard.sh", write_payload(str(REPO / "CLAUDE.md"), "# notes\n"))
     assert rc == PASS_THROUGH and not asks(out), "CLAUDE.md is not one of the three"
 
 
@@ -254,9 +254,7 @@ def test_plan_review_silent_on_other_tools() -> None:
 
 
 def bash(command: str) -> int:
-    rc, _, _ = run_hook(
-        "bash-guard.sh", {"tool_name": "Bash", "tool_input": {"command": command}}
-    )
+    rc, _, _ = run_hook("bash-guard.sh", {"tool_name": "Bash", "tool_input": {"command": command}})
     return rc
 
 
@@ -368,7 +366,7 @@ def test_docs_do_not_claim_finished_work_is_open() -> None:
         "`scope-guard.sh:17` exits 0": "TASK-010 made it refuse",
         "`*/src/secrev/*` in three hooks": "TASK-009 unanchored them",
         "`scripts/` uncovered": "TASK-008 covered it",
-        "carries a full \"Technology Stack\" section": "TASK-012 replaced it",
+        'carries a full "Technology Stack" section': "TASK-012 replaced it",
         "`.claude/MILESTONE` says `M1`": "TASK-011 set it to M0",
         "The repository has no commits": "TASK-000 made the baseline commit",
     }
@@ -405,8 +403,7 @@ def test_known_open_docs_say_the_bash_guard_is_unwired() -> None:
     """
     settings = json.loads((REPO / ".claude" / "settings.json").read_text("utf-8"))
     matchers = [
-        entry.get("matcher", "")
-        for entry in settings.get("hooks", {}).get("PreToolUse", [])
+        entry.get("matcher", "") for entry in settings.get("hooks", {}).get("PreToolUse", [])
     ]
     if any("Bash" in m for m in matchers):
         raise AssertionError("Bash matcher wired — invert this and update the docs.")
@@ -414,6 +411,63 @@ def test_known_open_docs_say_the_bash_guard_is_unwired() -> None:
     assert "not wired" in text or "unwired" in text, (
         "the docs must say the Bash guard is not yet invoked"
     )
+
+
+# ---------------------------------------------------- the environment (H-1, H-9)
+
+QUALITY_HOOKS = ("async-check.sh", "determinism-guard.sh")
+
+
+def test_no_quality_check_swallows_its_status() -> None:
+    """H-1. `|| true` on a quality check turns "the tool is absent" into "the
+    tool passed". async-check.sh did it three times per run, against a system
+    python3 that had neither ruff nor pytest -- so it checked nothing and
+    reported nothing, for as long as it existed."""
+    offenders = []
+    for name in QUALITY_HOOKS:
+        for number, line in enumerate((HOOKS / name).read_text("utf-8").splitlines(), 1):
+            if "|| true" in line.split("#", 1)[0]:
+                offenders.append(f"{name}:{number}")
+    assert not offenders, f"quality check swallowing its status: {offenders}"
+
+
+def test_quality_checks_do_not_fall_back_to_path() -> None:
+    """The tools live in .venv. System python3 has none of them, so a fallback
+    is not a fallback -- it is a guaranteed failure, swallowed.
+
+    Reading the payload is the opposite case and deliberately still uses system
+    python3: lib/hook_input.py is stdlib, and a guard that stops working when
+    .venv is missing is worse than one that works everywhere. The distinction
+    is between running a tool and reading a JSON body.
+    """
+    for name in QUALITY_HOOKS:
+        text = (HOOKS / name).read_text(encoding="utf-8")
+        assert ".venv/bin/python" in text, f"{name} does not resolve .venv"
+        code = "\n".join(line.split("#", 1)[0] for line in text.splitlines())
+        # Boundary, not substring: `SYSPY=$(command -v python3` ends with
+        # `PY=$(command -v python3`, and that assignment is the deliberate
+        # stdlib reader rather than a fallback for running tools.
+        assert not re.search(r"(?:^|[^A-Za-z_])PY=\$\(command -v python3", code), (
+            f"{name} still falls back to PATH for running tools"
+        )
+
+
+def test_async_check_reports_a_missing_environment_as_missing() -> None:
+    """H-9: not a silent pass, and not silence. The log has to say the checks
+    did not run, because async-check-report.sh prints it and a reader takes an
+    empty section for a clean one."""
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        (root / ".claude" / "hooks").mkdir(parents=True)
+        shutil.copytree(HOOKS / "lib", root / ".claude" / "hooks" / "lib")
+        rc, _, _ = run_hook(
+            "async-check.sh",
+            {"tool_name": "Write", "tool_input": {"file_path": "x.py", "content": "y"}},
+            project_dir=root,
+        )
+        assert rc == PASS_THROUGH, "a PostToolUse hook must not block"
+        log = (root / ".claude" / "hooks" / "state" / "async-check.log").read_text("utf-8")
+    assert "did NOT run" in log, f"a missing .venv must be stated, got: {log!r}"
 
 
 # ------------------------------------------------- single source of truth (H-7)
@@ -466,7 +520,7 @@ def test_milestone_marker_is_m0() -> None:
 
 def test_session_start_reports_m0_and_finds_its_brief() -> None:
     proc = subprocess.run(
-        ["sh", str(HOOKS / "session-start.sh")],
+        [SH, str(HOOKS / "session-start.sh")],
         input="",
         capture_output=True,
         text=True,
@@ -521,9 +575,7 @@ def scope_at(
     """
     with milestone_tree(milestone) as tmp:
         path = str(Path(tmp) / relative) if absolute else relative
-        rc, out, _ = run_hook(
-            "scope-guard.sh", write_payload(path, body), project_dir=Path(tmp)
-        )
+        rc, out, _ = run_hook("scope-guard.sh", write_payload(path, body), project_dir=Path(tmp))
     return rc, out
 
 
@@ -622,16 +674,12 @@ def test_unanchored_glob_overmatches_and_fails_closed() -> None:
     is raised in the ledger, not taken here. The over-match refuses a write to
     a path this repository does not contain, which is the safe direction.
     """
-    for path in ("foosrc/secrev/x.py", "/home/u/transcripts/notes.py", "/tmp/descripts/a.py"):
-        rc, _, _ = run_hook(
-            "self-application-guard.sh", write_payload(path, "x = eval('1')\n")
-        )
+    for path in ("foosrc/secrev/x.py", "/home/u/transcripts/notes.py", "/var/lib/descripts/a.py"):
+        rc, _, _ = run_hook("self-application-guard.sh", write_payload(path, "x = eval('1')\n"))
         assert rc == BLOCK, f"the over-match is expected; if {path} stops, H-5 changed"
     # Not everything is swept up: the suffix still has to be there.
     for path in ("/opt/mypatterns/r.yaml", "/home/u/docs/x.py"):
-        rc, _, _ = run_hook(
-            "self-application-guard.sh", write_payload(path, "x = eval('1')\n")
-        )
+        rc, _, _ = run_hook("self-application-guard.sh", write_payload(path, "x = eval('1')\n"))
         assert rc == PASS_THROUGH, f"{path} should not match any protected glob"
 
 
@@ -717,9 +765,7 @@ def test_protected_paths_have_one_definition() -> None:
 def test_no_hook_invokes_jq() -> None:
     """The sweep. Named hooks below fail with a useful message; this catches a
     seventh hook appearing later with jq in it."""
-    offenders = sorted(
-        script.name for script in HOOKS.glob("*.sh") if invokes_jq(script)
-    )
+    offenders = sorted(script.name for script in HOOKS.glob("*.sh") if invokes_jq(script))
     assert not offenders, f"hooks still shelling out to jq: {offenders}"
 
 
@@ -747,7 +793,7 @@ def test_scope_guard_refuses_malformed_payload() -> None:
     """H-1, same defect the self-application guard had: jq's parse-error code
     leaked through `set -e` as an exit value the protocol gives no meaning."""
     proc = subprocess.run(
-        ["sh", str(HOOKS / "scope-guard.sh")],
+        [SH, str(HOOKS / "scope-guard.sh")],
         input="{not json at all",
         capture_output=True,
         text=True,
@@ -760,7 +806,7 @@ def test_scope_guard_refuses_malformed_payload() -> None:
 
 def test_spec_guard_refuses_malformed_payload() -> None:
     proc = subprocess.run(
-        ["sh", str(HOOKS / "spec-guard.sh")],
+        [SH, str(HOOKS / "spec-guard.sh")],
         input="{not json at all",
         capture_output=True,
         text=True,
@@ -783,8 +829,7 @@ def test_known_open_bash_bypass_is_unwired() -> None:
     """TASK-004 inverts this. BRIEF_M0.md §1, the highest-severity item."""
     settings = json.loads((REPO / ".claude" / "settings.json").read_text("utf-8"))
     matchers = [
-        entry.get("matcher", "")
-        for entry in settings.get("hooks", {}).get("PreToolUse", [])
+        entry.get("matcher", "") for entry in settings.get("hooks", {}).get("PreToolUse", [])
     ]
     assert not any("Bash" in m for m in matchers), (
         "A Bash matcher now exists -- the bypass is closed. Invert this test."
@@ -800,9 +845,7 @@ def test_gate_runs_the_attack_driver() -> None:
     text check cannot establish that, and does not pretend to.
     """
     gate = (REPO / "scripts" / "check.sh").read_text(encoding="utf-8")
-    assert "tests/harness/attack.py" in gate, (
-        "scripts/check.sh does not run the guard assertions"
-    )
+    assert "tests/harness/attack.py" in gate, "scripts/check.sh does not run the guard assertions"
 
 
 # ------------------------------------------------------------------- runner
@@ -810,9 +853,7 @@ def test_gate_runs_the_attack_driver() -> None:
 
 def main() -> int:
     tests = sorted(
-        (name, obj)
-        for name, obj in globals().items()
-        if name.startswith("test_") and callable(obj)
+        (name, obj) for name, obj in globals().items() if name.startswith("test_") and callable(obj)
     )
     failures: list[tuple[str, str]] = []
     for name, fn in tests:

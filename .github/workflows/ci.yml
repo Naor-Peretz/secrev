@@ -29,8 +29,8 @@ jobs:
         with:
           enable-cache: true
       - run: uv python install ${{ matrix.python }}
-      - name: uv sync
-        run: uv sync --all-extras --dev
+      - name: create the venv (STACK.md §3 — stdlib venv, not uv)
+        run: python -m venv .venv && .venv/bin/pip install -q ruff pytest mypy
       - name: gate
         run: sh scripts/check.sh
 
@@ -62,7 +62,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
-      - run: uv sync --all-extras --dev
+      - run: python -m venv .venv && .venv/bin/pip install -q ruff pytest mypy
       - name: generate artifacts
         run: |
           if [ ! -d src/secrev ] || [ ! -d tests/fixtures ]; then

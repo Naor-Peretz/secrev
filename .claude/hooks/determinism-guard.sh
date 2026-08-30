@@ -36,7 +36,6 @@ case "$path" in
 esac
 
 PY="$ROOT/.venv/bin/python"
-[ -x "$PY" ] || PY=$(command -v python3 || true)
 
 echo "── $(basename "$path") owns an NFR-3 rule. Checklist before moving on:"
 echo "   · paths collected then sorted() on the POSIX string — never os.walk order"
@@ -45,8 +44,19 @@ echo "   · CRLF→LF before hashing; line numbers reported against the original
 echo "   · window_sha256 covers window text only — no filename, line, or timestamp"
 echo "   · id from (relative_path, line, rule_id, ordinal), never a traversal counter"
 
-if [ -n "$PY" ] && [ -d "$ROOT/src/secrev" ] && [ -d "$ROOT/tests/fixtures" ]; then
+if [ -d "$ROOT/src/secrev" ] && [ -d "$ROOT/tests/fixtures" ]; then
+    if [ ! -x "$PY" ]; then
+        # There is something to compare and no interpreter to compare it with.
+        # Saying nothing here would read as "determinism holds" (H-1, H-9).
+        echo "── NFR-3 NOT re-checked: no .venv. This is not a pass." >&2
+        exit 2
+    fi
     echo "── re-running the determinism check"
-    "$PY" "$ROOT/scripts/determinism_check.py" 2>&1 | head -20 || true
+    if "$PY" "$ROOT/scripts/determinism_check.py" 2>&1 | head -20; then
+        echo "── byte-identical across runs"
+    else
+        echo "── determinism check FAILED — see above" >&2
+        exit 2
+    fi
 fi
 exit 0
