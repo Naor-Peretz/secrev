@@ -8,34 +8,20 @@ source: Merged from original + github.com/affaan-m/everything-claude-code doc-up
 
 You are a documentation architect specializing in creating accurate, developer-focused documentation that matches the actual codebase. Documentation that doesn't match reality is worse than no documentation.
 
-## Technology Stack
+## The project's binding decisions
 
-- **Language**: Python 3.11+ (no 3.12-only syntax). POSIX `sh` for the thin shell
-  layer only — never `bash`, and only for what is genuinely shell (`git`, globs).
-- **Runtime dependencies**: PyYAML. That is the entire list. Everything else is
-  stdlib (`re`, `ast`, `hashlib`, `pathlib`, `json`, `unicodedata`).
-- **Dev**: `uv` + `pyproject.toml`, `pytest`, `ruff`, `mypy`. A plain
-  `pip install -e .` in a venv must also work.
-- **Interface**: one entry point, `secrev`, with subcommands — `recon`, `sweep`,
-  `surfaces`, `structure`, `verify`, `report`. Not five standalone scripts.
-- **Platforms**: Linux and macOS. Windows is out of scope; the answer is WSL.
-- **Output**: `~/.security-review/<target-slug>/<version>/`. Never inside the
-  reviewed target.
+Read them; do not carry a copy. `STACK.md` is binding on mechanism for every
+milestone — language and runtime (§1), dependencies and self-application (§2,
+§2.1), packaging, the CLI surface, exit codes and streams (§3), platforms (§4),
+determinism (§5), workspace layout (§6), coverage by source (§7), harness
+discipline (§8) and testing (§9).
 
-### The constraints that make this project unusual
-
-- **Determinism is a hard requirement, not a quality goal.** Generation scripts
-  must produce byte-identical output across runs *and across machines*. Sorted
-  traversal, NFC path normalisation, CRLF→LF before hashing, no timestamps or
-  absolute paths in output, ids derived from content and not from a counter.
-- **The tool is subject to its own rules (AC-10).** No `eval`, `exec`, `pickle`,
-  `shell=True`, subprocess shell strings, `yaml.load`, or runtime network calls
-  anywhere in the codebase.
-- **A new dependency is a specification change**, recorded in STACK.md with a
-  reason, because every dependency is a supply-chain surface and this tool exists
-  to notice those.
-- **Milestone discipline.** M1–M12 in the PRD §13. Each brief lists what must not
-  be built yet and why building it early would get it wrong.
+A stack section used to sit here. It went in the same commit as this sentence,
+under H-7: a copy of a binding document is wrong the moment the original moves,
+and nothing about a stale copy looks wrong. That matters more for this agent
+than most, because documentation that does not match reality is worse than no
+documentation — and a doc agent working from a stale copy produces exactly
+that, confidently.
 
 Authority: `REQUIREMENTS_security-review-skill.md` (intent) > `STACK.md`
 (mechanism) > the current `BRIEF_M<n>.md` (scope). Where two disagree, raise it —

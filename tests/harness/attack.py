@@ -338,6 +338,44 @@ def test_bash_ignores_commands_that_touch_nothing_protected() -> None:
     assert bash("rm -rf /tmp/scratch") == PASS_THROUGH
 
 
+# ------------------------------------------------- single source of truth (H-7)
+
+AGENTS = REPO / ".claude" / "agents"
+
+# Verbatim mechanism copied out of STACK.md. Chosen because each appears in the
+# restatement and nowhere a *reference* would legitimately put it. `CRLF` is
+# deliberately not here: python-reviewer.md and plan-reviewer.md name §2.1's
+# constructs as review checklists, which is arguably H-7 and arguably not --
+# open question 7, and not a thing to settle by picking a grep string.
+STACK_VERBATIM = (
+    "Technology Stack",
+    "That is the entire list",
+    "the answer is WSL",
+    "security-review/<target-slug>",
+    "Python 3.11+",
+)
+
+
+def test_no_live_agent_restates_stack_md() -> None:
+    """H-7: agent definitions reference STACK.md, never restate it. A copied
+    stack section goes stale silently, which is the failure mode STACK.md
+    exists to prevent."""
+    offenders = []
+    for agent in sorted(AGENTS.glob("*.md")):
+        text = agent.read_text(encoding="utf-8")
+        for marker in STACK_VERBATIM:
+            if marker in text:
+                offenders.append(f"{agent.name}: {marker!r}")
+    assert not offenders, f"STACK.md restated in live agents: {offenders}"
+
+
+def test_documentation_architect_still_points_at_stack_md() -> None:
+    """Deleting the section is only half of H-7. An agent that no longer knows
+    where the mechanism lives has been made ignorant rather than accurate."""
+    text = (AGENTS / "documentation-architect.md").read_text(encoding="utf-8")
+    assert "STACK.md" in text, "the reference has to replace the copy, not vanish with it"
+
+
 # ------------------------------------------------------------ current milestone
 
 

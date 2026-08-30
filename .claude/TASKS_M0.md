@@ -121,13 +121,14 @@ One task per iteration. Do not start a second.
       *Accept:* `session-start.sh` reports M0 and finds `BRIEF_M0.md`; M0 permits `scripts/`
       and refuses `src/` and `patterns/`.
 
-- [ ] **TASK-012 — Strip the restated stack section.** Item 7, H-7.
+- [x] **TASK-012 — Strip the restated stack section.** Item 7, H-7.
       `documentation-architect.md:11` carries a full `## Technology Stack`. **Open:** the brief
       also names `planner.md`, which is in `.claude/disabled/` where the recorded policy says a
       disabled agent keeps its section until restored. Whether DoD 9 reaches `disabled/` is a
       decision to raise, not to settle here.
-      *Files:* `.claude/agents/documentation-architect.md`.
-      *Accept:* no live agent file restates a `STACK.md` mechanism.
+      *Files:* `.claude/agents/documentation-architect.md`, `tests/harness/attack.py`.
+      *Accept:* no live agent file restates a `STACK.md` mechanism. The copy was already
+      stale in three ways when removed — see the receipt.
 
 - [ ] **TASK-013 — Documentation catches up.** `CLAUDE.md`'s hook table gains the Bash guard and
       its dependency paragraph loses jq; `.claude/README.md` likewise.
@@ -148,6 +149,13 @@ One task per iteration. Do not start a second.
 5. H-4 says `src/`; H-5 and every existing hook say `src/secrev/`. Which is the guard's set?
 6. Does DoD 9 reach `.claude/disabled/`? See TASK-012.
 7. `plan-reviewer.md` §4 lists §2.1's constructs while citing it — checklist or restatement?
+10. **`mypy` is nowhere in `STACK.md`.** `pyproject.toml` configures it, `scripts/check.sh`
+   runs it as a gate stage, and `CLAUDE.md` states it is "recorded in `STACK.md` §2 with
+   reasons". §2's table lists PyYAML, pytest and ruff only. Found by removing the agent's
+   copy, which asserted mypy as a dev dependency the binding document does not record.
+   Same class as open question 1: a document describing a state that does not exist. Adding
+   it is a STACK.md amendment with a written reason, which is a decision, not a fix.
+
 9. **H-5's literal form over-matches, measured.** `*scripts/*.py` matches `transcripts/notes.py`
    and `descripts/a.py`; `*src/secrev/*.py` matches `foosrc/secrev/x.py`. All three are now
    refused. `src/secrev/*.py|*/src/secrev/*.py` would meet H-5's stated rationale — not
