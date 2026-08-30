@@ -7,13 +7,33 @@
 
 set -eu
 INPUT=$(cat)
-path=$(printf '%s' "$INPUT" | jq -r '.tool_input.file_path // ""')
+
+ROOT="${CLAUDE_PROJECT_DIR:-.}"
+READER="$ROOT/.claude/hooks/lib/hook_input.py"
+
+# JSON is read by lib/hook_input.py, not jq (STACK.md §2). Every path that
+# cannot complete the check exits 2, never 0 (H-1).
+SYSPY=$(command -v python3 2>/dev/null) || {
+    echo "async-check: no python3 — cannot check (STACK.md §8 H-1)." >&2
+    exit 2
+}
+[ -f "$READER" ] || {
+    echo "async-check: $READER is missing — cannot check (H-1)." >&2
+    exit 2
+}
+
+read_field() {
+    printf '%s' "$INPUT" | "$SYSPY" "$READER" "$1" || {
+        echo "async-check: unreadable hook payload — refusing (H-1)." >&2
+        exit 2
+    }
+}
+path=$(read_field file_path)
 case "$path" in
   *.py) ;;
   *) exit 0 ;;
 esac
 
-ROOT="${CLAUDE_PROJECT_DIR:-.}"
 # State lives in the checkout, not $TMPDIR: a global name collides between two
 # clones of this repo on one machine, and the wrong clone's result then decides
 # whether a hook speaks. Gitignored via .claude/.gitignore.

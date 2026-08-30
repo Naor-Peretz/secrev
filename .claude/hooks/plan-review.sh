@@ -7,11 +7,32 @@
 
 set -eu
 INPUT=$(cat)
-tool=$(printf '%s' "$INPUT" | jq -r '.tool_name // .tool // empty')
+
+ROOT="${CLAUDE_PROJECT_DIR:-.}"
+READER="$ROOT/.claude/hooks/lib/hook_input.py"
+
+# JSON is read by lib/hook_input.py, not jq (STACK.md §2). Every path that
+# cannot complete the check exits 2, never 0 (H-1).
+SYSPY=$(command -v python3 2>/dev/null) || {
+    echo "plan-review: no python3 — cannot check (STACK.md §8 H-1)." >&2
+    exit 2
+}
+[ -f "$READER" ] || {
+    echo "plan-review: $READER is missing — cannot check (H-1)." >&2
+    exit 2
+}
+
+read_field() {
+    printf '%s' "$INPUT" | "$SYSPY" "$READER" "$1" || {
+        echo "plan-review: unreadable hook payload — refusing (H-1)." >&2
+        exit 2
+    }
+}
+tool=$(read_field tool_name)
 [ "$tool" = "ExitPlanMode" ] || exit 0
 
-MILESTONE=$(cat "${CLAUDE_PROJECT_DIR:-.}/.claude/MILESTONE" 2>/dev/null || echo M1)
-BRANCH=$(git -C "${CLAUDE_PROJECT_DIR:-.}" branch --show-current 2>/dev/null || echo "?")
+MILESTONE=$(cat "$ROOT/.claude/MILESTONE" 2>/dev/null || echo M1)
+BRANCH=$(git -C "$ROOT" branch --show-current 2>/dev/null || echo "?")
 
 cat <<EOF
 <plan-review-workflow>

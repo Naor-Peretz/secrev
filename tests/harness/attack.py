@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -91,11 +92,20 @@ def invokes_jq(script: Path) -> bool:
 
 
 def milestone_tree(value: str) -> tempfile.TemporaryDirectory[str]:
-    """A throwaway project dir holding nothing but .claude/MILESTONE."""
+    """A throwaway project dir with a different MILESTONE, used to vary it
+    without mutating the repository.
+
+    It carries hooks/lib/ as well as the MILESTONE file. A tree holding only
+    the marker is not a checkout: the guards refuse when their reader is
+    absent (H-1), so a bare fixture measures the missing reader rather than
+    the milestone it was built to test.
+    """
     tmp = tempfile.TemporaryDirectory()
     claude = Path(tmp.name) / ".claude"
-    claude.mkdir(parents=True)
+    (claude / "hooks" / "lib").mkdir(parents=True)
     (claude / "MILESTONE").write_text(value + "\n", encoding="utf-8")
+    for module in (HOOKS / "lib").glob("*.py"):
+        shutil.copy2(module, claude / "hooks" / "lib" / module.name)
     return tmp
 
 
@@ -329,6 +339,71 @@ def test_bash_ignores_commands_that_touch_nothing_protected() -> None:
     over path spellings, so anything it does not recognise passes untouched.
     Inherited from H-2's own wording, not invented here."""
     assert bash("rm -rf /tmp/scratch") == PASS_THROUGH
+
+
+# ------------------------------------------------------------ dependency: jq
+#
+# STACK.md §2 records jq as removed -- a non-Python external dependency,
+# undeclared, in a repository requiring a written reason for every one, and
+# exactly what §1's prefer-Python rule exists to avoid. The document has said
+# so in the past tense the whole time; six hooks called it anyway.
+
+
+def test_no_hook_invokes_jq() -> None:
+    """The sweep. Named hooks below fail with a useful message; this catches a
+    seventh hook appearing later with jq in it."""
+    offenders = sorted(
+        script.name for script in HOOKS.glob("*.sh") if invokes_jq(script)
+    )
+    assert not offenders, f"hooks still shelling out to jq: {offenders}"
+
+
+def test_scope_guard_uses_no_jq() -> None:
+    assert not invokes_jq(HOOKS / "scope-guard.sh")
+
+
+def test_spec_guard_uses_no_jq() -> None:
+    assert not invokes_jq(HOOKS / "spec-guard.sh")
+
+
+def test_plan_review_uses_no_jq() -> None:
+    assert not invokes_jq(HOOKS / "plan-review.sh")
+
+
+def test_determinism_guard_uses_no_jq() -> None:
+    assert not invokes_jq(HOOKS / "determinism-guard.sh")
+
+
+def test_async_check_uses_no_jq() -> None:
+    assert not invokes_jq(HOOKS / "async-check.sh")
+
+
+def test_scope_guard_refuses_malformed_payload() -> None:
+    """H-1, same defect the self-application guard had: jq's parse-error code
+    leaked through `set -e` as an exit value the protocol gives no meaning."""
+    proc = subprocess.run(
+        ["sh", str(HOOKS / "scope-guard.sh")],
+        input="{not json at all",
+        capture_output=True,
+        text=True,
+        env={"PATH": "/usr/bin:/bin:/usr/local/bin", "CLAUDE_PROJECT_DIR": str(REPO)},
+        cwd=str(REPO),
+        check=False,
+    )
+    assert proc.returncode == BLOCK, f"got rc={proc.returncode}"
+
+
+def test_spec_guard_refuses_malformed_payload() -> None:
+    proc = subprocess.run(
+        ["sh", str(HOOKS / "spec-guard.sh")],
+        input="{not json at all",
+        capture_output=True,
+        text=True,
+        env={"PATH": "/usr/bin:/bin:/usr/local/bin", "CLAUDE_PROJECT_DIR": str(REPO)},
+        cwd=str(REPO),
+        check=False,
+    )
+    assert proc.returncode == BLOCK, f"got rc={proc.returncode}"
 
 
 # ---------------------------------------------------------------- known-open

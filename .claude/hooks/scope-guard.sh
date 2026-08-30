@@ -13,19 +13,37 @@
 set -eu
 INPUT=$(cat)
 
+ROOT="${CLAUDE_PROJECT_DIR:-.}"
+READER="$ROOT/.claude/hooks/lib/hook_input.py"
+
+# JSON is read by lib/hook_input.py, not jq (STACK.md §2). Every path that
+# cannot complete the check exits 2, never 0 (H-1).
+SYSPY=$(command -v python3 2>/dev/null) || {
+    echo "scope-guard: no python3 — cannot check (STACK.md §8 H-1)." >&2
+    exit 2
+}
+[ -f "$READER" ] || {
+    echo "scope-guard: $READER is missing — cannot check (H-1)." >&2
+    exit 2
+}
+
+read_field() {
+    printf '%s' "$INPUT" | "$SYSPY" "$READER" "$1" || {
+        echo "scope-guard: unreadable hook payload — refusing (H-1)." >&2
+        exit 2
+    }
+}
+
 MILESTONE=$(cat "${CLAUDE_PROJECT_DIR:-.}/.claude/MILESTONE" 2>/dev/null || echo M1)
 [ "$MILESTONE" = "M1" ] || exit 0
 
-path=$(printf '%s' "$INPUT" | jq -r '.tool_input.file_path // ""')
+path=$(read_field file_path)
 case "$path" in
   */src/secrev/*|*/patterns/*) ;;
   *) exit 0 ;;
 esac
 
-body=$(printf '%s' "$INPUT" | jq -r '
-  [.tool_input.content?, .tool_input.new_string?, (.tool_input.edits? // [])[]?.new_string]
-  | map(select(. != null)) | join("\n")
-')
+body=$(read_field body)
 [ -n "$body" ] || exit 0
 
 concerns=""
@@ -59,11 +77,5 @@ Building it now is not merely early — the brief says each of these gets design
 prerequisite lands. If it is genuinely needed, that is a conflict with the brief and should be
 raised (BRIEF_M1.md §8), not resolved here."
 
-jq -n --arg r "$reason" '{
-  hookSpecificOutput: {
-    hookEventName: "PreToolUse",
-    permissionDecision: "ask",
-    permissionDecisionReason: $r
-  }
-}'
+printf '%s' "$reason" | "$SYSPY" "$ROOT/.claude/hooks/lib/hook_ask.py"
 exit 0

@@ -81,11 +81,14 @@ One task per iteration. Do not start a second.
       *Files:* `scripts/check.sh`.
       *Accept:* with `ruff` unavailable the gate exits 2 naming ruff, not 0.
 
-- [ ] **TASK-007 — Remaining five hooks off `jq`.** After items 1 and 2, per the brief's ordering
+- [x] **TASK-007 — Remaining five hooks off `jq`.** After items 1 and 2, per the brief's ordering
       rule: converting hooks while the Bash bypass is open is "improving a mechanism that is not
       running."
-      *Files:* `scope-guard.sh`, `spec-guard.sh`, `plan-review.sh`, `determinism-guard.sh`, `async-check.sh`.
-      *Accept:* `grep -rn jq .claude/hooks/` empty; attack.py green.
+      *Files:* the five hooks, plus `.claude/hooks/lib/hook_ask.py` (two of them used `jq -n`
+      to *emit* the ask payload, so a reader alone did not finish the job) and
+      `tests/harness/attack.py`.
+      *Accept:* no hook *invokes* jq — not a raw grep, since six now carry a comment recording
+      the removal. attack.py green.
 
 - [ ] **TASK-008 — Guard coverage: `+scripts/`, `+patterns/`.** Item 3. Note the brief's stated
       backstop is false: `self_check.py:18` scans `src/secrev` only, so nothing in the gate
