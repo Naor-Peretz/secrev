@@ -26,6 +26,12 @@ this file wins on mechanism.
 | `PyYAML` | catalog loading | required |
 | `pytest` | tests | dev only |
 | `ruff` | lint | dev only |
+| `mypy` | types (`--strict`) | dev only |
+
+`mypy` was configured in `pyproject.toml` and run as a gate stage while appearing nowhere in this
+table, and `CLAUDE.md` asserted it was "recorded in `STACK.md` §2 with reasons". It was not. Recorded
+now, with the reason: `--strict` on a tool whose output feeds a ledger other checks gate on, where a
+silently-`Any` field is a wrong answer rather than a crash.
 
 **No `jq`.** The harness originally shelled out to `jq` in six hooks. It is removed rather than
 documented: it is a non-Python external dependency, which is exactly what §1's prefer-Python rule
@@ -55,8 +61,17 @@ Per AC-10 the tool is reviewed by its own rules. Non-negotiable consequences:
 
 ## 3. Packaging and interface
 
-- **`uv`** for environment and dependency management, with a `pyproject.toml`. A plain
-  `pip install -e .` in a venv must also work — do not depend on `uv`-specific features.
+- **Stdlib `venv` + `pip`**, with a `pyproject.toml`. `python3 -m venv .venv`, then
+  `.venv/bin/pip install -e .`. `uv` is permitted but is not the default and nothing may depend on
+  `uv`-specific features.
+
+  This reverses an earlier decision in this file, and the reason is the tool's own subject matter.
+  `uv`'s advertised install is `curl … | sh` — a fetched script piped straight into a shell, which
+  is `net.fetch_exec`, one of the eight seed patterns this project ships. A scanner that flags that
+  construct and then installs itself with it cannot defend the finding. The objection is to the
+  *method*, not the tool: `pipx install uv` or a distribution package carry none of it. But with
+  four dev dependencies `uv` buys nothing over stdlib `venv`, so the tie goes to the option with no
+  supply-chain surface at all.
 - **One CLI entry point, `secrev`, with subcommands.** Not five standalone scripts. The PRD's
   `scripts/` listing describes modules, not executables.
 
@@ -186,11 +201,22 @@ It is in scope for AC-10, and the rules below are binding on it.
 - **H-3 — Guards cover every tool that can write, not every tool that usually writes.**
   `Write|Edit|MultiEdit` alone leaves `Bash` as an open path. Under P7 a write is an execution
   primitive regardless of which tool performed it.
-- **H-4 — Protected paths are `src/`, `patterns/`, and `scripts/`.** `patterns/` especially: it is
-  the tool's input, and a rule added without review is a check that silently disappears.
-- **H-5 — Path globs carry no leading anchor.** Use `*src/secrev/*.py`, not `*/src/secrev/*.py`.
-  The latter depends on the client always sending absolute paths — true today, undocumented, and
-  not something to rely on.
+- **H-4 — Protected paths are `src/`, `patterns/`, `scripts/`, and `.claude/`.** `patterns/`
+  especially: it is the tool's input, and a rule added without review is a check that silently
+  disappears. `.claude/` is protected against **`Bash` only** — writes through `Write`/`Edit` stay
+  permitted there, so repairing the harness remains possible and remains visible, while the path
+  that disables a guard without anything objecting closes. Nothing guarded the harness itself: a
+  `sed -i` on `bash-guard.sh` removed the control, and no component was defective on its own. That
+  is composition risk in the sense of FR-0.8, found in the reviewer rather than the reviewed.
+- **H-5 — Path globs carry no leading anchor.** Use `src/secrev/*.py|*/src/secrev/*.py`, not
+  `*/src/secrev/*.py` alone. The latter depends on the client always sending absolute paths — true
+  today, undocumented, and not something to rely on.
+
+  This rule previously said `*src/secrev/*.py`. That form does drop the dependency on absolute
+  paths and also matches `foosrc/secrev/x.py`; the `scripts/` equivalent matched `transcripts/` and
+  `descripts/`. The two-alternative form meets the stated rationale without the over-match. The
+  failure was closed rather than open — it refused writes to paths this repository does not contain
+  — but a control that fires on the wrong file teaches people to work around it.
 - **H-6 — A guard with no rules for the current state refuses.** When `MILESTONE` advances past
   what a scope guard knows, it exits 2 with a message. It does not exit 0.
 - **H-7 — Single source of truth.** Agent definitions reference this file; they never restate its
@@ -198,6 +224,19 @@ It is in scope for AC-10, and the rules below are binding on it.
   to prevent.
 - **H-8 — Guards are verified by attempting the bypass.** After any guard change, deliberately try
   the thing it should block. A guard nobody has tried to defeat is an assumption, not a control.
+- **H-9 — A guard answers in the protocol's vocabulary, and reads the state it gates on rather
+  than assuming it.** Two shapes of the same error, both found in M0.
+
+  A hook that exits with a value the event gives no meaning to has not answered. `jq`'s
+  parse-error code reaching the caller through `set -eu` produced `exit 5` from three `PreToolUse`
+  guards, where only 0 and 2 carry meaning. It looked like neither a refusal nor a pass.
+
+  A hook that cannot read the state it gates on refuses; it does not substitute a default.
+  `MILESTONE=$(cat … || echo M1)` assumed the one milestone the guard had rules for — the most
+  permissive reading available of a total failure to read anything.
+
+  H-1 covers a check that cannot run. This covers the two ways a check can appear to have run
+  without having done so, which is harder to see and worth naming separately.
 
 ## 9. Testing
 

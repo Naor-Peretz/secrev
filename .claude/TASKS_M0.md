@@ -52,23 +52,55 @@ One task per iteration. Do not start a second.
       *Files:* `.claude/hooks/bash-guard.sh`, `.claude/hooks/bash_guard.py`, `tests/harness/attack.py`.
       *Accept:* attack.py's heredoc case refuses; `cat` of the same path permits.
 
-- [ ] **TASK-004 — Wire the `Bash` matcher.** The guard file is not the control; the wiring is.
-      **BLOCKED on a decision.** TASK-003 measured the blast radius: `sh scripts/check.sh` and
-      `python3 scripts/self_check.py` are refused, because `sh` and `python3` are not read-only.
-      That is H-2 working as written — but executing a script in `scripts/` is not writing it,
-      and wiring this as-is makes the gate unrunnable through Bash. Reading and writing are not
-      the only two things one does to a file, and the brief's allowlist has no third category.
-      Suggested resolution, still allowlist-shaped: an *execute* set permitting `sh <path.sh>`
-      and `python3 <path.py>` when no token after the interpreter starts with `-`. That keeps
-      `python3 -c "open('scripts/check.sh','w')"` refused, which is the case that matters.
-      Not taken here: it widens what the guard permits, so it is the user's call.
-      *Files:* `.claude/settings.json`, and `bash_guard.py` if the execute set is adopted.
-      *Accept:* a live in-session heredoc to `src/secrev/cli.py` is refused (H-8), and the gate
-      still runs.
+- [ ] **TASK-014 — `STACK.md` amendments.** The decisions come first: the document is binding,
+      and the code follows it rather than the reverse. §2 gains `mypy`. §3 stops making `uv` the
+      default — the objection was `curl | sh` (`net.fetch_exec`, a seed pattern), and with four
+      dev dependencies `uv` buys nothing over stdlib `venv` anyway. §8 H-4 gains `.claude/`,
+      H-5's glob form is corrected, and **H-9** is added.
+      *Files:* `STACK.md` (spec-guard will ask on each edit — that is the mechanism working).
+      *Accept:* each amendment carries its written reason; `secrev-invariants` skill still agrees
+      with the document.
 
-- [ ] **TASK-005 — `.venv`, and hooks that resolve it.** BLOCKED: `uv` is absent and
-      `python3 -m venv` fails here (no `ensurepip`; Ubuntu ships it as `python3-venv`). Needs a
-      decision on the machine before it can run.
+- [ ] **TASK-009B — Correct the glob form.** Follows H-5's correction in TASK-014.
+      `*src/secrev/*.py` → `src/secrev/*.py|*/src/secrev/*.py`.
+      *Files:* `.claude/hooks/lib/paths.sh`, `determinism-guard.sh`, `tests/harness/attack.py`.
+      *Accept:* `transcripts/notes.py`, `descripts/a.py` and `foosrc/secrev/x.py` stop being
+      refused; relative and absolute `src/secrev/*.py` still are.
+
+- [ ] **TASK-004 — Execute category, and no operators near a protected path.** Two changes, one
+      commit, because either alone is wrong.
+      **Execute:** `sh <path.sh>` and `python3 <path.py>` permitted — running an existing script
+      is not writing it. No token after the interpreter may start with `-`, so
+      `python3 -c "open('scripts/check.sh','w')"` stays refused.
+      **Operators:** any of `;` `&&` `||` `|` `` ` `` `$(` newline in a command touching a
+      protected path is a refusal. Without this the execute category reopens exactly what the
+      Bash guard closes: `sh scripts/check.sh; cat > src/secrev/x.py` has an allowlisted first
+      command and the chain carries the write. This replaces the safe-separator design from
+      TASK-003, and it costs read-only pipelines — `cat src/x.py | grep foo` is now refused.
+      *Files:* `.claude/hooks/bash_guard.py`, `tests/harness/attack.py`.
+      *Accept:* the chained-write case refuses; `sh scripts/check.sh` permits;
+      `python3 -c` refuses.
+
+- [ ] **TASK-004B — `.claude/` is a protected path.** Open question 4, decided. Bash writes to the
+      harness refused; `Write`/`Edit` permitted, so repair stays possible and stays visible while
+      the silent-disable path closes. Composition risk in the sense of PRD FR-0.8: one component
+      able to disable another's control, neither defective alone.
+      Note the set diverges — `.claude/` is protected against **Bash only**, so it belongs in
+      `bash_guard.py` and not in `paths.sh`, which governs the Write/Edit hooks.
+      *Files:* `.claude/hooks/bash_guard.py`, `tests/harness/attack.py`.
+      *Accept:* `sed -i` on `bash-guard.sh` refuses; `cat` of it permits; a `Write` to it is
+      untouched by this guard.
+
+- [ ] **TASK-004C — Wire the `Bash` matcher.** The guard is not the control; the wiring is.
+      *Files:* `.claude/settings.json`, `tests/harness/attack.py` (the last known-open inverts),
+      `CLAUDE.md`.
+      *Accept:* a live in-session heredoc to `src/secrev/cli.py` is refused (H-8), and
+      `sh scripts/check.sh` still runs.
+
+- [ ] **TASK-005 — `.venv`, and hooks that resolve it.** Decided: `python3-venv` + stdlib `venv`,
+      not `uv`. Requires one command with `sudo`, which is the user's to run:
+      `sudo apt install python3-venv`, then `python3 -m venv .venv` and
+      `.venv/bin/pip install ruff pytest mypy`.
       *Files:* `.claude/hooks/async-check.sh`, `determinism-guard.sh`, `skill-activation.sh`.
       *Accept:* `.venv/bin/python -m ruff --version` succeeds; no hook falls back to `PATH`.
 
@@ -139,33 +171,39 @@ One task per iteration. Do not start a second.
 
 ---
 
+## Decided (2026-08-30)
+
+- **OQ3 — `find`.** Stays out of the allowlist. "Except these flags" is a denylist over flags;
+  `ls` and `rg` cover the need.
+- **OQ4 — `.claude/` is a protected path.** Bash writes refused, `Write`/`Edit` permitted. The
+  bootstrap objection dissolves: repair stays possible and stays visible, and the silent
+  disable path closes. This is composition risk — one component able to disable another's
+  control (PRD FR-0.8).
+- **OQ9 — H-5's glob form was wrong.** `*src/secrev/*.py` catches `transcripts/`. Corrected in
+  `STACK.md` to `src/secrev/*.py|*/src/secrev/*.py`, which meets the stated rationale without
+  the over-match.
+- **OQ10 — `mypy` enters `STACK.md` §2.** A defect in the document.
+- **New: H-9.** Two findings of this milestone are one rule — a guard that returns a value the
+  protocol gives no meaning to (`exit 5` from jq through `set -e`), and one that assumes the
+  state instead of reading it (`|| echo M1`). Added to `STACK.md` §8.
+- **`uv` is no longer the default.** The objection was to `curl | sh`, which is `net.fetch_exec`
+  — one of the eight seed patterns. A project that scans for it and installs itself that way
+  cannot defend itself. `pipx install uv` or apt fix the method; but with four dev dependencies
+  `uv` buys nothing over stdlib `venv`, so `STACK.md` §3 is corrected.
+- **OQ1 is closed by TASK-007**, not by a decision: the six hooks stopped calling jq, so
+  `STACK.md` §2 became true. Left here because a resolved item that stays on an open list is
+  the same drift this milestone exists to catch.
+
 ## Raised, not resolved (BRIEF §8)
 
-1. `STACK.md` §2 describes jq as already removed, past tense, while six hooks use it.
-2. PRD §13's build order runs M1–M12 and does not know M0 exists.
-3. `find` is in the brief's read-only allowlist and has `-delete` and `-exec`. Permitting it minus
-   those flags is a denylist over flags (P3), so "special-case it" is not the neutral option.
-   Left out of TASK-003's allowlist pending an answer.
-4. Is `.claude/` a protected path? H-4 says `src/`, `patterns/`, `scripts/`. A Bash write to
-   `bash-guard.sh` disables the control and nothing objects. Bootstrap problem is real.
-5. H-4 says `src/`; H-5 and every existing hook say `src/secrev/`. Which is the guard's set?
-6. Does DoD 9 reach `.claude/disabled/`? See TASK-012.
-7. `plan-reviewer.md` §4 lists §2.1's constructs while citing it — checklist or restatement?
-10. **`mypy` is nowhere in `STACK.md`.** `pyproject.toml` configures it, `scripts/check.sh`
-   runs it as a gate stage, and `CLAUDE.md` states it is "recorded in `STACK.md` §2 with
-   reasons". §2's table lists PyYAML, pytest and ruff only. Found by removing the agent's
-   copy, which asserted mypy as a dev dependency the binding document does not record.
-   Same class as open question 1: a document describing a state that does not exist. Adding
-   it is a STACK.md amendment with a written reason, which is a decision, not a fix.
-
-9. **H-5's literal form over-matches, measured.** `*scripts/*.py` matches `transcripts/notes.py`
-   and `descripts/a.py`; `*src/secrev/*.py` matches `foosrc/secrev/x.py`. All three are now
-   refused. `src/secrev/*.py|*/src/secrev/*.py` would meet H-5's stated rationale — not
-   depending on the client sending absolute paths — without the over-match, but H-5 gives the
-   mechanism verbatim and STACK.md wins on mechanism, so this is raised rather than taken.
-   The failure is closed, not open: it refuses writes to paths this repo does not contain.
-   Cheap to change in one place now that `paths.sh` exists.
-
-8. The trigger "command references a protected path" is a denylist over path *spellings*
+1. PRD §13's build order runs M1–M12 and does not know M0 exists.
+2. H-4 says `src/`; H-5 and every existing hook say `src/secrev/`. Which is the guard's set?
+3. Does DoD 9 reach `.claude/disabled/`? See TASK-012.
+4. `plan-reviewer.md` §4 lists §2.1's constructs while citing it — checklist or restatement?
+5. The trigger "command references a protected path" is a denylist over path *spellings*
    (`$HOME/...`, globs, variables, string concatenation). Inherited from H-2, not invented here,
    but it means the guard fails open on any spelling it does not recognise.
+6. **Residual risk, recorded so it is not rediscovered.** A script under `scripts/` can write
+   anywhere, so there is a chain: write a script, then run it. Not a bypass — the first link is
+   guarded, and the execute category permits running an existing script, never creating one —
+   but the risk is real and belongs in writing rather than in someone's memory.

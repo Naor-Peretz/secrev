@@ -11,7 +11,8 @@ M0 work lives on `m0/harness-repair`; `main` holds only the baseline commit. Bef
 repository had no commits at all, so nothing could be reviewed as a diff or reverted.
 
 **There is no `.venv`.** Hooks and the gate fall back to system `python3`, which has no `ruff`,
-`mypy` or `pytest`; those stages skip rather than fail. Run `uv sync` before trusting a green run.
+`mypy` or `pytest`; those stages skip rather than fail. Build it before trusting a green run —
+`STACK.md` §3 sets stdlib `venv` as the default, not `uv`.
 
 ### The current milestone is M0
 
@@ -56,15 +57,19 @@ sh scripts/check.sh                    # the gate — exactly what CI runs, no s
 python3 scripts/self_check.py          # STACK.md §2.1 alone (AST-based, not grep)
 python3 scripts/determinism_check.py   # NFR-3 alone: two runs byte-identical + stable ids
 
-uv sync                                # env; plain `pip install -e .` in a venv must also work
+python3 -m venv .venv                  # env (STACK.md §3); needs the python3-venv package
+.venv/bin/pip install -e '.[dev]'      # uv is permitted, but is not the default
 pytest                                 # all tests
 pytest tests/test_sweep.py::test_name  # a single test
 ```
 
-`uv sync` installs `pytest`, `ruff` and `mypy`. `STACK.md` §2 records the first two and PyYAML;
-**mypy appears nowhere in it**, though `pyproject.toml` configures it and the gate runs it. That
-gap is open question 10 in `.claude/TASKS_M0.md` — closing it is a `STACK.md` amendment with a
-written reason, which is a decision rather than a fix.
+The dev set is `pytest`, `ruff` and `mypy`, all recorded in `STACK.md` §2 with reasons —
+`mypy` only since TASK-014, having been configured and run for some time while appearing
+nowhere in the binding document.
+
+`uv` is permitted but is no longer the default (§3). Its advertised install pipes a fetched
+script into a shell, which is `net.fetch_exec` — one of the eight seed patterns this tool
+ships. The objection is to the method, not the tool.
 
 The gate runs `ruff format --check`, `ruff check`, `mypy --strict`, `pytest`, the guard
 assertions (`tests/harness/attack.py`), the self-application check, and the determinism check,

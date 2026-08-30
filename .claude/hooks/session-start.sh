@@ -27,7 +27,7 @@ else
 fi
 
 [ -d src/secrev ] || echo "src/secrev/ does not exist yet — the gate's later stages skip."
-[ -x .venv/bin/python ] || echo "No .venv — hooks fall back to system python3, which lacks ruff/pytest. Run: uv sync"
+[ -x .venv/bin/python ] || echo "No .venv — hooks fall back to system python3, which lacks ruff/pytest. Run: python3 -m venv .venv && .venv/bin/pip install -e '.[dev]'"
 
 if [ "$COMMITS" = "0" ]; then
     echo "The repository has no commits. Everything, including this harness, is"

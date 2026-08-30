@@ -33,7 +33,7 @@ if "$PY" -m ruff --version >/dev/null 2>&1; then
     run "ruff format --check" runpy ruff format --check .
     run "ruff check"          runpy ruff check .
 else
-    skip "ruff" "not installed — run: uv sync"
+    skip "ruff" "not installed — run: python3 -m venv .venv && .venv/bin/pip install -e '.[dev]'"
 fi
 
 # ------------------------------------------------------------------ 2. types
@@ -41,7 +41,7 @@ if [ "$HAS_SRC" = 1 ]; then
     if "$PY" -m mypy --version >/dev/null 2>&1; then
         run "mypy" runpy mypy
     else
-        skip "mypy" "not installed — run: uv sync"
+        skip "mypy" "not installed — run: python3 -m venv .venv && .venv/bin/pip install -e '.[dev]'"
     fi
 else
     skip "mypy" "no src/secrev yet"

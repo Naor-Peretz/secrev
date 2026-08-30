@@ -371,11 +371,26 @@ def test_docs_do_not_claim_finished_work_is_open() -> None:
         "carries a full \"Technology Stack\" section": "TASK-012 replaced it",
         "`.claude/MILESTONE` says `M1`": "TASK-011 set it to M0",
         "The repository has no commits": "TASK-000 made the baseline commit",
-        "recorded in `STACK.md` §2 with reasons": "mypy is not in §2; open question 10",
     }
+    # "recorded in STACK.md §2 with reasons" was on this list until TASK-014 put
+    # mypy in §2 and made the sentence true. An assertion that pins a claim as
+    # false has to be retired when the claim stops being false, or it starts
+    # forbidding an accurate statement.
     text = CLAUDE_MD.read_text(encoding="utf-8")
     offenders = [f"{claim!r} ({why})" for claim, why in stale.items() if claim in text]
     assert not offenders, f"CLAUDE.md still claims: {offenders}"
+
+
+def test_setup_advice_matches_stack_md() -> None:
+    """STACK.md §3 stopped making `uv` the default in TASK-014. Anything that
+    tells a human what to run has to say the same thing, or the decision lives
+    in one file and the instructions live in another."""
+    offenders = []
+    for path in (CLAUDE_MD, REPO / "scripts" / "check.sh", HOOKS / "session-start.sh"):
+        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            if "uv sync" in line:
+                offenders.append(f"{path.name}:{number}")
+    assert not offenders, f"still tells the reader to run `uv sync`: {offenders}"
 
 
 def test_docs_name_the_bash_guard() -> None:
