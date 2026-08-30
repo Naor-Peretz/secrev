@@ -58,7 +58,19 @@ REFUSE = 2
 # STACK.md §8 H-4. Note H-5 and every existing hook say `src/secrev/`; H-4 says
 # `src/`. Taking the broader one -- STACK.md wins on mechanism -- and the
 # divergence is open question 5.
-PROTECTED = ("src", "patterns", "scripts")
+#
+# `.claude` is here and deliberately NOT in lib/paths.sh. The harness is
+# protected against Bash and not against Write/Edit, and the asymmetry is the
+# whole answer to the bootstrap objection: a `sed -i` on this file removed the
+# control with nothing objecting, while a Write to it passes in front of every
+# hook that watches writes. Repair stays possible and stays visible; the
+# silent-disable path closes.
+#
+# Nothing guarded the harness until now, and no component was defective on its
+# own -- the guards covered the tool, and the tool's guards were not covered.
+# That is composition risk in the sense of FR-0.8, found in the reviewer
+# rather than in something reviewed.
+PROTECTED = ("src", "patterns", "scripts", r"\.claude")
 # The boundary is "not a path-name character" rather than "/ or start", so a
 # path inside a quoted argument still counts: shlex strips the quotes and
 # leaves `open('scripts/check.sh'` as one token. This widens the trigger; it

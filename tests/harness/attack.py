@@ -389,6 +389,45 @@ def test_bash_refuses_unlisted_git_subcommand() -> None:
     assert bash("git checkout -- src/secrev/cli.py") == BLOCK
 
 
+# ------------------------------------------------- the harness guards itself
+#
+# Open question 4, decided. Nothing guarded .claude/: a `sed -i` on
+# bash-guard.sh removed the control and no component was defective on its own.
+# That is composition risk (PRD FR-0.8) found in the reviewer rather than the
+# reviewed — the class of issue a per-artifact review structurally cannot see.
+
+
+def test_bash_refuses_writing_to_a_guard() -> None:
+    assert bash("sed -i 's/REFUSE/PERMIT/' .claude/hooks/bash_guard.py") == BLOCK
+    assert bash("echo x > .claude/hooks/bash-guard.sh") == BLOCK
+    assert bash("rm .claude/hooks/self-application-guard.sh") == BLOCK
+
+
+def test_bash_refuses_writing_to_settings() -> None:
+    """Unwiring a guard is as complete a disable as deleting it."""
+    assert bash("cat > .claude/settings.json <<'EOF'") == BLOCK
+
+
+def test_bash_permits_reading_a_guard() -> None:
+    """The bootstrap objection, answered. Repair stays possible and stays
+    visible: reading is untouched, and Write/Edit is where changes go, in
+    front of the hooks that watch it."""
+    assert bash("cat .claude/hooks/bash_guard.py") == PASS_THROUGH
+    assert bash("grep -n REFUSE .claude/hooks/bash_guard.py") == PASS_THROUGH
+
+
+def test_write_edit_to_the_harness_is_not_this_guard_s_business() -> None:
+    """.claude/ is protected against Bash only, so the Write/Edit predicates in
+    paths.sh must not have grown it. Repairing the harness through the tools
+    the other guards can see is exactly the intended route."""
+    paths = (HOOKS / "lib" / "paths.sh").read_text(encoding="utf-8")
+    code = "\n".join(line.split("#", 1)[0] for line in paths.splitlines())
+    assert ".claude" not in code, (
+        "paths.sh governs Write/Edit; adding .claude/ there would close the "
+        "repair route the bootstrap answer depends on"
+    )
+
+
 def test_bash_ignores_commands_that_touch_nothing_protected() -> None:
     """Documents open question 8, it does not settle it: the trigger is a test
     over path spellings, so anything it does not recognise passes untouched.

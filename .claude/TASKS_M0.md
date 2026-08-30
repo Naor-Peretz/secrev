@@ -87,7 +87,7 @@ One task per iteration. Do not start a second.
       *Accept:* the chained-write case refuses; `sh scripts/check.sh` permits;
       `python3 -c` refuses.
 
-- [ ] **TASK-004B — `.claude/` is a protected path.** Open question 4, decided. Bash writes to the
+- [x] **TASK-004B — `.claude/` is a protected path.** Open question 4, decided. Bash writes to the
       harness refused; `Write`/`Edit` permitted, so repair stays possible and stays visible while
       the silent-disable path closes. Composition risk in the sense of PRD FR-0.8: one component
       able to disable another's control, neither defective alone.
