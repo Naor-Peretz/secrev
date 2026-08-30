@@ -78,12 +78,23 @@ fi
             # which succeeds whatever the tool did — the check would report
             # [ok] for every failure. POSIX sh has no PIPESTATUS, so the
             # pipeline is the thing to avoid rather than to work around.
-            case "$check" in
-              ruff)    out=$("$PY" -m ruff check "$ROOT" 2>&1) ;;
-              pytest)  out=$("$PY" -m pytest -x -q "$ROOT" 2>&1) ;;
-              *)       out=$("$PY" "$ROOT/scripts/self_check.py" 2>&1) ;;
-            esac
-            status=$?
+            # Wrapped in `if`, not followed by `status=$?`. Under `set -e` a
+            # failing command substitution exits on the spot — which killed
+            # this loop mid-run, so a failing ruff meant pytest and the
+            # self-application check never ran and the log simply stopped.
+            # Silence read as "nothing to report". `if` is where set -e stands
+            # down.
+            if
+                case "$check" in
+                  ruff)    out=$("$PY" -m ruff check "$ROOT" 2>&1) ;;
+                  pytest)  out=$("$PY" -m pytest -x -q "$ROOT" 2>&1) ;;
+                  *)       out=$("$PY" "$ROOT/scripts/self_check.py" 2>&1) ;;
+                esac
+            then
+                status=0
+            else
+                status=$?
+            fi
             printf '%s\n' "$out" | head -30
             if [ "$status" = 0 ]; then
                 echo "[ok] $check"

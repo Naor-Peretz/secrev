@@ -534,6 +534,31 @@ def test_quality_checks_do_not_fall_back_to_path() -> None:
         )
 
 
+def test_no_quality_check_loses_its_status_to_set_e() -> None:
+    """`out=$(cmd)` followed by `status=$?` never reaches the second line.
+
+    Under `set -e` a failing command substitution in an assignment exits the
+    script immediately, so the explicit status handling is dead code and the
+    hook returns the tool's own exit value — 1, which the hook protocol gives
+    no meaning to (H-9). It also killed async-check.sh's loop mid-run, so one
+    failing tool meant the remaining checks never ran and the log just stopped.
+
+    Introduced by the fix for the `cmd | head` defect and found the same way:
+    by breaking something else and reading the exit code carefully. The
+    capture has to sit in an `if` condition, where `set -e` stands down.
+    """
+    offenders = []
+    for name in QUALITY_HOOKS:
+        text = (HOOKS / name).read_text(encoding="utf-8")
+        code = [line.split("#", 1)[0] for line in text.splitlines()]
+        for number, line in enumerate(code, 1):
+            if re.search(r"^\s*(out|result)=\$\(", line):
+                preceding = code[max(0, number - 3) : number - 1]
+                if not any(stripped.strip().startswith("if") for stripped in preceding):
+                    offenders.append(f"{name}:{number}")
+    assert not offenders, f"capture outside an `if`, so set -e eats the status: {offenders}"
+
+
 def test_no_quality_check_pipes_away_its_status() -> None:
     """POSIX sh has no PIPESTATUS, so `tool | head` makes `$?` the status of
     `head` — which succeeds whatever the tool did.

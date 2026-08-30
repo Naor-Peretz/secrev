@@ -103,15 +103,18 @@ fi
 # ------------------------------------------------ 6. determinism (NFR-3)
 # Two runs of every generation script on the same input must be byte-identical.
 # This is the hard requirement of M1; it is checked here rather than trusted.
+#
+# The condition is inventory.py, not the src/secrev directory. That directory
+# appears with the *first* file, and if that file is cli.py this stage keeps
+# printing "nothing to compare" while traversal order, NFC normalisation and
+# id derivation are being written — the rules NFR-3 is actually made of, and
+# the ones that cannot be corrected afterwards. determinism_check.py owns the
+# same condition; the script decides, this only reports.
 printf '\n\033[1m── determinism (NFR-3)\033[0m\n'
-if [ "$HAS_SRC" = 1 ] && [ -d tests/fixtures ]; then
-    if "$PY" scripts/determinism_check.py; then
-        echo "byte-identical across runs"
-    else
-        fail=1
-    fi
+if "$PY" scripts/determinism_check.py; then
+    :
 else
-    echo "no src/secrev + tests/fixtures yet — nothing to compare"
+    fail=1
 fi
 
 printf '\n'
