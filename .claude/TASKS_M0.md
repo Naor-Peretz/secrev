@@ -52,14 +52,17 @@ One task per iteration. Do not start a second.
       *Files:* `.claude/hooks/bash-guard.sh`, `.claude/hooks/bash_guard.py`, `tests/harness/attack.py`.
       *Accept:* attack.py's heredoc case refuses; `cat` of the same path permits.
 
-- [ ] **TASK-014 — `STACK.md` amendments.** The decisions come first: the document is binding,
+- [x] **TASK-014 — `STACK.md` amendments.** The decisions come first: the document is binding,
       and the code follows it rather than the reverse. §2 gains `mypy`. §3 stops making `uv` the
       default — the objection was `curl | sh` (`net.fetch_exec`, a seed pattern), and with four
       dev dependencies `uv` buys nothing over stdlib `venv` anyway. §8 H-4 gains `.claude/`,
       H-5's glob form is corrected, and **H-9** is added.
-      *Files:* `STACK.md` (spec-guard will ask on each edit — that is the mechanism working).
-      *Accept:* each amendment carries its written reason; `secrev-invariants` skill still agrees
-      with the document.
+      *Files:* `STACK.md`, plus everything that told a human to run `uv sync` — `CLAUDE.md`,
+      `scripts/check.sh`, `.claude/hooks/session-start.sh` — and `tests/harness/attack.py`.
+      `.github/workflows/ci.yml` still installs with `uv sync`; that is TASK-005's, since it is
+      the environment rather than the advice about it.
+      *Accept:* each amendment carries its written reason; nothing tells the reader to run
+      `uv sync`; §8 runs H-1…H-9.
 
 - [ ] **TASK-009B — Correct the glob form.** Follows H-5's correction in TASK-014.
       `*src/secrev/*.py` → `src/secrev/*.py|*/src/secrev/*.py`.
