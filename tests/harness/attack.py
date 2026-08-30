@@ -970,6 +970,36 @@ def test_docs_no_longer_call_the_bypass_open() -> None:
     assert "not wired" not in text
 
 
+def test_gate_never_skips_a_missing_tool() -> None:
+    """H-1 in the gate itself, which is where it mattered most.
+
+    With ruff, mypy and pytest all absent, check.sh printed
+    `skipped: not installed` three times and still reached `all gates pass`.
+    CI trusts that script. "Nothing to check yet" is a legitimate skip;
+    "cannot check" is not, and the two were the same word.
+
+    Structural rather than executed: hiding a tool from the gate from inside
+    the gate's own test suite costs more than it proves. The executed version
+    is in the receipt.
+    """
+    gate = (REPO / "scripts" / "check.sh").read_text(encoding="utf-8")
+    offenders = [
+        line.strip()
+        for line in gate.splitlines()
+        if line.strip().startswith("skip ") and "not installed" in line
+    ]
+    assert not offenders, f"a missing tool is still skipped: {offenders}"
+    assert "missing()" in gate, "the gate has no branch that refuses on a missing tool"
+
+
+def test_gate_separates_no_tests_from_no_pytest() -> None:
+    """`[ -d tests ] && pytest --version` collapsed both states into one
+    message — and once tests/ existed the message was simply false, which is
+    how it was noticed."""
+    gate = (REPO / "scripts" / "check.sh").read_text(encoding="utf-8")
+    assert "no tests/ or pytest not installed" not in gate
+
+
 def test_gate_runs_the_attack_driver() -> None:
     """The instrument has to be wired to the gate, or it is a check nobody sees.
 

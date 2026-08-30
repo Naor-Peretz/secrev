@@ -97,7 +97,7 @@ One task per iteration. Do not start a second.
       *Accept:* `sed -i` on `bash-guard.sh` refuses; `cat` of it permits; a `Write` to it is
       untouched by this guard.
 
-- [ ] **TASK-004C — Wire the `Bash` matcher.** The guard is not the control; the wiring is.
+- [x] **TASK-004C — Wire the `Bash` matcher.** The guard is not the control; the wiring is.
       *Files:* `.claude/settings.json`, `tests/harness/attack.py` (the last known-open inverts),
       `CLAUDE.md`.
       *Accept:* a live in-session heredoc to `src/secrev/cli.py` is refused (H-8), and
@@ -116,7 +116,7 @@ One task per iteration. Do not start a second.
       it is a router, not a gate, and bricking every prompt to report a missing suggestion is
       not what H-1 asks for.
 
-- [ ] **TASK-006 — The gate stops lying about missing tools.** Today `check.sh` prints
+- [x] **TASK-006 — The gate stops lying about missing tools.** Today `check.sh` prints
       `skipped: not installed` for ruff, mypy and pytest and still reaches `all gates pass`.
       Missing tool → exit 2 naming it. "Nothing to check yet" stays a legitimate skip; "cannot
       check" does not. Name the pytest branch specifically — `[ -d tests ] && pytest --version`

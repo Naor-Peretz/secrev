@@ -28,30 +28,42 @@ runpy() { "$PY" -m "$@"; }
 HAS_SRC=0
 [ -d src/secrev ] && HAS_SRC=1
 
+# A missing tool is not a passing tool (STACK.md §8 H-1). "Nothing to check
+# yet" stays a legitimate skip; "cannot check" exits 2 naming what is absent.
+#
+# This script printed `skipped: not installed` for ruff, mypy and pytest and
+# still reached `all gates pass` — with none of the three present, and with CI
+# trusting the result. Two states, one word.
+SETUP="python3 -m venv .venv && .venv/bin/pip install ruff pytest mypy"
+missing() {
+    printf '\n\033[31m── %s: not installed — cannot check\033[0m\n' "$1" >&2
+    printf 'This is not a pass. Run: %s\n' "$SETUP" >&2
+    exit 2
+}
+
 # ---------------------------------------------------------------- 1. format
-if "$PY" -m ruff --version >/dev/null 2>&1; then
-    run "ruff format --check" runpy ruff format --check .
-    run "ruff check"          runpy ruff check .
-else
-    skip "ruff" "not installed — run: python3 -m venv .venv && .venv/bin/pip install -e '.[dev]'"
-fi
+"$PY" -m ruff --version >/dev/null 2>&1 || missing ruff
+run "ruff format --check" runpy ruff format --check .
+run "ruff check"          runpy ruff check .
 
 # ------------------------------------------------------------------ 2. types
 if [ "$HAS_SRC" = 1 ]; then
-    if "$PY" -m mypy --version >/dev/null 2>&1; then
-        run "mypy" runpy mypy
-    else
-        skip "mypy" "not installed — run: python3 -m venv .venv && .venv/bin/pip install -e '.[dev]'"
-    fi
+    "$PY" -m mypy --version >/dev/null 2>&1 || missing mypy
+    run "mypy" runpy mypy
 else
-    skip "mypy" "no src/secrev yet"
+    skip "mypy" "no src/secrev yet — nothing to type-check"
 fi
 
 # ------------------------------------------------------------------ 3. tests
-if [ -d tests ] && "$PY" -m pytest --version >/dev/null 2>&1; then
+# `[ -d tests ] && pytest --version` collapsed "no tests yet" and "pytest is
+# absent" into one branch with one message. Once tests/ existed the message
+# was simply false — which is how it was noticed, printed in front of a
+# tests/ directory it claimed did not exist.
+if [ -d tests ]; then
+    "$PY" -m pytest --version >/dev/null 2>&1 || missing pytest
     run "pytest" runpy pytest
 else
-    skip "pytest" "no tests/ or pytest not installed"
+    skip "pytest" "no tests/ yet — nothing to run"
 fi
 
 # ------------------------------------------- 4. harness guards (STACK.md §8)
