@@ -90,11 +90,15 @@ One task per iteration. Do not start a second.
       *Accept:* no hook *invokes* jq — not a raw grep, since six now carry a comment recording
       the removal. attack.py green.
 
-- [ ] **TASK-008 — Guard coverage: `+scripts/`, `+patterns/`.** Item 3. Note the brief's stated
+- [x] **TASK-008 — Guard coverage: `+scripts/`, `+patterns/`.** Item 3. Note the brief's stated
       backstop is false: `self_check.py:18` scans `src/secrev` only, so nothing in the gate
       catches an `eval` in `scripts/`. The new coverage is the only control, not a second one.
-      *Files:* `self-application-guard.sh`, `scope-guard.sh`, `.claude/hooks/lib/paths.sh`.
-      *Accept:* `eval(` into `scripts/self_check.py` is blocked.
+      *Files:* `self-application-guard.sh`, `scope-guard.sh`, `.claude/hooks/lib/paths.sh`,
+      `tests/harness/attack.py`.
+      *Accept:* `eval(` into `scripts/self_check.py` is blocked. Note the two predicates are
+      different sets on purpose: `patterns/` is in the scope guard's remit and out of the
+      self-application guard's, because a catalog rule that detects `yaml.load` contains the
+      string `yaml.load` — refusing it would read the tool's own input as if it were code.
 
 - [ ] **TASK-009 — Unanchor the path globs.** Item 6, H-5. `*/src/secrev/*.py` → `*src/secrev/*.py`.
       *Files:* `self-application-guard.sh`, `scope-guard.sh`, `determinism-guard.sh`.

@@ -27,6 +27,13 @@ SYSPY=$(command -v python3 2>/dev/null) || {
     exit 2
 }
 
+PATHS="$ROOT/.claude/hooks/lib/paths.sh"
+[ -f "$PATHS" ] || {
+    echo "scope-guard: $PATHS is missing — cannot check (H-1)." >&2
+    exit 2
+}
+. "$PATHS"
+
 read_field() {
     printf '%s' "$INPUT" | "$SYSPY" "$READER" "$1" || {
         echo "scope-guard: unreadable hook payload — refusing (H-1)." >&2
@@ -38,10 +45,7 @@ MILESTONE=$(cat "${CLAUDE_PROJECT_DIR:-.}/.claude/MILESTONE" 2>/dev/null || echo
 [ "$MILESTONE" = "M1" ] || exit 0
 
 path=$(read_field file_path)
-case "$path" in
-  */src/secrev/*|*/patterns/*) ;;
-  *) exit 0 ;;
-esac
+is_scoped_path "$path" || exit 0
 
 body=$(read_field body)
 [ -n "$body" ] || exit 0

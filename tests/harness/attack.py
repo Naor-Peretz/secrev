@@ -102,10 +102,12 @@ def milestone_tree(value: str) -> tempfile.TemporaryDirectory[str]:
     """
     tmp = tempfile.TemporaryDirectory()
     claude = Path(tmp.name) / ".claude"
-    (claude / "hooks" / "lib").mkdir(parents=True)
+    claude.mkdir(parents=True)
     (claude / "MILESTONE").write_text(value + "\n", encoding="utf-8")
-    for module in (HOOKS / "lib").glob("*.py"):
-        shutil.copy2(module, claude / "hooks" / "lib" / module.name)
+    # The whole lib/, not a file-type guess: an earlier version copied *.py and
+    # missed paths.sh the moment it was added, and the guards then refused for
+    # want of it rather than for the milestone under test.
+    shutil.copytree(HOOKS / "lib", claude / "hooks" / "lib")
     return tmp
 
 
@@ -341,6 +343,83 @@ def test_bash_ignores_commands_that_touch_nothing_protected() -> None:
     assert bash("rm -rf /tmp/scratch") == PASS_THROUGH
 
 
+# ----------------------------------------------------------- protected paths
+#
+# STACK.md §8 H-4. `patterns/` especially: it is the tool's input, and a rule
+# added or altered without review is a check that silently disappears from
+# every later run.
+
+
+def test_self_application_guards_scripts() -> None:
+    """Inverted from a known-open assertion in TASK-001.
+
+    BRIEF_M0.md §3 says the gate catches this after the fact. It does not:
+    self_check.py:18 scans src/secrev only, so nothing else in the gate looks
+    at scripts/. This hook is the only control over that directory, which
+    raises the bar on it rather than lowering it.
+    """
+    rc, _, err = run_hook(
+        "self-application-guard.sh",
+        write_payload(str(REPO / "scripts" / "self_check.py"), "x = eval('1')\n"),
+    )
+    assert rc == BLOCK, f"eval into scripts/ must be refused, got rc={rc}"
+    assert "eval(" in err
+    assert "src/secrev" not in err, (
+        "the refusal names the file it refused; it said src/secrev for a "
+        "write to scripts/, which was true only while the guard covered one "
+        "directory"
+    )
+
+
+def test_self_application_permits_clean_scripts() -> None:
+    rc, _, _ = run_hook(
+        "self-application-guard.sh",
+        write_payload(str(REPO / "scripts" / "check_thing.py"), "import ast\n"),
+    )
+    assert rc == PASS_THROUGH
+
+
+def test_self_application_ignores_pattern_data() -> None:
+    """patterns/ is the catalog, and a rule that detects `yaml.load` contains
+    the string `yaml.load`. Refusing it would block the tool's own input for
+    describing the construct it exists to find -- data read as if it were code.
+    Coverage of patterns/ belongs to the scope guard, which asks about the rule
+    being added, not to this one.
+    """
+    rc, _, _ = run_hook(
+        "self-application-guard.sh",
+        write_payload(
+            str(REPO / "patterns" / "_base.yaml"),
+            "- id: py.yaml_load\n  regex: 'yaml\\.load\\('\n",
+        ),
+    )
+    assert rc == PASS_THROUGH, "a catalog rule is data, not a self-application breach"
+
+
+def test_scope_guard_covers_scripts() -> None:
+    rc, out, _ = run_hook(
+        "scope-guard.sh",
+        write_payload(str(REPO / "scripts" / "render.py"), "severity = 'high'\n"),
+    )
+    assert rc == PASS_THROUGH and asks(out), "scripts/ is in the scope guard's remit"
+
+
+def test_scope_guard_covers_patterns() -> None:
+    rc, out, _ = run_hook(
+        "scope-guard.sh",
+        write_payload(str(REPO / "patterns" / "_base.yaml"), "multiline: true\n"),
+    )
+    assert rc == PASS_THROUGH and asks(out), "patterns/ is the tool's input"
+
+
+def test_protected_paths_have_one_definition() -> None:
+    """H-7. Two guards deciding separately what `protected` means is how the
+    two answers drift apart without either looking wrong."""
+    for hook in ("self-application-guard.sh", "scope-guard.sh"):
+        src = (HOOKS / hook).read_text(encoding="utf-8")
+        assert "lib/paths.sh" in src, f"{hook} does not source the shared definition"
+
+
 # ------------------------------------------------------------ dependency: jq
 #
 # STACK.md §2 records jq as removed -- a non-Python external dependency,
@@ -424,16 +503,6 @@ def test_known_open_bash_bypass_is_unwired() -> None:
     assert not any("Bash" in m for m in matchers), (
         "A Bash matcher now exists -- the bypass is closed. Invert this test."
     )
-
-
-def test_known_open_scripts_dir_is_unguarded() -> None:
-    """TASK-008 inverts this. self_check.py:18 scans src/secrev only, so the
-    gate does not catch this either: the new coverage is the only control."""
-    rc, _, _ = run_hook(
-        "self-application-guard.sh",
-        write_payload(str(REPO / "scripts" / "self_check.py"), "x = eval('1')\n"),
-    )
-    assert rc == PASS_THROUGH, "scripts/ is now guarded -- invert this test."
 
 
 def test_known_open_relative_path_escapes_guard() -> None:

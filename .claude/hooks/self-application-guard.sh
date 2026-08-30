@@ -28,6 +28,13 @@ PY=$(command -v python3 2>/dev/null) || {
     exit 2
 }
 
+PATHS="$ROOT/.claude/hooks/lib/paths.sh"
+[ -f "$PATHS" ] || {
+    echo "self-application-guard: $PATHS is missing — cannot check (H-1)." >&2
+    exit 2
+}
+. "$PATHS"
+
 read_field() {
     printf '%s' "$INPUT" | "$PY" "$READER" "$1" || {
         echo "self-application-guard: unreadable hook payload — refusing (H-1)." >&2
@@ -36,10 +43,7 @@ read_field() {
 }
 
 path=$(read_field file_path)
-case "$path" in
-  */src/secrev/*.py) ;;
-  *) exit 0 ;;
-esac
+is_self_application_path "$path" || exit 0
 
 body=$(read_field body)
 [ -n "$body" ] || exit 0
@@ -61,7 +65,7 @@ printf '%s' "$body" | grep -qE '\b(requests|httpx|aiohttp)\b|urllib\.request|htt
 [ -z "$violation" ] && exit 0
 
 {
-  echo "BLOCKED — this write would put into src/secrev/ a construct that secrev flags in others."
+  echo "BLOCKED — this write would put into ${path##*/} a construct that secrev flags in others."
   echo
   printf '%b' "$violation"
   echo "A scanner that flags yaml.load and then calls it is not credible (STACK.md §2.1)."
