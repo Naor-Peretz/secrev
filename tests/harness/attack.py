@@ -588,17 +588,28 @@ STACK_VERBATIM = (
 )
 
 
-def test_no_live_agent_restates_stack_md() -> None:
-    """H-7: agent definitions reference STACK.md, never restate it. A copied
-    stack section goes stale silently, which is the failure mode STACK.md
-    exists to prevent."""
+def test_no_agent_restates_stack_md() -> None:
+    """H-7: agent definitions reference STACK.md, never restate it.
+
+    Disabled agents are included, which settles the question TASK-012 left
+    open. disabled/README.md used to say a copy could stay until someone
+    restored the file — the H-7 failure wearing a procedure, deferring the
+    correction to a day when the copy would be older and relying on whoever
+    did the restoring to remember. Both copies were already stale when
+    removed. A file that is correct while disabled is correct when enabled.
+    """
     offenders = []
-    for agent in sorted(AGENTS.glob("*.md")):
+    agents = sorted(AGENTS.glob("*.md")) + sorted((REPO / ".claude" / "disabled").glob("*.md"))
+    # README.md is not an agent definition; it is the file that records why the
+    # copies were removed, and it names the section it removed. Prose about a
+    # restatement is not a restatement — the same distinction the jq assertion
+    # makes between a call and a comment about one.
+    for agent in (a for a in agents if a.name != "README.md"):
         text = agent.read_text(encoding="utf-8")
         for marker in STACK_VERBATIM:
             if marker in text:
                 offenders.append(f"{agent.name}: {marker!r}")
-    assert not offenders, f"STACK.md restated in live agents: {offenders}"
+    assert not offenders, f"STACK.md restated: {offenders}"
 
 
 def test_documentation_architect_still_points_at_stack_md() -> None:

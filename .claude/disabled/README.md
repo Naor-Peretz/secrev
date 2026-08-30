@@ -21,5 +21,13 @@ kept rather than deleted so the decision can be reversed by moving one back.
    changes, and then it contradicts the document it was quoting — silently, in a
    place no one reads until an agent acts on it.
 
-To restore one, move it back to `.claude/agents/` **and** delete its stack
-section, replacing it with a pointer to `STACK.md`.
+   Both copies are gone (M0, TASK-012B). This file used to say a disabled agent
+   keeps its copy until someone restores it, which was the H-7 failure wearing a
+   procedure: it deferred the correction to a future day when the copy would be
+   older still and the drift harder to see, and it relied on whoever did the
+   restoring to remember. By the time they were removed both copies listed
+   `mypy` as a dependency `STACK.md` did not record, and neither had heard of
+   §8 — the section that binds the harness they are part of.
+
+To restore one, move it back to `.claude/agents/`. Nothing else is required, and
+that is the point: a file that is correct while disabled is correct when enabled.
