@@ -13,4 +13,4 @@ TASK-009 | bfbaef4 | 52/52 green; relative src/secrev and scripts paths now guar
 TASK-010 | 3b48c25 | 57/57 green; M9+src exits 2, M9+README untouched, missing MILESTONE exits 2, M1 unchanged; both the refusal and the ordering fail the gate when defeated
 TASK-011 | 74404f1 | 62/62 green; session-start reports M0 + BRIEF_M0.md; M0 permits scripts/ refuses src+patterns; M9 and missing marker still refuse; M0 fall-through turns the gate red
 TASK-012 | f9e3882 | 64/64 green; no live agent restates STACK.md; removed copy was stale on 3 counts (claimed mypy as a recorded dep, predated §8 H-1..H-8, predated the jq decision); restating one line turns the gate red
-TASK-013 | pending | 68/68 green; CLAUDE.md status table + hook table current, README hook count mechanical (11 == 11); 8 stale claims asserted absent; re-adding one, or adding a 12th hook, turns the gate red
+TASK-013 | 3a779cd | 68/68 green; CLAUDE.md status table + hook table current, README hook count mechanical (11 == 11); 8 stale claims asserted absent; re-adding one, or adding a 12th hook, turns the gate red
