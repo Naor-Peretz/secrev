@@ -338,6 +338,69 @@ def test_bash_ignores_commands_that_touch_nothing_protected() -> None:
     assert bash("rm -rf /tmp/scratch") == PASS_THROUGH
 
 
+# ------------------------------------------------------------- documentation
+#
+# The harness documents what it enforces, and a description of a control is
+# read as evidence of the control. Stale here is the same failure as a stale
+# stack section (H-7), one level up.
+
+CLAUDE_MD = REPO / "CLAUDE.md"
+HARNESS_README = REPO / ".claude" / "README.md"
+
+
+def test_readme_hook_count_is_current() -> None:
+    """Mechanical, so it drifts loudly. `# N sh hooks` in the layout block has
+    to equal the number of .sh files actually in hooks/."""
+    text = HARNESS_README.read_text(encoding="utf-8")
+    match = re.search(r"#\s*(\d+)\s+sh hooks", text)
+    assert match, "the layout block no longer states a hook count"
+    assert int(match.group(1)) == len(list(HOOKS.glob("*.sh"))), (
+        f"README says {match.group(1)} sh hooks; there are {len(list(HOOKS.glob('*.sh')))}"
+    )
+
+
+def test_docs_do_not_claim_finished_work_is_open() -> None:
+    """Each string below described the tree accurately when it was written and
+    describes a repaired state now. A status table that has stopped being
+    checked is worse than no status table: it is read, and believed."""
+    stale = {
+        "Violated — six hooks do": "jq was removed in TASK-007",
+        "`scope-guard.sh:17` exits 0": "TASK-010 made it refuse",
+        "`*/src/secrev/*` in three hooks": "TASK-009 unanchored them",
+        "`scripts/` uncovered": "TASK-008 covered it",
+        "carries a full \"Technology Stack\" section": "TASK-012 replaced it",
+        "`.claude/MILESTONE` says `M1`": "TASK-011 set it to M0",
+        "The repository has no commits": "TASK-000 made the baseline commit",
+        "recorded in `STACK.md` §2 with reasons": "mypy is not in §2; open question 10",
+    }
+    text = CLAUDE_MD.read_text(encoding="utf-8")
+    offenders = [f"{claim!r} ({why})" for claim, why in stale.items() if claim in text]
+    assert not offenders, f"CLAUDE.md still claims: {offenders}"
+
+
+def test_docs_name_the_bash_guard() -> None:
+    text = CLAUDE_MD.read_text(encoding="utf-8")
+    assert "bash-guard.sh" in text, "the highest-severity control is undocumented"
+
+
+def test_known_open_docs_say_the_bash_guard_is_unwired() -> None:
+    """TASK-004 inverts this. The guard exists and is tested; settings.json
+    does not reference it, so nothing invokes it. Documenting it as active
+    would be the exact false-assurance this milestone exists to remove.
+    """
+    settings = json.loads((REPO / ".claude" / "settings.json").read_text("utf-8"))
+    matchers = [
+        entry.get("matcher", "")
+        for entry in settings.get("hooks", {}).get("PreToolUse", [])
+    ]
+    if any("Bash" in m for m in matchers):
+        raise AssertionError("Bash matcher wired — invert this and update the docs.")
+    text = CLAUDE_MD.read_text(encoding="utf-8")
+    assert "not wired" in text or "unwired" in text, (
+        "the docs must say the Bash guard is not yet invoked"
+    )
+
+
 # ------------------------------------------------- single source of truth (H-7)
 
 AGENTS = REPO / ".claude" / "agents"

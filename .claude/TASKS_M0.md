@@ -130,10 +130,12 @@ One task per iteration. Do not start a second.
       *Accept:* no live agent file restates a `STACK.md` mechanism. The copy was already
       stale in three ways when removed — see the receipt.
 
-- [ ] **TASK-013 — Documentation catches up.** `CLAUDE.md`'s hook table gains the Bash guard and
+- [x] **TASK-013 — Documentation catches up.** `CLAUDE.md`'s hook table gains the Bash guard and
       its dependency paragraph loses jq; `.claude/README.md` likewise.
-      *Files:* `CLAUDE.md`, `.claude/README.md`.
-      *Accept:* no stale jq reference; the M0 status table reflects what actually landed.
+      *Files:* `CLAUDE.md`, `.claude/README.md`, `tests/harness/attack.py`.
+      *Accept:* no stale jq reference; the M0 status table reflects what actually landed. Two
+      further false claims were found while doing it — "the repository has no commits", and
+      mypy being "recorded in STACK.md §2" (open question 10).
 
 ---
 

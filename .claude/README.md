@@ -5,7 +5,10 @@ the shipped tool, and nothing in `src/secrev/` may depend on it.
 
 ## Design notes worth knowing
 
-**No node.** The router that suggests skills is `hooks/skill_activation.py`, not
+**No node, and no `jq`.** Six hooks shelled out to `jq` until TASK-007; they read stdin JSON
+through `hooks/lib/hook_input.py` now, and the two that emitted an `ask` payload use
+`hooks/lib/hook_ask.py`. `STACK.md` §2 had recorded jq as removed, in the past tense, the whole
+time. The router that suggests skills is `hooks/skill_activation.py`, not
 a TypeScript hook run through `npx tsx`. The `skill-rules.json` format is
 unchanged from the TypeScript implementation it replaces, so rules are portable;
 the runtime is not. A package manager on the critical path of every prompt is a
@@ -54,7 +57,8 @@ and it should not be argued about as though it were.
 ├── agents/              # 5 subagents
 ├── disabled/            # agents kept but not scanned; see its README
 ├── commands/            # /check, /milestone, /commit, /pr
-├── hooks/               # 9 sh hooks + the Python skill router
+├── hooks/               # 11 sh hooks + the Python skill router
+│   └── lib/             # hook_input, hook_ask, paths — shared, policy-free
 └── skills/              # 9 skills + skill-rules.json
 ```
 
