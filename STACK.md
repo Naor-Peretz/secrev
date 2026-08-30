@@ -238,6 +238,12 @@ It is in scope for AC-10, and the rules below are binding on it.
   H-1 covers a check that cannot run. This covers the two ways a check can appear to have run
   without having done so, which is harder to see and worth naming separately.
 
+  And a guard that runs someone else's check does not report in its own name. Its message must
+  separate "I failed" from "what I ran failed", because a reader who cannot tell them apart looks
+  at the wrong file. `determinism-guard.sh` invokes `determinism_check.py`; when that fails, the
+  assertion said "PostToolUse guard must not block", which named the guard for a defect in the
+  thing under it. Attribution is part of the answer, not decoration on it.
+
 ## 9. Testing
 
 - **`pytest`**, with golden-file tests for every generation script: a small fixture tree, a
