@@ -1,0 +1,89 @@
+# Package definition transcribed from STACK.md §2 and §3 — every value here is
+# already decided there. Changing any of them is a STACK.md edit first.
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "secrev"
+version = "0.0.0"
+description = "Security review of agentic artifacts"
+requires-python = ">=3.11"          # STACK.md §1 — no 3.12-only syntax
+dependencies = ["PyYAML>=6.0"]      # STACK.md §2 — the only runtime dependency
+
+[project.scripts]
+secrev = "secrev.cli:main"          # STACK.md §3 — one entry point, subcommands
+
+[dependency-groups]
+dev = ["pytest>=8.0", "ruff>=0.6", "mypy>=1.11"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+# --- pytest ---------------------------------------------------------------
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --strict-markers"
+# Golden tests compare bytes; keep output diffable rather than truncated.
+python_files = ["test_*.py"]
+
+# --- mypy -----------------------------------------------------------------
+[tool.mypy]
+python_version = "3.11"
+files = ["src/secrev"]
+strict = true
+warn_unreachable = true
+# The catalog is loaded from YAML at runtime; yaml has no stubs bundled.
+[[tool.mypy.overrides]]
+module = "yaml"
+ignore_missing_imports = true
+
+# --- ruff -----------------------------------------------------------------
+[tool.ruff]
+target-version = "py311"
+src = ["src", "tests"]
+line-length = 100
+# STACK.md §5 — these are excluded from the reviewed target too; keep the two
+# lists identical so the linter and the scanner never disagree about scope.
+extend-exclude = [".venv", "venv", "__pycache__", "dist", "build", "node_modules"]
+
+[tool.ruff.lint]
+select = [
+  "E", "W", "F",   # pycodestyle + pyflakes
+  "I",             # import sorting — determinism starts with stable source order
+  "UP",            # pyupgrade, pinned to py311
+  "B",             # bugbear
+  "S",             # flake8-bandit — this is STACK.md §2.1 as a linter
+  "A",             # builtin shadowing
+  "C4",            # comprehensions
+  "DTZ",           # naive datetime — run.json is the ONLY place time may appear
+  "PTH",           # pathlib over os.path
+  "RET", "SIM",    # returns / simplify — "prefer boring code"
+  "TID",           # tidy imports
+  "ARG",           # unused arguments
+  "PL",            # pylint subset
+  "RUF",
+]
+ignore = [
+  "PLR0913",  # argument count — rule functions legitimately take many
+  "S404",     # importing subprocess is allowed; S602/S603/S604/S605 police its use
+]
+
+# The bandit rules below are the machine-checkable half of STACK.md §2.1.
+# Never add any of them to `ignore`. If one fires, the code is wrong, not the rule:
+#   S102 exec  ·  S307 eval  ·  S301 pickle  ·  S302 marshal
+#   S506 yaml.load  ·  S501 verify=False
+#   S602 S604 S605 shell=True / shell string
+
+[tool.ruff.lint.per-file-ignores]
+# Fixtures deliberately contain the patterns the catalog looks for. They are
+# data, not code — linting them would mean the seed patterns cannot be tested.
+"tests/fixtures/**" = ["ALL"]
+"tests/**" = ["S101", "PLR2004"]   # assert, magic values
+
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "all"
+
+[tool.ruff.format]
+quote-style = "double"

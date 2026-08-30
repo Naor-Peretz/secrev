@@ -1,0 +1,36 @@
+# Environment
+.venv/
+.venv-pip/
+uv.lock.bak
+
+# Build
+dist/
+build/
+*.egg-info/
+__pycache__/
+*.py[cod]
+
+# Tool caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Never commit a review workspace. It lives in ~/.security-review (STACK.md §6)
+# and must never appear here; this line exists to catch a stray --workspace .
+/.security-review/
+
+# The OS writes this one whether or not anyone opts in, which is what separates
+# it from an editor directory. macOS is a supported platform and CI runs on
+# macos-latest; Finder drops a .DS_Store into every directory it opens, and one
+# inside tests/fixtures/ changes what a golden test traverses and hashes (NFR-3).
+.DS_Store
+
+# git's own conflict leftovers. A committed *.orig is a second, stale copy of a
+# file that the tool would then inventory and sweep as though it were real.
+*.orig
+*.rej
+
+# Credentials. settings.json already denies reading these; this keeps a stray one
+# from being committed. A scanner that leaks a .env is not a scanner.
+.env
+.env.*

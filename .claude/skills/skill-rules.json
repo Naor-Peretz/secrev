@@ -1,0 +1,223 @@
+{
+  "version": "1.0.0",
+  "description": "Prompt-to-skill routing for secrev. Consumed by .claude/hooks/skill_activation.py (UserPromptSubmit). Same format as the TypeScript router this replaces; the runtime differs, the schema does not.",
+  "skills": {
+    "secrev-invariants": {
+      "type": "domain",
+      "enforcement": "suggest",
+      "priority": "high",
+      "description": "Determinism, self-application, workspace containment, dependency discipline — read before touching src/secrev",
+      "promptTriggers": {
+        "keywords": [
+          "determinism",
+          "deterministic",
+          "byte-identical",
+          "nfc",
+          "normalise",
+          "normalize",
+          "hash",
+          "window_sha256",
+          "traversal",
+          "sorted",
+          "symlink",
+          "exclusion",
+          "workspace",
+          "exit code",
+          "stdout",
+          "stderr",
+          "dependency",
+          "self-application",
+          "yaml.safe_load",
+          "subprocess"
+        ],
+        "intentPatterns": [
+          "(walk|traverse|inventory|scan).*(file|tree|director)",
+          "(hash|digest|sha)",
+          "(add|install|introduce).*(dependenc|package|librar)",
+          "(write|output|emit).*(recon|hits|json)"
+        ]
+      }
+    },
+    "pattern-author": {
+      "type": "domain",
+      "enforcement": "suggest",
+      "priority": "high",
+      "description": "Catalog schema, questions-not-verdicts, precision as a first-class low value, mandatory fixture pair",
+      "promptTriggers": {
+        "keywords": [
+          "pattern",
+          "catalog",
+          "regex",
+          "rule id",
+          "_base.yaml",
+          "python.yaml",
+          "precision",
+          "severity_hint",
+          "owasp",
+          "layer",
+          "seed pattern"
+        ],
+        "intentPatterns": [
+          "(add|write|change|tune|fix).*(pattern|regex|rule)",
+          "(catalog|patterns/).*(schema|validat|format)",
+          "false (positive|negative)"
+        ]
+      }
+    },
+    "testing-contract": {
+      "type": "domain",
+      "enforcement": "suggest",
+      "priority": "high",
+      "description": "Golden-file byte comparison, two fixtures per pattern, the non-ASCII filename requirement",
+      "promptTriggers": {
+        "keywords": [
+          "test",
+          "pytest",
+          "fixture",
+          "golden",
+          "coverage",
+          "non-ascii",
+          "assert"
+        ],
+        "intentPatterns": [
+          "(write|add|fix|run).*(test|fixture)",
+          "golden (file|test)",
+          "(test|check).*(determinis|byte)"
+        ]
+      }
+    },
+    "spec-precedence": {
+      "type": "process",
+      "enforcement": "suggest",
+      "priority": "high",
+      "description": "PRD over STACK.md over the brief; a conflict is raised, never resolved",
+      "promptTriggers": {
+        "keywords": [
+          "spec",
+          "requirement",
+          "brief",
+          "stack.md",
+          "prd",
+          "conflict",
+          "milestone",
+          "principle",
+          "guardrail",
+          "decision"
+        ],
+        "intentPatterns": [
+          "(conflict|contradict|disagree|inconsisten)",
+          "(which|what).*(document|spec|requirement).*(says|wins|right)",
+          "(change|update|amend|edit).*(spec|requirement|stack|brief)"
+        ]
+      }
+    },
+    "debugging": {
+      "type": "process",
+      "enforcement": "suggest",
+      "priority": "high",
+      "description": "Read the failure first, narrow before fixing, and treat determinism / cross-platform / self-application failures as their own classes",
+      "promptTriggers": {
+        "keywords": [
+          "debug",
+          "broken",
+          "fails",
+          "failing",
+          "failed",
+          "error",
+          "traceback",
+          "exception",
+          "red",
+          "regression",
+          "flaky",
+          "differs",
+          "mismatch",
+          "why does",
+          "not working",
+          "stuck"
+        ],
+        "intentPatterns": [
+          "(test|gate|check|ci|build).*(fail|break|red|error)",
+          "(why|what).*(fail|break|wrong|happening|differ)",
+          "(fix|debug|investigate|diagnose|troubleshoot)",
+          "(output|result|hash|digest).*(differ|change|mismatch|not.*identical)",
+          "(passes|works).*(local).*(fail|break)"
+        ]
+      }
+    },
+    "skill-developer": {
+      "type": "meta",
+      "enforcement": "suggest",
+      "priority": "medium",
+      "description": "Writing SKILL.md, triggers, progressive disclosure — needed for M6",
+      "promptTriggers": {
+        "keywords": [
+          "skill",
+          "skill.md",
+          "skill-rules",
+          "hook",
+          "progressive disclosure",
+          "trigger"
+        ],
+        "intentPatterns": [
+          "(create|add|modify|build|debug).*skill",
+          "skill.*(trigger|activat|rule)"
+        ]
+      }
+    },
+    "iterative-retrieval": {
+      "type": "process",
+      "enforcement": "suggest",
+      "priority": "medium",
+      "description": "Progressive context retrieval — NFR-1 context economy, M11 subagent tuning",
+      "promptTriggers": {
+        "keywords": [
+          "context",
+          "subagent",
+          "compaction",
+          "large target",
+          "windowed read"
+        ],
+        "intentPatterns": [
+          "(context|token).*(limit|budget|econom|window)",
+          "subagent.*(context|scope)"
+        ]
+      }
+    },
+    "eval-harness": {
+      "type": "process",
+      "enforcement": "suggest",
+      "priority": "medium",
+      "description": "Eval-driven development — M10 regression corpus and metrics",
+      "promptTriggers": {
+        "keywords": [
+          "eval",
+          "corpus",
+          "regression",
+          "recall",
+          "benchmark",
+          "metric"
+        ],
+        "intentPatterns": [
+          "(measure|evaluate|benchmark).*(recall|precision|performance)",
+          "regression (corpus|suite|test)"
+        ]
+      }
+    },
+    "strategic-compact": {
+      "type": "process",
+      "enforcement": "suggest",
+      "priority": "low",
+      "description": "Compact at phase boundaries rather than arbitrarily",
+      "promptTriggers": {
+        "keywords": [
+          "compact",
+          "context full"
+        ],
+        "intentPatterns": [
+          "(should|when).*(compact|clear context)"
+        ]
+      }
+    }
+  },
+  "notes": "Keywords score 2, intent patterns score 3, priority adds 0-2. Top 3 are surfaced. Editing this file changes what Claude is reminded of, not what it is allowed to do — enforcement lives in the PreToolUse guards."
+}

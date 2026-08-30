@@ -1,0 +1,18 @@
+# Harness artifacts. Patterns here are relative to .claude/, and they cover the
+# layer that *writes* the project — not the project itself, which the root
+# .gitignore owns. Keeping the two apart means a rule about how the code gets
+# written never has to be read as a rule about the code.
+#
+# The rest of this directory IS committed — agents, skills, hooks, commands,
+# settings.json, MILESTONE. The harness enforces the invariants, and a
+# contributor who clones without it loses every guard while the gate still says
+# green. Only the machine-specific half stays out.
+
+# Absolute home paths and personal permission grants. Correct on one machine,
+# wrong on every other.
+settings.local.json
+
+# Hook state: markers and logs written between turns. Per checkout by design —
+# a shared $TMPDIR name collides between two clones of this repo on one machine,
+# and a stale marker there makes a hook stay silent when it should speak.
+hooks/state/

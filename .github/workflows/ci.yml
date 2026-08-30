@@ -1,0 +1,97 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read          # the workflow reads the repo and nothing else
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    # Both supported platforms, both supported interpreters (STACK.md §1, §4).
+    # macOS is not optional here: it is where APFS stores filenames as NFD and
+    # where BSD tools diverge, which is exactly what NFR-3 is exposed to.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        python: ["3.11", "3.12"]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv python install ${{ matrix.python }}
+      - name: uv sync
+        run: uv sync --all-extras --dev
+      - name: gate
+        run: sh scripts/check.sh
+
+  pip-install:
+    # STACK.md §3: "a plain `pip install -e .` in a venv must also work — do not
+    # depend on uv-specific features." Untested, that sentence decays quietly.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: install without uv
+        run: |
+          python -m venv .venv-pip
+          .venv-pip/bin/pip install -e .
+          if [ -d src/secrev ]; then .venv-pip/bin/secrev --help >/dev/null; fi
+
+  cross-platform-determinism:
+    # NFR-3 says byte-identical "across runs and machines". A single-machine
+    # check cannot see the NFC/NFD divergence (D-4) or a path-ordering
+    # difference; only comparing two operating systems can.
+    needs: gate
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync --all-extras --dev
+      - name: generate artifacts
+        run: |
+          if [ ! -d src/secrev ] || [ ! -d tests/fixtures ]; then
+            echo "M1 has not landed yet — nothing to hash" > digest.txt
+          else
+            uv run secrev recon tests/fixtures --workspace "$RUNNER_TEMP/ws"
+            uv run secrev sweep tests/fixtures --workspace "$RUNNER_TEMP/ws"
+            find "$RUNNER_TEMP/ws" \( -name recon.json -o -name hits.jsonl \) \
+              -exec shasum -a 256 {} \; | sed "s#$RUNNER_TEMP/ws/##" | sort > digest.txt
+          fi
+          cat digest.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: digest-${{ matrix.os }}
+          path: digest.txt
+
+  compare-platforms:
+    needs: cross-platform-determinism
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with: {path: digests}
+      - name: byte-identical across platforms
+        run: |
+          if ! diff -u digests/digest-ubuntu-latest/digest.txt \
+                     digests/digest-macos-latest/digest.txt; then
+            echo "::error::Linux and macOS produced different output for the same input."
+            echo "::error::This is NFR-3. Usual cause: a path was hashed before NFC"
+            echo "::error::normalisation, or traversal order leaked into the output."
+            exit 1
+          fi
+          echo "Linux and macOS agree."
