@@ -44,7 +44,7 @@ One task per iteration. Do not start a second.
       *Accept:* `sh scripts/check.sh` runs the assertions and reports them; defeating a guard
       turns the gate red, not just the driver.
 
-- [ ] **TASK-003 — `bash_guard.py`, the allowlist.** Item 1, highest severity. Allowlist of
+- [x] **TASK-003 — `bash_guard.py`, the allowlist.** Item 1, highest severity. Allowlist of
       read-only commands (H-2); no write-verb list anywhere in the file. **Redirection and
       heredoc targets are resolved and treated as writes regardless of which command precedes
       them** — otherwise `cat > src/secrev/cli.py <<'EOF'` passes, since `cat` is allowlisted,
@@ -53,8 +53,18 @@ One task per iteration. Do not start a second.
       *Accept:* attack.py's heredoc case refuses; `cat` of the same path permits.
 
 - [ ] **TASK-004 — Wire the `Bash` matcher.** The guard file is not the control; the wiring is.
-      *Files:* `.claude/settings.json`.
-      *Accept:* a live in-session heredoc to `src/secrev/cli.py` is refused (H-8).
+      **BLOCKED on a decision.** TASK-003 measured the blast radius: `sh scripts/check.sh` and
+      `python3 scripts/self_check.py` are refused, because `sh` and `python3` are not read-only.
+      That is H-2 working as written — but executing a script in `scripts/` is not writing it,
+      and wiring this as-is makes the gate unrunnable through Bash. Reading and writing are not
+      the only two things one does to a file, and the brief's allowlist has no third category.
+      Suggested resolution, still allowlist-shaped: an *execute* set permitting `sh <path.sh>`
+      and `python3 <path.py>` when no token after the interpreter starts with `-`. That keeps
+      `python3 -c "open('scripts/check.sh','w')"` refused, which is the case that matters.
+      Not taken here: it widens what the guard permits, so it is the user's call.
+      *Files:* `.claude/settings.json`, and `bash_guard.py` if the execute set is adopted.
+      *Accept:* a live in-session heredoc to `src/secrev/cli.py` is refused (H-8), and the gate
+      still runs.
 
 - [ ] **TASK-005 — `.venv`, and hooks that resolve it.** BLOCKED: `uv` is absent and
       `python3 -m venv` fails here (no `ensurepip`; Ubuntu ships it as `python3-venv`). Needs a

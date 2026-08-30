@@ -237,6 +237,100 @@ def test_plan_review_silent_on_other_tools() -> None:
     assert rc == PASS_THROUGH and not out.strip()
 
 
+# ------------------------------------------------------------------ bash-guard
+#
+# BRIEF_M0.md §1, the highest-severity item: guards hook Write|Edit|MultiEdit,
+# so a write through Bash bypasses all of them. H-2 requires an allowlist --
+# `tee`, heredocs, `sed -i`, `>`, `cp`, `mv`, `python3 -c`, `dd` is not a
+# closeable list, and reaching for another verb is the signal that the polarity
+# is wrong.
+
+
+def bash(command: str) -> int:
+    rc, _, _ = run_hook(
+        "bash-guard.sh", {"tool_name": "Bash", "tool_input": {"command": command}}
+    )
+    return rc
+
+
+def test_bash_refuses_heredoc_write() -> None:
+    """The brief's own verification: 'Attempt to modify src/secrev/cli.py via
+    heredoc. It must be refused.'
+
+    A rule phrased as 'every command segment must be read-only' permits this,
+    because `cat` is read-only and the write is done by the redirection.
+    """
+    assert bash("cat > src/secrev/cli.py <<'EOF'\nx = 1\nEOF") == BLOCK
+
+
+def test_bash_permits_reading_the_same_path() -> None:
+    """The negative fixture. A guard that refuses everything is not a guard."""
+    assert bash("cat src/secrev/cli.py") == PASS_THROUGH
+
+
+def test_bash_refuses_truncating_redirect() -> None:
+    assert bash("echo x > src/secrev/cli.py") == BLOCK
+
+
+def test_bash_refuses_appending_redirect() -> None:
+    assert bash("echo x >> scripts/check.sh") == BLOCK
+
+
+def test_bash_refuses_clobber_redirect() -> None:
+    """`>|` is why the operator set is not enumerated: miss one and an
+    allowlisted command carries the write straight through."""
+    assert bash("echo x >| src/secrev/cli.py") == BLOCK
+
+
+def test_bash_refuses_sed_in_place() -> None:
+    assert bash("sed -i 's/a/b/' src/secrev/cli.py") == BLOCK
+
+
+def test_bash_refuses_tee() -> None:
+    assert bash("echo x | tee src/secrev/cli.py") == BLOCK
+
+
+def test_bash_refuses_python_dash_c() -> None:
+    assert bash("python3 -c \"open('scripts/check.sh','w')\"") == BLOCK
+
+
+def test_bash_refuses_cd_into_a_protected_tree() -> None:
+    """No special case for `cd`. It is refused because it is not read-only,
+    which is the same reason `pushd`, `git -C`, `env -C` and `make -C` are --
+    an open set that never needed enumerating."""
+    assert bash("cd src/secrev && sed -i 's/a/b/' cli.py") == BLOCK
+
+
+def test_bash_refuses_command_substitution() -> None:
+    """Substitution defeats the guard's ability to establish what runs."""
+    assert bash("cat $(ls src/secrev/cli.py)") == BLOCK
+
+
+def test_bash_refuses_unparseable_command() -> None:
+    """H-1: a check that cannot run exits 2, never 0."""
+    assert bash("cat 'src/secrev/cli.py") == BLOCK
+
+
+def test_bash_permits_read_only_pipeline() -> None:
+    assert bash("cat src/secrev/cli.py | grep -n eval | head -5") == PASS_THROUGH
+
+
+def test_bash_permits_allowlisted_git_subcommand() -> None:
+    assert bash("git diff src/secrev/cli.py") == PASS_THROUGH
+
+
+def test_bash_refuses_unlisted_git_subcommand() -> None:
+    """`git` is not the unit of trust; `git diff` and `git log` are."""
+    assert bash("git checkout -- src/secrev/cli.py") == BLOCK
+
+
+def test_bash_ignores_commands_that_touch_nothing_protected() -> None:
+    """Documents open question 8, it does not settle it: the trigger is a test
+    over path spellings, so anything it does not recognise passes untouched.
+    Inherited from H-2's own wording, not invented here."""
+    assert bash("rm -rf /tmp/scratch") == PASS_THROUGH
+
+
 # ---------------------------------------------------------------- known-open
 #
 # These assert what the harness does TODAY, which is not what it should do.
