@@ -4,15 +4,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repository state
 
-No source yet. Four specification documents plus this file are the project. `src/secrev/` does not
-exist, so every gate stage past `ruff` skips and says so.
+`src/secrev/` contains `inventory.py` and nothing else. **Every gate stage now runs** — `ruff
+format`, `ruff check`, `mypy --strict`, `pytest`, the guard assertions, self-application, and
+determinism. Only the artifact half of the determinism stage is pending, and it names what it is
+waiting for (`recon.py`, `sweep.py`) rather than saying "nothing to compare".
 
-M0 work lives on `m0/harness-repair`; `main` holds only the baseline commit. Before TASK-000 the
+Work lives on `m0/harness-repair`; `main` holds only the baseline commit. Before TASK-000 the
 repository had no commits at all, so nothing could be reviewed as a diff or reverted.
 
-`.venv` exists (stdlib `venv`; `STACK.md` §3 no longer makes `uv` the default). The gate runs
-`ruff format`, `ruff check`, `pytest` and the guard assertions for real. `mypy` and the determinism
-check still skip, legitimately — there is no `src/secrev/` yet, which is what M1 builds.
+`.venv` is stdlib `venv` — `STACK.md` §3 no longer makes `uv` the default, because `uv`'s
+advertised install pipes a fetched script into a shell, which is `net.fetch_exec`, one of the eight
+seed patterns this tool ships.
 
 ### The current milestone is M1
 
@@ -32,6 +34,36 @@ M0 delivered, beyond its own list: `.claude/` entered the protected set, `STACK.
 `eval` in `scripts/`, `|| true` was not the only way a status was lost (`cmd | head` discards it
 just as completely, twice), and the read/write allowlist needed a third category for *executing* a
 script. `BRIEF_M0.md`'s closing note records all three.
+
+### M1's build order is not `BRIEF_M1.md` §2's order
+
+§2 lists the deliverable tree alphabetically. That is not a sequence, and following it puts
+`cli.py` first. The order is in `.claude/TASKS_M1.md`, and the reason is worth carrying:
+
+**`inventory.py` first, and its determinism test before it.** It is the only file that
+concentrates the decisions that cannot be changed afterwards — traversal order, NFC normalisation,
+exclusions, binary detection, symlinks. `recon.py` and `sweep.py` are both consumers of the walk:
+right, and they inherit it free; wrong, and both are rewrites. `ids.py` comes before `sweep.py` for
+the same reason — an identity derived from a traversal counter looks correct until something is
+inserted ahead of it. `cli.py` is last.
+
+A determinism check written after the generators exist is a retrofit onto code composed without
+it, and NFR-3 is the one requirement that does not survive being retrofitted: getting it wrong
+invalidates every verification recorded above it (D-4).
+
+The gate enforces the order mechanically. The determinism stage keys on `src/secrev/inventory.py`,
+not on the `src/secrev/` directory — a directory appears with the *first* file, so the
+directory-shaped condition would have kept printing "nothing to compare" for exactly as long as the
+NFR-3 rules were being written.
+
+**One assertion in `tests/test_determinism.py` is a test of a test.** `sorted()` was removed
+deliberately and most of that file stayed green: two walks of one tree agree whether or not the
+output is sorted, because `os.walk` is stable within a machine. Only the explicit
+`paths == sorted(paths)` caught it — and that assertion is worth nothing if the fixture tree's raw
+traversal order ever coincides with sorted order, so a separate assertion holds that apart. A
+50-file tree written in opposite orders was tried and **does not** catch it on ext4, whose
+directory index orders by a hash of the name; it is kept as a cross-filesystem canary and is
+labelled as not being the control.
 
 **The Bash bypass is closed.** `bash-guard.sh` is wired as a `PreToolUse` matcher on `Bash`, and a
 write to `src/`, `patterns/`, `scripts/` or `.claude/` through a shell is refused.

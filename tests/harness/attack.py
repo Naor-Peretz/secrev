@@ -220,7 +220,11 @@ def test_determinism_guard_speaks_on_nfr3_file() -> None:
     rc, out, _ = run_hook(
         "determinism-guard.sh", write_payload(str(REPO / "src" / "secrev" / "ids.py"), "")
     )
-    assert rc == PASS_THROUGH, f"PostToolUse guard must not block, got rc={rc}"
+    assert rc == PASS_THROUGH, (
+        f"got rc={rc}. Since inventory.py exists this hook re-runs the determinism "
+        f"check, so rc=2 here means NFR-3 is currently broken — read the determinism "
+        f"stage of the gate, not this assertion. It is not 'the guard blocked wrongly'."
+    )
     assert "NFR-3" in out, "touching ids.py must restate the determinism rules"
 
 
@@ -468,6 +472,8 @@ def test_docs_do_not_claim_finished_work_is_open() -> None:
         'carries a full "Technology Stack" section': "TASK-012 replaced it",
         "`.claude/MILESTONE` says `M1`": "TASK-011 set it to M0",
         "The repository has no commits": "TASK-000 made the baseline commit",
+        "No source yet": "src/secrev/inventory.py exists (M1)",
+        "every gate stage past `ruff` skips": "every stage runs since inventory.py landed",
     }
     # "recorded in STACK.md §2 with reasons" was on this list until TASK-014 put
     # mypy in §2 and made the sentence true. An assertion that pins a claim as
