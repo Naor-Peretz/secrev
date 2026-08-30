@@ -31,7 +31,7 @@ read_field() {
 path=$(read_field file_path)
 
 case "$path" in
-  */src/secrev/ids.py|*/src/secrev/inventory.py|*/src/secrev/sweep.py|*/src/secrev/recon.py) ;;
+  *src/secrev/ids.py|*src/secrev/inventory.py|*src/secrev/sweep.py|*src/secrev/recon.py) ;;
   *) exit 0 ;;
 esac
 

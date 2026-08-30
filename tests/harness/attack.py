@@ -343,6 +343,73 @@ def test_bash_ignores_commands_that_touch_nothing_protected() -> None:
     assert bash("rm -rf /tmp/scratch") == PASS_THROUGH
 
 
+# ------------------------------------------------------------- path anchoring
+#
+# STACK.md §8 H-5. `*/src/secrev/*.py` needs a leading directory, so it matches
+# only because the client happens to send absolute paths -- true today,
+# undocumented, and not something a control should rest on.
+
+
+def test_relative_path_reaches_self_application_guard() -> None:
+    """Inverted from a known-open assertion in TASK-001."""
+    rc, _, _ = run_hook(
+        "self-application-guard.sh", write_payload("src/secrev/cli.py", "x = eval('1')\n")
+    )
+    assert rc == BLOCK, f"relative path must be guarded, got rc={rc}"
+
+
+def test_relative_path_reaches_scripts_coverage() -> None:
+    rc, _, _ = run_hook(
+        "self-application-guard.sh", write_payload("scripts/self_check.py", "x = eval('1')\n")
+    )
+    assert rc == BLOCK
+
+
+def test_relative_path_reaches_scope_guard() -> None:
+    rc, out, _ = run_hook(
+        "scope-guard.sh", write_payload("src/secrev/sweep.py", "severity = 'high'\n")
+    )
+    assert rc == PASS_THROUGH and asks(out)
+
+
+def test_relative_path_reaches_determinism_guard() -> None:
+    rc, out, _ = run_hook("determinism-guard.sh", write_payload("src/secrev/ids.py", ""))
+    assert rc == PASS_THROUGH and "NFR-3" in out
+
+
+def test_no_glob_carries_a_leading_anchor() -> None:
+    """The sweep, so a seventh hook cannot reintroduce the pattern quietly."""
+    offenders = []
+    for script in sorted(list(HOOKS.glob("*.sh")) + list((HOOKS / "lib").glob("*.sh"))):
+        for number, line in enumerate(script.read_text(encoding="utf-8").splitlines(), 1):
+            code = line.split("#", 1)[0]
+            if re.search(r"\*/(?:src|patterns|scripts)/", code):
+                offenders.append(f"{script.name}:{number}")
+    assert not offenders, f"anchored globs remain: {offenders}"
+
+
+def test_unanchored_glob_overmatches_and_fails_closed() -> None:
+    """H-5's literal form matches `foosrc/secrev/`, which is not this project.
+
+    Recorded rather than silently improved. `src/secrev/*.py|*/src/secrev/*.py`
+    would satisfy H-5's stated rationale without the over-match, but H-5 gives
+    the mechanism verbatim and STACK.md wins on mechanism -- so the deviation
+    is raised in the ledger, not taken here. The over-match refuses a write to
+    a path this repository does not contain, which is the safe direction.
+    """
+    for path in ("foosrc/secrev/x.py", "/home/u/transcripts/notes.py", "/tmp/descripts/a.py"):
+        rc, _, _ = run_hook(
+            "self-application-guard.sh", write_payload(path, "x = eval('1')\n")
+        )
+        assert rc == BLOCK, f"the over-match is expected; if {path} stops, H-5 changed"
+    # Not everything is swept up: the suffix still has to be there.
+    for path in ("/opt/mypatterns/r.yaml", "/home/u/docs/x.py"):
+        rc, _, _ = run_hook(
+            "self-application-guard.sh", write_payload(path, "x = eval('1')\n")
+        )
+        assert rc == PASS_THROUGH, f"{path} should not match any protected glob"
+
+
 # ----------------------------------------------------------- protected paths
 #
 # STACK.md §8 H-4. `patterns/` especially: it is the tool's input, and a rule
@@ -503,15 +570,6 @@ def test_known_open_bash_bypass_is_unwired() -> None:
     assert not any("Bash" in m for m in matchers), (
         "A Bash matcher now exists -- the bypass is closed. Invert this test."
     )
-
-
-def test_known_open_relative_path_escapes_guard() -> None:
-    """TASK-009 inverts this. The glob `*/src/secrev/*.py` needs a leading
-    directory, so a relative path misses it entirely (H-5)."""
-    rc, _, _ = run_hook(
-        "self-application-guard.sh", write_payload("src/secrev/cli.py", "x = eval('1')\n")
-    )
-    assert rc == PASS_THROUGH, "relative paths now match -- invert this test."
 
 
 def test_known_open_scope_guard_exits_silently_off_m1() -> None:

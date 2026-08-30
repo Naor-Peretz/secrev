@@ -21,20 +21,27 @@
 # review is a check that silently disappears from every later run. That is a
 # scope question, and the scope guard asks it.
 #
-# The globs below still carry a leading anchor, so a relative path misses them
-# (H-5). Removing it is TASK-009 — and having exactly one place to remove it
-# from is what this file buys.
+# No leading anchor (H-5). `*/src/secrev/*.py` needs a leading directory, so
+# it matches only because the client happens to send absolute paths — true
+# today, undocumented, and not something a control should rest on.
+#
+# The literal form H-5 gives also matches `foosrc/secrev/`, which is not this
+# project. `src/secrev/*.py|*/src/secrev/*.py` would meet H-5's stated
+# rationale without that, but H-5 states the mechanism verbatim and STACK.md
+# wins on mechanism, so the deviation is raised in the ledger rather than
+# taken here. The over-match refuses a write to a path this repository does
+# not contain, which is the direction to err in.
 
 is_self_application_path() {
     case "$1" in
-      */src/secrev/*.py|*/scripts/*.py) return 0 ;;
+      *src/secrev/*.py|*scripts/*.py) return 0 ;;
       *) return 1 ;;
     esac
 }
 
 is_scoped_path() {
     case "$1" in
-      */src/secrev/*|*/patterns/*|*/scripts/*) return 0 ;;
+      *src/secrev/*|*patterns/*|*scripts/*) return 0 ;;
       *) return 1 ;;
     esac
 }

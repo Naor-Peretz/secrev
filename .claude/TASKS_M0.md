@@ -100,9 +100,11 @@ One task per iteration. Do not start a second.
       self-application guard's, because a catalog rule that detects `yaml.load` contains the
       string `yaml.load` — refusing it would read the tool's own input as if it were code.
 
-- [ ] **TASK-009 — Unanchor the path globs.** Item 6, H-5. `*/src/secrev/*.py` → `*src/secrev/*.py`.
-      *Files:* `self-application-guard.sh`, `scope-guard.sh`, `determinism-guard.sh`.
-      *Accept:* a relative `src/secrev/x.py` matches.
+- [x] **TASK-009 — Unanchor the path globs.** Item 6, H-5. `*/src/secrev/*.py` → `*src/secrev/*.py`.
+      *Files:* `.claude/hooks/lib/paths.sh` (TASK-008 moved both globs there),
+      `.claude/hooks/determinism-guard.sh`, `tests/harness/attack.py`.
+      *Accept:* a relative `src/secrev/x.py` matches. See open question 9 for the over-match
+      the literal form brings with it.
 
 - [ ] **TASK-010 — Scope guard refuses with no rules.** Item 4, H-6. Path filter must move
       *before* the milestone check, or exit 2 refuses every write in the repo.
@@ -141,6 +143,14 @@ One task per iteration. Do not start a second.
 5. H-4 says `src/`; H-5 and every existing hook say `src/secrev/`. Which is the guard's set?
 6. Does DoD 9 reach `.claude/disabled/`? See TASK-012.
 7. `plan-reviewer.md` §4 lists §2.1's constructs while citing it — checklist or restatement?
+9. **H-5's literal form over-matches, measured.** `*scripts/*.py` matches `transcripts/notes.py`
+   and `descripts/a.py`; `*src/secrev/*.py` matches `foosrc/secrev/x.py`. All three are now
+   refused. `src/secrev/*.py|*/src/secrev/*.py` would meet H-5's stated rationale — not
+   depending on the client sending absolute paths — without the over-match, but H-5 gives the
+   mechanism verbatim and STACK.md wins on mechanism, so this is raised rather than taken.
+   The failure is closed, not open: it refuses writes to paths this repo does not contain.
+   Cheap to change in one place now that `paths.sh` exists.
+
 8. The trigger "command references a protected path" is a denylist over path *spellings*
    (`$HOME/...`, globs, variables, string concatenation). Inherited from H-2, not invented here,
    but it means the guard fails open on any spelling it does not recognise.
