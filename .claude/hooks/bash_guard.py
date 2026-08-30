@@ -73,11 +73,42 @@ READ_ONLY = frozenset({"cat", "grep", "egrep", "fgrep", "head", "tail", "wc", "l
 # `git` is not the unit of trust; these two subcommands are.
 READ_ONLY_GIT = frozenset({"diff", "log", "show", "status", "blame"})
 
-# The only shell syntax that may appear alongside a protected path. Anything
-# else -- redirection, substitution, subshells -- is refused.
-SAFE_SEPARATORS = frozenset({"&&", "||", ";", "|", "\n"})
+# Interpreters permitted to *run* an existing script under a protected path,
+# mapped to the extension they may run. Executing a script is not writing it,
+# and the brief's allowlist has two categories where three are needed.
+#
+# `bash` is absent on purpose: STACK.md §1 is POSIX sh, and the execute
+# category is not a place to quietly readmit it. The extension has to match,
+# so `sh scripts/thing.py` is refused rather than guessed at. And no token
+# after the interpreter may begin with `-`, which is the whole reason this is
+# a shape and not a list of names: `python3 -c "open(…,'w')"` and `sh -c 'echo
+# x > …'` are writes wearing an interpreter's name.
+EXECUTE = {"sh": ".sh", "python3": ".py", "python": ".py"}
 
+# An interpreter and the script it runs. Fewer tokens than this is an
+# interactive interpreter, which is not "running an existing script".
+INTERPRETER_AND_SCRIPT = 2
+
+# No shell operator may appear beside a protected path. Not `;`, `&&`, `||`,
+# `|`, a redirect, a subshell or a substitution.
+#
+# An earlier design allowed `&& || ; |` as "safe separators" and checked each
+# segment on its own. That is sound only while every command is classified by
+# what it *is*; the execute category classifies by what it *runs*, and then
+# `sh scripts/check.sh; cat > src/secrev/x.py` has an allowlisted first
+# command and a chain that carries the write. Segment-checking does catch that
+# one — because the second segment holds a redirect — but not
+# `sh scripts/check.sh; rm -rf src/`, where nothing after the separator is
+# punctuation at all. Banning the operators refuses both without depending on
+# which of them happens to look dangerous.
+#
+# The cost is real and is asserted, not hidden: `cat src/x.py | grep foo` is a
+# read-only pipeline and is now refused. Reading a protected file takes one
+# command, or the Read tool.
 SUBSTITUTION = ("$(", "`", "${")
+
+# shlex's default punctuation set. Any token made only of these is an operator.
+OPERATOR_CHARS = "();<>|&"
 
 
 def mentions_protected(token: str) -> bool:
@@ -94,44 +125,46 @@ def tokenize(command: str) -> list[str] | None:
         return None
 
 
-def segments(tokens: list[str]) -> list[list[str]]:
-    """Split a token list on the safe separators."""
-    out: list[list[str]] = [[]]
-    for token in tokens:
-        if token in SAFE_SEPARATORS:
-            out.append([])
-        else:
-            out[-1].append(token)
-    return [seg for seg in out if seg]
-
-
-def is_read_only(segment: list[str]) -> bool:
-    command = segment[0].rsplit("/", 1)[-1]
+def is_read_only(tokens: list[str]) -> bool:
+    command = tokens[0].rsplit("/", 1)[-1]
     if command == "git":
-        return len(segment) > 1 and segment[1] in READ_ONLY_GIT
+        return len(tokens) > 1 and tokens[1] in READ_ONLY_GIT
     return command in READ_ONLY
 
 
+def is_execute(tokens: list[str]) -> bool:
+    """Running an existing script, as opposed to writing one."""
+    suffix = EXECUTE.get(tokens[0].rsplit("/", 1)[-1])
+    if suffix is None or len(tokens) < INTERPRETER_AND_SCRIPT:
+        return False
+    if any(token.startswith("-") for token in tokens[1:]):
+        return False
+    return tokens[1].endswith(suffix)
+
+
 def _syntax_refusal(command: str, tokens: list[str]) -> str | None:
-    """Shell syntax that performs, or hides, a write."""
+    """Shell syntax that performs a write, or carries one past the first
+    command."""
+    if "\n" in command:
+        return "a newline separates commands — this guard answers about one command"
     if any(marker in command for marker in SUBSTITUTION):
         return "command substitution — the guard cannot establish what runs"
     for token in tokens:
-        if token in SAFE_SEPARATORS or not token.strip():
+        if not token.strip():
             continue
-        # A pure-punctuation token that is not an allowlisted separator is
-        # redirection or grouping: the write primitive itself.
-        if all(char in "();<>|&" for char in token):
-            return f"shell operator {token!r} — redirection and grouping are writes"
+        if all(char in OPERATOR_CHARS for char in token):
+            return (
+                f"shell operator {token!r} — chaining, grouping and redirection "
+                "all carry a write past the command the guard checked"
+            )
     return None
 
 
 def _command_refusal(tokens: list[str]) -> str | None:
-    """A command outside the read-only set."""
-    for segment in segments(tokens):
-        if not is_read_only(segment):
-            return f"{segment[0]!r} is not in the read-only set"
-    return None
+    """A command that neither reads nor runs an existing script."""
+    if is_read_only(tokens) or is_execute(tokens):
+        return None
+    return f"{tokens[0]!r} neither reads nor runs an existing script"
 
 
 def evaluate(command: str) -> tuple[int, str]:
@@ -148,6 +181,7 @@ def evaluate(command: str) -> tuple[int, str]:
     if not any(mentions_protected(token) for token in tokens):
         return PERMIT, ""
 
+    # With operators banned above, what remains is a single command.
     refusal = _syntax_refusal(command, tokens) or _command_refusal(tokens)
     return (REFUSE, refusal) if refusal else (PERMIT, "")
 
@@ -163,8 +197,11 @@ def main() -> int:
         "Guards hook Write|Edit|MultiEdit, so a write through Bash is invisible "
         "to them (BRIEF_M0.md §1). Use the Write or Edit tool for this change so "
         "the self-application and scope guards can see it.\n"
-        "Reading these paths through Bash is unaffected: cat, grep, head, tail, "
-        "wc, ls, rg, git diff and git log are permitted.\n"
+        "Reading one of these paths is unaffected — cat, grep, head, tail, wc, ls, "
+        "rg, git diff, git log — and so is running an existing script: sh <x.sh>, "
+        "python3 <x.py>. One command at a time: no `;`, `&&`, `|`, redirect or "
+        "substitution beside a protected path, because each of those carries a "
+        "write past the command that was checked.\n"
     )
     return REFUSE
 

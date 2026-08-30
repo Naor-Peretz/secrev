@@ -73,7 +73,7 @@ One task per iteration. Do not start a second.
       refused; relative and absolute `src/secrev/*.py` still are. Two `cmd | head` status
       losses fixed here as well — see the receipt.
 
-- [ ] **TASK-004 — Execute category, and no operators near a protected path.** Two changes, one
+- [x] **TASK-004 — Execute category, and no operators near a protected path.** Two changes, one
       commit, because either alone is wrong.
       **Execute:** `sh <path.sh>` and `python3 <path.py>` permitted — running an existing script
       is not writing it. No token after the interpreter may start with `-`, so

@@ -316,8 +316,68 @@ def test_bash_refuses_unparseable_command() -> None:
     assert bash("cat 'src/secrev/cli.py") == BLOCK
 
 
-def test_bash_permits_read_only_pipeline() -> None:
-    assert bash("cat src/secrev/cli.py | grep -n eval | head -5") == PASS_THROUGH
+def test_bash_refuses_a_read_only_pipeline() -> None:
+    """The cost of the operator ban, asserted rather than discovered.
+
+    This used to pass: every segment was read-only, so the safe-separator
+    design permitted it. It is refused now, and that is the price of closing
+    the chain below. Reading a protected file takes one command, or the Read
+    tool.
+    """
+    assert bash("cat src/secrev/cli.py | grep -n eval | head -5") == BLOCK
+
+
+# ------------------------------------------------------- execute, and the chain
+#
+# Running a script in scripts/ is not writing it, and the brief's allowlist has
+# two categories where three are needed. The category is safe only alongside
+# the operator ban: with chaining permitted, an allowlisted first command
+# carries any write that follows it.
+
+
+def test_bash_permits_running_the_gate() -> None:
+    assert bash("sh scripts/check.sh") == PASS_THROUGH
+
+
+def test_bash_permits_running_a_python_script() -> None:
+    assert bash("python3 scripts/self_check.py") == PASS_THROUGH
+
+
+def test_bash_permits_an_absolute_script_path() -> None:
+    assert bash(f"sh {REPO}/scripts/check.sh") == PASS_THROUGH
+
+
+def test_bash_refuses_the_chained_write() -> None:
+    """The case that makes the operator ban mandatory rather than tidy.
+
+    `sh scripts/check.sh` is permitted, the command mentions a protected path,
+    and without the ban a segment-by-segment rule would have to catch the write
+    in the *second* segment. It does — but only because that segment happens to
+    contain a redirect. `sh scripts/check.sh; rm -rf src/` has no redirect at
+    all, and the ban is what refuses both without depending on which.
+    """
+    assert bash("sh scripts/check.sh; cat > src/secrev/x.py") == BLOCK
+    assert bash("sh scripts/check.sh; rm -rf src/") == BLOCK
+    assert bash("sh scripts/check.sh && rm -rf src/secrev") == BLOCK
+    assert bash("sh scripts/check.sh\nrm -rf src/") == BLOCK
+
+
+def test_bash_refuses_a_flag_after_the_interpreter() -> None:
+    """`-c` is why the execute category is a shape and not a name."""
+    assert bash("python3 -c \"open('scripts/check.sh','w')\"") == BLOCK
+    assert bash("sh -c 'echo x > scripts/check.sh'") == BLOCK
+
+
+def test_bash_refuses_bash_as_an_interpreter() -> None:
+    """STACK.md §1: POSIX sh, never bash. The execute category is not a place
+    to quietly readmit it."""
+    assert bash("bash scripts/check.sh") == BLOCK
+
+
+def test_bash_refuses_an_interpreter_extension_mismatch() -> None:
+    """`sh scripts/check.py` is not running a shell script; it is something
+    else, and the guard should not have to work out what."""
+    assert bash("sh scripts/self_check.py") == BLOCK
 
 
 def test_bash_permits_allowlisted_git_subcommand() -> None:
