@@ -495,23 +495,6 @@ def test_docs_name_the_bash_guard() -> None:
     assert "bash-guard.sh" in text, "the highest-severity control is undocumented"
 
 
-def test_known_open_docs_say_the_bash_guard_is_unwired() -> None:
-    """TASK-004 inverts this. The guard exists and is tested; settings.json
-    does not reference it, so nothing invokes it. Documenting it as active
-    would be the exact false-assurance this milestone exists to remove.
-    """
-    settings = json.loads((REPO / ".claude" / "settings.json").read_text("utf-8"))
-    matchers = [
-        entry.get("matcher", "") for entry in settings.get("hooks", {}).get("PreToolUse", [])
-    ]
-    if any("Bash" in m for m in matchers):
-        raise AssertionError("Bash matcher wired — invert this and update the docs.")
-    text = CLAUDE_MD.read_text(encoding="utf-8")
-    assert "not wired" in text or "unwired" in text, (
-        "the docs must say the Bash guard is not yet invoked"
-    )
-
-
 # ---------------------------------------------------- the environment (H-1, H-9)
 
 QUALITY_HOOKS = ("async-check.sh", "determinism-guard.sh")
@@ -960,15 +943,31 @@ def test_spec_guard_refuses_malformed_payload() -> None:
 # that a guard which starts refusing correctly cannot do so unnoticed.
 
 
-def test_known_open_bash_bypass_is_unwired() -> None:
-    """TASK-004 inverts this. BRIEF_M0.md §1, the highest-severity item."""
+def test_bash_guard_is_wired() -> None:
+    """The last of the four known-open assertions from TASK-001, inverted.
+
+    BRIEF_M0.md §1's highest-severity item, and the reason the guard file
+    existing was never the control: settings.json is what invokes it.
+    """
     settings = json.loads((REPO / ".claude" / "settings.json").read_text("utf-8"))
-    matchers = [
-        entry.get("matcher", "") for entry in settings.get("hooks", {}).get("PreToolUse", [])
+    pre = settings.get("hooks", {}).get("PreToolUse", [])
+    bash_entries = [entry for entry in pre if "Bash" in entry.get("matcher", "")]
+    assert bash_entries, "no PreToolUse matcher covers Bash — the bypass is open"
+    commands = [
+        hook.get("command", "") for entry in bash_entries for hook in entry.get("hooks", [])
     ]
-    assert not any("Bash" in m for m in matchers), (
-        "A Bash matcher now exists -- the bypass is closed. Invert this test."
+    assert any("bash-guard.sh" in command for command in commands), (
+        "a Bash matcher exists but does not invoke bash-guard.sh"
     )
+
+
+def test_docs_no_longer_call_the_bypass_open() -> None:
+    """Paired with the wiring. Documenting a closed bypass as open is the same
+    class of error as documenting an open one as closed — the status table is
+    read, and believed."""
+    text = CLAUDE_MD.read_text(encoding="utf-8")
+    assert "The Bash bypass is still open" not in text
+    assert "not wired" not in text
 
 
 def test_gate_runs_the_attack_driver() -> None:

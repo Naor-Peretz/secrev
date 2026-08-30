@@ -26,9 +26,9 @@ pipes through `tr` to build a branch name.
 
 | M0 item | State |
 |---|---|
-| Bash guard closing the write bypass | Guard written and tested (`bash-guard.sh`), **not wired** — see below |
-| `.venv` with `ruff`/`pytest`, hooks resolving from it | Open. `uv` absent, `python3 -m venv` fails here for want of `ensurepip` |
-| No `\|\| true` on a quality check | Open, behind the `.venv` item |
+| Bash guard closing the write bypass | Done. `bash-guard.sh` wired as a `PreToolUse` matcher on `Bash` |
+| `.venv` with `ruff`/`pytest`, hooks resolving from it | Done. Stdlib `venv`; the two quality-check hooks no longer fall back to `PATH` |
+| No `\|\| true` on a quality check | Done — and no `cmd \| head` either, which lost the status just as completely |
 | Guards cover `src/`, `patterns/`, `scripts/` | Done. `hooks/lib/paths.sh` holds the definition once |
 | Scope guard refuses when `MILESTONE` has no rules | Done, and M0 has its own rules: permits `scripts/`, refuses `src/` and `patterns/` |
 | No hook invokes `jq` | Done. Six mention it in the comment recording its removal |
@@ -36,15 +36,22 @@ pipes through `tr` to build a branch name.
 | No agent restates `STACK.md` | Done for live agents; `.claude/disabled/` is an open question |
 | Each guard attacked and observed to refuse | `tests/harness/attack.py`, run by the gate |
 
-**The Bash bypass is still open.** `bash-guard.sh` exists, refuses the brief's heredoc case, and is
-covered by fifteen assertions — but `settings.json` has no `Bash` matcher, so nothing invokes it.
-Every `PreToolUse` hook still matches `Write|Edit|MultiEdit` only, and **a write performed through
-`Bash` — heredoc, `tee`, `sed -i`, `>` — passes all of them silently.** When editing a protected
-path in a session configured to prefer Bash, use `Write`/`Edit` so the guards can see it.
+**The Bash bypass is closed.** `bash-guard.sh` is wired as a `PreToolUse` matcher on `Bash`, and a
+write to `src/`, `patterns/`, `scripts/` or `.claude/` through a shell is refused.
 
-Wiring it is blocked on a decision, not on work: `sh scripts/check.sh` and `python3
-scripts/self_check.py` are refused, because neither interpreter is read-only. Executing a script in
-`scripts/` is not writing it, and the brief's allowlist has two categories where three are needed.
+What it permits beside a protected path: the read-only set (`cat`, `grep`, `head`, `tail`, `wc`,
+`ls`, `rg`, `git diff`, `git log`), and running an existing script — `sh <x.sh>`, `python3 <x.py>`
+with no flag after the interpreter. What it refuses: everything else, **and every shell operator**.
+No `;`, `&&`, `||`, `|`, newline, redirect, subshell or substitution, because each of those carries
+a write past the command that was actually checked. That costs read-only pipelines: `cat src/x.py |
+grep foo` is refused, and reading a protected file takes one command or the `Read` tool.
+
+`find` is deliberately absent from the read-only set — it carries `-delete` and `-exec`, and
+admitting it "minus those flags" would be a denylist over flags (P3).
+
+`.claude/` is protected against `Bash` only. A `Write` or `Edit` to a guard is untouched by this
+hook and passes in front of the ones that watch writes, so repairing the harness stays possible and
+stays visible while the silent-disable path closes.
 
 M0 exists because a harness that reports green while verifying nothing is worse than no harness:
 the green is taken as evidence.
@@ -90,12 +97,12 @@ every commit. Bypass with `--no-verify` when you mean to.
 
 ### What the `.claude/` harness enforces
 
-Every wired `PreToolUse` row below matches `Write|Edit|MultiEdit`. None of them sees a `Bash`
-write. `bash-guard.sh` is written and tested but not yet in `settings.json`.
+`bash-guard.sh` covers `Bash`; every other `PreToolUse` row covers `Write|Edit|MultiEdit`. Between
+them, no tool that can write to a protected path is unwatched (H-3).
 
 | Hook | Event | Effect |
 |---|---|---|
-| `bash-guard.sh` | PreToolUse Bash (**not wired**) | **Refuses** a Bash command touching `src/`, `patterns/` or `scripts/` unless every segment is read-only. Allowlist; redirection and substitution are writes whatever the command |
+| `bash-guard.sh` | PreToolUse Bash | **Refuses** a Bash command touching `src/`, `patterns/`, `scripts/` or `.claude/` unless it reads (allowlisted command) or runs an existing script (`sh <x.sh>`, `python3 <x.py>`, no flags). Every shell operator refuses — chaining carries a write past the command that was checked |
 | `self-application-guard.sh` | PreToolUse Write/Edit | **Blocks** a write that would put `eval`, `exec`, `pickle`, `shell=True`, `yaml.load`, `Loader=`, or a network client into Python under `src/` or `scripts/` |
 | `scope-guard.sh` | PreToolUse Write/Edit | **Asks** when a write reaches past the milestone in `.claude/MILESTONE`; **refuses** when that milestone has no rules (H-6) |
 | `spec-guard.sh` | PreToolUse Write/Edit | **Asks** before any edit to the PRD, `STACK.md`, or a brief, restating precedence |
