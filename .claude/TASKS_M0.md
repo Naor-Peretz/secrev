@@ -13,12 +13,12 @@ One task per iteration. Do not start a second.
 
 ---
 
-- [ ] **TASK-000 — Baseline commit.** No behaviour change. The repo has zero commits, so the
+- [x] **TASK-000 — Baseline commit.** No behaviour change. The repo has zero commits, so the
       first M0 change would otherwise be "initial commit + a fix": unreviewable as a diff and
       unrevertable. *Files:* none (snapshot only).
       *Accept:* `git rev-list --count HEAD` = 1; `git status --porcelain` empty; gate green.
 
-- [ ] **TASK-001 — `tests/harness/attack.py`, the instrument.** Stdlib-only Python, runnable as
+- [x] **TASK-001 — `tests/harness/attack.py`, the instrument.** Stdlib-only Python, runnable as
       `python3 tests/harness/attack.py` with no venv, and collectable by pytest later. Feeds
       crafted PreToolUse JSON on stdin to each guard and asserts exit codes. Characterizes the
       harness *as it is* — it must be green before anything it measures changes. `subprocess`
