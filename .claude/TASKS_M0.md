@@ -106,10 +106,12 @@ One task per iteration. Do not start a second.
       *Accept:* a relative `src/secrev/x.py` matches. See open question 9 for the over-match
       the literal form brings with it.
 
-- [ ] **TASK-010 — Scope guard refuses with no rules.** Item 4, H-6. Path filter must move
+- [x] **TASK-010 — Scope guard refuses with no rules.** Item 4, H-6. Path filter must move
       *before* the milestone check, or exit 2 refuses every write in the repo.
-      *Files:* `.claude/hooks/scope-guard.sh`.
+      *Files:* `.claude/hooks/scope-guard.sh`, `tests/harness/attack.py`.
       *Accept:* `MILESTONE=M9` → write to `src/secrev/` exits 2; write to `README.md` untouched.
+      A second H-1 breach was in the same two lines: `|| echo M1` meant an unreadable marker
+      was treated as the one milestone it had rules for.
 
 - [ ] **TASK-011 — `MILESTONE` M1 → M0.** Separate from TASK-010 on purpose: flipping it before
       the guard refuses is what silently disables scope enforcement.

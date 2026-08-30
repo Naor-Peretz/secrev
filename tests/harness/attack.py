@@ -91,7 +91,7 @@ def invokes_jq(script: Path) -> bool:
     return False
 
 
-def milestone_tree(value: str) -> tempfile.TemporaryDirectory[str]:
+def milestone_tree(value: str | None) -> tempfile.TemporaryDirectory[str]:
     """A throwaway project dir with a different MILESTONE, used to vary it
     without mutating the repository.
 
@@ -103,7 +103,8 @@ def milestone_tree(value: str) -> tempfile.TemporaryDirectory[str]:
     tmp = tempfile.TemporaryDirectory()
     claude = Path(tmp.name) / ".claude"
     claude.mkdir(parents=True)
-    (claude / "MILESTONE").write_text(value + "\n", encoding="utf-8")
+    if value is not None:
+        (claude / "MILESTONE").write_text(value + "\n", encoding="utf-8")
     # The whole lib/, not a file-type guess: an earlier version copied *.py and
     # missed paths.sh the moment it was added, and the guards then refused for
     # want of it rather than for the milestone under test.
@@ -343,6 +344,66 @@ def test_bash_ignores_commands_that_touch_nothing_protected() -> None:
     assert bash("rm -rf /tmp/scratch") == PASS_THROUGH
 
 
+# --------------------------------------------------------- scope, off-milestone
+#
+# STACK.md §8 H-6: a guard with no rules for the current state refuses. It
+# exited 0, so the moment MILESTONE advanced, scope enforcement vanished with
+# no signal -- indistinguishable from a guard that looked and found nothing.
+
+
+def scope_at(milestone: str | None, relative: str, body: str) -> tuple[int, str]:
+    with milestone_tree(milestone) as tmp:
+        rc, out, _ = run_hook(
+            "scope-guard.sh",
+            write_payload(str(Path(tmp) / relative), body),
+            project_dir=Path(tmp),
+        )
+    return rc, out
+
+
+def test_scope_guard_refuses_on_unknown_milestone() -> None:
+    """Inverted from a known-open assertion in TASK-001."""
+    rc, _ = scope_at("M9", "src/secrev/sweep.py", "severity = 1\n")
+    assert rc == BLOCK, f"no rules for M9, so it must refuse, got rc={rc}"
+
+
+def test_scope_guard_refuses_on_unknown_milestone_even_when_clean() -> None:
+    """The refusal is about having no rules, not about what the body contains.
+    A guard that only refuses suspicious content has rules after all."""
+    rc, _ = scope_at("M9", "src/secrev/sweep.py", "line_no = idx + 1\n")
+    assert rc == BLOCK
+
+
+def test_scope_guard_leaves_unscoped_paths_alone_off_milestone() -> None:
+    """The ordering test. If the milestone check ran before the path filter,
+    exit 2 would refuse every write in the repository -- a guard that refuses
+    everything is as useless as one that refuses nothing, and considerably
+    more annoying."""
+    rc, out = scope_at("M9", "README.md", "severity = 1\n")
+    assert rc == PASS_THROUGH and not out.strip()
+
+
+def test_scope_guard_refuses_when_milestone_is_missing() -> None:
+    """`|| echo M1` was its own H-1 breach: unable to read the marker, it
+    assumed the one milestone it had rules for."""
+    rc, _ = scope_at(None, "src/secrev/sweep.py", "severity = 1\n")
+    assert rc == BLOCK
+
+
+def test_scope_guard_refuses_during_m0() -> None:
+    """What TASK-011 makes live. M0 is harness repair and writes nothing under
+    src/ or patterns/, so refusing there is the correct rule for it and not
+    merely the absence of one."""
+    rc, _ = scope_at("M0", "src/secrev/sweep.py", "line_no = 1\n")
+    assert rc == BLOCK
+
+
+def test_scope_guard_still_asks_on_m1() -> None:
+    """The regression that matters: M1 behaviour is unchanged."""
+    rc, out = scope_at("M1", "src/secrev/sweep.py", "severity = 'high'\n")
+    assert rc == PASS_THROUGH and asks(out)
+
+
 # ------------------------------------------------------------- path anchoring
 #
 # STACK.md §8 H-5. `*/src/secrev/*.py` needs a leading directory, so it matches
@@ -569,20 +630,6 @@ def test_known_open_bash_bypass_is_unwired() -> None:
     ]
     assert not any("Bash" in m for m in matchers), (
         "A Bash matcher now exists -- the bypass is closed. Invert this test."
-    )
-
-
-def test_known_open_scope_guard_exits_silently_off_m1() -> None:
-    """TASK-010 inverts this. H-6: a guard with no rules for the current state
-    refuses. Today it returns 0, and scope enforcement vanishes with no signal."""
-    with milestone_tree("M9") as tmp:
-        rc, out, _ = run_hook(
-            "scope-guard.sh",
-            write_payload(str(Path(tmp) / "src" / "secrev" / "sweep.py"), "severity = 1\n"),
-            project_dir=Path(tmp),
-        )
-    assert rc == PASS_THROUGH and not asks(out), (
-        "scope-guard now reacts off-M1 -- invert this test."
     )
 
 

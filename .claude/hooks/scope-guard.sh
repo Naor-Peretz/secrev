@@ -41,11 +41,41 @@ read_field() {
     }
 }
 
-MILESTONE=$(cat "${CLAUDE_PROJECT_DIR:-.}/.claude/MILESTONE" 2>/dev/null || echo M1)
-[ "$MILESTONE" = "M1" ] || exit 0
-
+# The path filter runs FIRST, and the order is load-bearing. H-6 makes an
+# unknown milestone exit 2; with the milestone checked first, that refusal
+# would land on every write in the repository rather than on the scoped ones.
+# A guard that refuses everything is as useless as one that refuses nothing.
 path=$(read_field file_path)
 is_scoped_path "$path" || exit 0
+
+# H-6: a guard with no rules for the current state refuses. This was
+# `|| echo M1` followed by `|| exit 0` — two H-1 breaches in two lines. Unable
+# to read the marker it assumed the one milestone it had rules for, and given
+# a milestone it did not recognise it reported no objection. Both are "I did
+# not check" wearing the face of "I checked and it is fine".
+MILESTONE=$(cat "$ROOT/.claude/MILESTONE" 2>/dev/null) || {
+    echo "scope-guard: cannot read $ROOT/.claude/MILESTONE — cannot check (H-1)." >&2
+    exit 2
+}
+MILESTONE=$(printf '%s' "$MILESTONE" | tr -d ' \t\n\r')
+
+case "$MILESTONE" in
+  M1) ;;
+  *)
+    {
+      echo "BLOCKED — no scope rules exist for milestone ${MILESTONE:-<empty>}, and this write"
+      echo "touches ${path##*/}, which is inside the scoped tree (src/, patterns/, scripts/)."
+      echo
+      echo "STACK.md §8 H-6: a guard with no rules for the current state refuses. Not knowing"
+      echo "what is permitted is not the same as concluding that everything is."
+      echo
+      echo "Either .claude/MILESTONE is stale, or this milestone needs its own rules added here."
+      echo "If ${MILESTONE} genuinely has no business writing under src/ or patterns/, this"
+      echo "refusal is the rule, not the absence of one."
+    } >&2
+    exit 2
+    ;;
+esac
 
 body=$(read_field body)
 [ -n "$body" ] || exit 0
