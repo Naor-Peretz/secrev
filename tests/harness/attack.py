@@ -176,21 +176,15 @@ def test_self_application_refuses_malformed_payload() -> None:
 
 
 def test_scope_guard_asks_on_severity() -> None:
-    rc, out, _ = run_hook(
-        "scope-guard.sh",
-        write_payload(str(REPO / "src" / "secrev" / "sweep.py"), "severity = 'high'\n"),
-    )
+    # The milestone is named, not inherited from .claude/MILESTONE. Reading it
+    # from the repo made these assertions change meaning when the marker moved.
+    rc, out = scope_at("M1", "src/secrev/sweep.py", "severity = 'high'\n")
     assert rc == PASS_THROUGH, f"scope-guard asks, never blocks, got rc={rc}"
     assert asks(out), "assigning a severity in M1 must reach the human"
 
 
 def test_scope_guard_permits_in_scope_write() -> None:
-    rc, out, _ = run_hook(
-        "scope-guard.sh",
-        write_payload(
-            str(REPO / "src" / "secrev" / "sweep.py"), "line_no = idx + 1\n"
-        ),
-    )
+    rc, out = scope_at("M1", "src/secrev/sweep.py", "line_no = idx + 1\n")
     assert rc == PASS_THROUGH and not asks(out), "in-scope M1 work must not prompt"
 
 
@@ -344,6 +338,55 @@ def test_bash_ignores_commands_that_touch_nothing_protected() -> None:
     assert bash("rm -rf /tmp/scratch") == PASS_THROUGH
 
 
+# ------------------------------------------------------------ current milestone
+
+
+def test_milestone_marker_is_m0() -> None:
+    """.claude/MILESTONE was M1 while BRIEF_M0.md sat unbuilt beside it. The
+    marker is the harness's only notion of where the project is, and it had
+    been set forward past a milestone that never happened."""
+    assert (REPO / ".claude" / "MILESTONE").read_text(encoding="utf-8").strip() == "M0"
+
+
+def test_session_start_reports_m0_and_finds_its_brief() -> None:
+    proc = subprocess.run(
+        ["sh", str(HOOKS / "session-start.sh")],
+        input="",
+        capture_output=True,
+        text=True,
+        env={"PATH": "/usr/bin:/bin:/usr/local/bin", "CLAUDE_PROJECT_DIR": str(REPO)},
+        cwd=str(REPO),
+        check=False,
+    )
+    assert proc.returncode == PASS_THROUGH
+    assert "Milestone: M0" in proc.stdout
+    assert "BRIEF_M0.md" in proc.stdout
+    assert "No BRIEF_M0.md in the repo" not in proc.stdout
+
+
+def test_m0_permits_the_work_m0_is_defined_to_do() -> None:
+    """H-6 says a guard with no rules refuses. The answer to that is to give it
+    rules, not to leave it ruleless and call the refusal correct: BRIEF_M0.md §2
+    edits scripts/check.sh, so refusing scripts/ under M0 would block the
+    milestone from doing the thing it exists to do.
+    """
+    rc, out = scope_at("M0", "scripts/check.sh", "printf 'all gates pass'\n")
+    assert rc == PASS_THROUGH and not asks(out), "M0 is harness repair; scripts/ is its remit"
+
+
+def test_m0_refuses_patterns() -> None:
+    rc, _ = scope_at("M0", "patterns/_base.yaml", "- id: py.eval\n")
+    assert rc == BLOCK, "the catalog is M1; M0 has no business there"
+
+
+def test_m0_leaves_the_harness_itself_unscoped() -> None:
+    """.claude/ is not in the scoped tree. That is open question 4, not an
+    oversight -- guarding the harness with the harness has a bootstrap problem
+    this milestone does not solve."""
+    rc, out = scope_at("M0", ".claude/hooks/bash-guard.sh", "exit 0\n")
+    assert rc == PASS_THROUGH and not out.strip()
+
+
 # --------------------------------------------------------- scope, off-milestone
 #
 # STACK.md §8 H-6: a guard with no rules for the current state refuses. It
@@ -351,12 +394,19 @@ def test_bash_ignores_commands_that_touch_nothing_protected() -> None:
 # no signal -- indistinguishable from a guard that looked and found nothing.
 
 
-def scope_at(milestone: str | None, relative: str, body: str) -> tuple[int, str]:
+def scope_at(
+    milestone: str | None, relative: str, body: str, absolute: bool = True
+) -> tuple[int, str]:
+    """Run scope-guard against a named milestone rather than the repo's marker.
+
+    `absolute=False` sends the path as given, which is how the client may or
+    may not spell it (H-5) -- joining it to the temp root would quietly turn a
+    relative-path test into an absolute-path one.
+    """
     with milestone_tree(milestone) as tmp:
+        path = str(Path(tmp) / relative) if absolute else relative
         rc, out, _ = run_hook(
-            "scope-guard.sh",
-            write_payload(str(Path(tmp) / relative), body),
-            project_dir=Path(tmp),
+            "scope-guard.sh", write_payload(path, body), project_dir=Path(tmp)
         )
     return rc, out
 
@@ -427,9 +477,7 @@ def test_relative_path_reaches_scripts_coverage() -> None:
 
 
 def test_relative_path_reaches_scope_guard() -> None:
-    rc, out, _ = run_hook(
-        "scope-guard.sh", write_payload("src/secrev/sweep.py", "severity = 'high'\n")
-    )
+    rc, out = scope_at("M1", "src/secrev/sweep.py", "severity = 'high'\n", absolute=False)
     assert rc == PASS_THROUGH and asks(out)
 
 
@@ -525,18 +573,12 @@ def test_self_application_ignores_pattern_data() -> None:
 
 
 def test_scope_guard_covers_scripts() -> None:
-    rc, out, _ = run_hook(
-        "scope-guard.sh",
-        write_payload(str(REPO / "scripts" / "render.py"), "severity = 'high'\n"),
-    )
+    rc, out = scope_at("M1", "scripts/render.py", "severity = 'high'\n")
     assert rc == PASS_THROUGH and asks(out), "scripts/ is in the scope guard's remit"
 
 
 def test_scope_guard_covers_patterns() -> None:
-    rc, out, _ = run_hook(
-        "scope-guard.sh",
-        write_payload(str(REPO / "patterns" / "_base.yaml"), "multiline: true\n"),
-    )
+    rc, out = scope_at("M1", "patterns/_base.yaml", "multiline: true\n")
     assert rc == PASS_THROUGH and asks(out), "patterns/ is the tool's input"
 
 

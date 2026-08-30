@@ -59,22 +59,39 @@ MILESTONE=$(cat "$ROOT/.claude/MILESTONE" 2>/dev/null) || {
 }
 MILESTONE=$(printf '%s' "$MILESTONE" | tr -d ' \t\n\r')
 
-case "$MILESTONE" in
-  M1) ;;
-  *)
+refuse_no_rules() {
     {
-      echo "BLOCKED — no scope rules exist for milestone ${MILESTONE:-<empty>}, and this write"
+      echo "BLOCKED — milestone ${MILESTONE:-<empty>} has no rules permitting this write, and it"
       echo "touches ${path##*/}, which is inside the scoped tree (src/, patterns/, scripts/)."
       echo
       echo "STACK.md §8 H-6: a guard with no rules for the current state refuses. Not knowing"
       echo "what is permitted is not the same as concluding that everything is."
       echo
       echo "Either .claude/MILESTONE is stale, or this milestone needs its own rules added here."
-      echo "If ${MILESTONE} genuinely has no business writing under src/ or patterns/, this"
-      echo "refusal is the rule, not the absence of one."
     } >&2
     exit 2
+}
+
+case "$MILESTONE" in
+  M1) ;;
+
+  # M0 is harness repair (BRIEF_M0.md). Its own §2 edits scripts/check.sh, so
+  # scripts/ is inside its remit; src/ and patterns/ are the tool and its
+  # catalog, which M0 has no business touching. H-6 asks a guard to know what
+  # is permitted — the answer to "no rules for this milestone" is to write the
+  # rules, not to leave the guard ruleless and call the refusal correct.
+  #
+  # Every branch here ends in a decision. An earlier draft let M0 fall out of
+  # the case and into the M1 severity checks below, which silently gave M0 the
+  # rules of a different milestone.
+  M0)
+    case "$path" in
+      *scripts/*) exit 0 ;;
+      *) refuse_no_rules ;;
+    esac
     ;;
+
+  *) refuse_no_rules ;;
 esac
 
 body=$(read_field body)

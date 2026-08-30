@@ -10,4 +10,5 @@ TASK-003 | 65241ae | 34/34 green; brief §1 heredoc case refused with reason; ca
 TASK-007 | 88d3ed0 | 42/42 green; 0 hooks invoke jq (6 mention it in comments); scope+spec malformed payload now exits 2 (was 5); defeating either H-1 path turns the gate red
 TASK-008 | 0e222d6 | 47/47 green; eval into scripts/self_check.py blocked; patterns/ correctly exempt from self-application, covered by scope; removing scripts/ from paths.sh turns the gate red
 TASK-009 | bfbaef4 | 52/52 green; relative src/secrev and scripts paths now guarded; over-match measured (transcripts, descripts, foosrc all refused; mypatterns and docs not); re-anchoring turns the gate red
-TASK-010 | pending | 57/57 green; M9+src exits 2, M9+README untouched, missing MILESTONE exits 2, M1 unchanged; both the refusal and the ordering fail the gate when defeated
+TASK-010 | 3b48c25 | 57/57 green; M9+src exits 2, M9+README untouched, missing MILESTONE exits 2, M1 unchanged; both the refusal and the ordering fail the gate when defeated
+TASK-011 | pending | 62/62 green; session-start reports M0 + BRIEF_M0.md; M0 permits scripts/ refuses src+patterns; M9 and missing marker still refuse; M0 fall-through turns the gate red

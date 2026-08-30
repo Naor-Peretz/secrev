@@ -113,10 +113,13 @@ One task per iteration. Do not start a second.
       A second H-1 breach was in the same two lines: `|| echo M1` meant an unreadable marker
       was treated as the one milestone it had rules for.
 
-- [ ] **TASK-011 — `MILESTONE` M1 → M0.** Separate from TASK-010 on purpose: flipping it before
+- [x] **TASK-011 — `MILESTONE` M1 → M0.** Separate from TASK-010 on purpose: flipping it before
       the guard refuses is what silently disables scope enforcement.
-      *Files:* `.claude/MILESTONE`.
-      *Accept:* `session-start.sh` reports M0 and finds `BRIEF_M0.md`.
+      *Files:* `.claude/MILESTONE`, `.claude/hooks/scope-guard.sh` (M0's rules — flipping the
+      marker alone would refuse `scripts/check.sh`, which TASK-006 must edit; H-6's answer to
+      "no rules" is to write them, not to leave the guard ruleless), `tests/harness/attack.py`.
+      *Accept:* `session-start.sh` reports M0 and finds `BRIEF_M0.md`; M0 permits `scripts/`
+      and refuses `src/` and `patterns/`.
 
 - [ ] **TASK-012 — Strip the restated stack section.** Item 7, H-7.
       `documentation-architect.md:11` carries a full `## Technology Stack`. **Open:** the brief
