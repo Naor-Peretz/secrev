@@ -452,6 +452,24 @@ def test_quality_checks_do_not_fall_back_to_path() -> None:
         )
 
 
+def test_no_quality_check_pipes_away_its_status() -> None:
+    """POSIX sh has no PIPESTATUS, so `tool | head` makes `$?` the status of
+    `head` — which succeeds whatever the tool did.
+
+    This was introduced by TASK-005 and caught one turn later by the background
+    gate reporting `[ok] pytest` under a failing test: the exact H-1 shape that
+    task existed to remove, reintroduced by the fix for it. Capture first, trim
+    second.
+    """
+    offenders = []
+    for name in QUALITY_HOOKS:
+        for number, line in enumerate((HOOKS / name).read_text("utf-8").splitlines(), 1):
+            code = line.split("#", 1)[0]
+            if '"$PY"' in code and re.search(r"\|\s*(head|tail)\b", code):
+                offenders.append(f"{name}:{number}")
+    assert not offenders, f"status lost to a pipe: {offenders}"
+
+
 def test_async_check_reports_a_missing_environment_as_missing() -> None:
     """H-9: not a silent pass, and not silence. The log has to say the checks
     did not run, because async-check-report.sh prints it and a reader takes an
@@ -654,33 +672,51 @@ def test_relative_path_reaches_determinism_guard() -> None:
     assert rc == PASS_THROUGH and "NFR-3" in out
 
 
-def test_no_glob_carries_a_leading_anchor() -> None:
-    """The sweep, so a seventh hook cannot reintroduce the pattern quietly."""
+def test_every_anchored_glob_has_a_relative_sibling() -> None:
+    """H-5, as corrected: `*/src/secrev/*.py` is fine *paired with*
+    `src/secrev/*.py`, and wrong alone.
+
+    The earlier version of this assertion banned `*/dir/` outright, which was
+    right while the fix was "drop the anchor" and became wrong when the fix
+    became "spell both spellings". An assertion tied to a mechanism rather than
+    to its reason has to be rewritten when the mechanism is corrected.
+    """
     offenders = []
-    for script in sorted(list(HOOKS.glob("*.sh")) + list((HOOKS / "lib").glob("*.sh"))):
+    scripts = sorted(list(HOOKS.glob("*.sh")) + list((HOOKS / "lib").glob("*.sh")))
+    for script in scripts:
         for number, line in enumerate(script.read_text(encoding="utf-8").splitlines(), 1):
             code = line.split("#", 1)[0]
-            if re.search(r"\*/(?:src|patterns|scripts)/", code):
-                offenders.append(f"{script.name}:{number}")
-    assert not offenders, f"anchored globs remain: {offenders}"
+            for anchored in re.findall(r"\*/((?:src|patterns|scripts)[^ |)]*)", code):
+                if not re.search(r"(?:^|[|(\s])" + re.escape(anchored), code):
+                    offenders.append(f"{script.name}:{number} — {anchored} only ever anchored")
+    assert not offenders, f"anchored-only globs: {offenders}"
 
 
-def test_unanchored_glob_overmatches_and_fails_closed() -> None:
-    """H-5's literal form matches `foosrc/secrev/`, which is not this project.
+def test_glob_does_not_overmatch_a_similar_name() -> None:
+    """Inverted from the assertion that recorded the over-match in TASK-009.
 
-    Recorded rather than silently improved. `src/secrev/*.py|*/src/secrev/*.py`
-    would satisfy H-5's stated rationale without the over-match, but H-5 gives
-    the mechanism verbatim and STACK.md wins on mechanism -- so the deviation
-    is raised in the ledger, not taken here. The over-match refuses a write to
-    a path this repository does not contain, which is the safe direction.
+    H-5 said `*src/secrev/*.py`, which drops the dependency on absolute paths
+    and also matches `foosrc/secrev/`; the scripts/ form matched `transcripts/`
+    and `descripts/`. Corrected in STACK.md to the two-alternative form, which
+    meets the stated rationale without the collateral. The old failure was
+    closed rather than open -- but a control that fires on the wrong file
+    teaches people to work around it, and that is how a control dies.
     """
     for path in ("foosrc/secrev/x.py", "/home/u/transcripts/notes.py", "/var/lib/descripts/a.py"):
         rc, _, _ = run_hook("self-application-guard.sh", write_payload(path, "x = eval('1')\n"))
-        assert rc == BLOCK, f"the over-match is expected; if {path} stops, H-5 changed"
-    # Not everything is swept up: the suffix still has to be there.
-    for path in ("/opt/mypatterns/r.yaml", "/home/u/docs/x.py"):
+        assert rc == PASS_THROUGH, f"{path} is not this project's tree, got rc={rc}"
+
+
+def test_glob_still_matches_both_spellings() -> None:
+    """The half that must survive the correction: relative and absolute."""
+    for path in (
+        "src/secrev/cli.py",
+        str(REPO / "src" / "secrev" / "cli.py"),
+        "scripts/x.py",
+        str(REPO / "scripts" / "x.py"),
+    ):
         rc, _, _ = run_hook("self-application-guard.sh", write_payload(path, "x = eval('1')\n"))
-        assert rc == PASS_THROUGH, f"{path} should not match any protected glob"
+        assert rc == BLOCK, f"{path} must stay guarded, got rc={rc}"
 
 
 # ----------------------------------------------------------- protected paths

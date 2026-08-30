@@ -73,13 +73,23 @@ fi
     {
         for check in ruff pytest self-application; do
             echo "=== $check ==="
+            # Output is captured first and trimmed second. Piping the tool
+            # straight into head/tail makes $? the status of head or tail,
+            # which succeeds whatever the tool did — the check would report
+            # [ok] for every failure. POSIX sh has no PIPESTATUS, so the
+            # pipeline is the thing to avoid rather than to work around.
             case "$check" in
-              ruff)    "$PY" -m ruff check "$ROOT" 2>&1 | head -30 ;;
-              pytest)  "$PY" -m pytest -x -q "$ROOT" 2>&1 | tail -20 ;;
-              *)       "$PY" "$ROOT/scripts/self_check.py" 2>&1 | head -20 ;;
+              ruff)    out=$("$PY" -m ruff check "$ROOT" 2>&1) ;;
+              pytest)  out=$("$PY" -m pytest -x -q "$ROOT" 2>&1) ;;
+              *)       out=$("$PY" "$ROOT/scripts/self_check.py" 2>&1) ;;
             esac
             status=$?
-            [ "$status" = 0 ] && echo "[ok] $check" || echo "[FAILED] $check — exit $status"
+            printf '%s\n' "$out" | head -30
+            if [ "$status" = 0 ]; then
+                echo "[ok] $check"
+            else
+                echo "[FAILED] $check — exit $status"
+            fi
         done
     } > "$LOG" 2>&1
 ) &

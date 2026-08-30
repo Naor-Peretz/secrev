@@ -64,11 +64,14 @@ One task per iteration. Do not start a second.
       *Accept:* each amendment carries its written reason; nothing tells the reader to run
       `uv sync`; §8 runs H-1…H-9.
 
-- [ ] **TASK-009B — Correct the glob form.** Follows H-5's correction in TASK-014.
+- [x] **TASK-009B — Correct the glob form.** Follows H-5's correction in TASK-014.
       `*src/secrev/*.py` → `src/secrev/*.py|*/src/secrev/*.py`.
-      *Files:* `.claude/hooks/lib/paths.sh`, `determinism-guard.sh`, `tests/harness/attack.py`.
+      *Files:* `.claude/hooks/lib/paths.sh` (which also gains `is_nfr3_path`, so
+      `determinism-guard.sh` stops carrying its own copy of the glob form),
+      `determinism-guard.sh`, `.claude/hooks/async-check.sh`, `tests/harness/attack.py`.
       *Accept:* `transcripts/notes.py`, `descripts/a.py` and `foosrc/secrev/x.py` stop being
-      refused; relative and absolute `src/secrev/*.py` still are.
+      refused; relative and absolute `src/secrev/*.py` still are. Two `cmd | head` status
+      losses fixed here as well — see the receipt.
 
 - [ ] **TASK-004 — Execute category, and no operators near a protected path.** Two changes, one
       commit, because either alone is wrong.
@@ -177,6 +180,16 @@ One task per iteration. Do not start a second.
       *Accept:* no stale jq reference; the M0 status table reflects what actually landed. Two
       further false claims were found while doing it — "the repository has no commits", and
       mypy being "recorded in STACK.md §2" (open question 10).
+
+- [ ] **TASK-016 — Close the milestone.** The last thing M0 does, and the thing most easily
+      forgotten: `.claude/MILESTONE` moves to `M1`. The marker is the harness's only notion of
+      where the project is. TASK-011 fixed it pointing *ahead* of reality; leaving it at `M0`
+      after M0 closes is the same defect pointing the other way, and the scope guard would refuse
+      every write to `src/` and `patterns/` — which is exactly what M1 is.
+      Do not do this until `BRIEF_M0.md`'s Definition of done is fully checked.
+      *Files:* `.claude/MILESTONE`, `.claude/TASKS_M0.md`, `CLAUDE.md`, `tests/harness/attack.py`.
+      *Accept:* `session-start.sh` reports M1 and finds `BRIEF_M1.md`; a write to `src/secrev/`
+      is permitted again and an M1-scope concern asks; every DoD box in `BRIEF_M0.md` is ticked.
 
 ---
 

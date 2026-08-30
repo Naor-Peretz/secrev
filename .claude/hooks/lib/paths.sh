@@ -21,27 +21,42 @@
 # review is a check that silently disappears from every later run. That is a
 # scope question, and the scope guard asks it.
 #
-# No leading anchor (H-5). `*/src/secrev/*.py` needs a leading directory, so
-# it matches only because the client happens to send absolute paths — true
-# today, undocumented, and not something a control should rest on.
+# Two alternatives per directory, never a leading `*` (H-5, as corrected).
 #
-# The literal form H-5 gives also matches `foosrc/secrev/`, which is not this
-# project. `src/secrev/*.py|*/src/secrev/*.py` would meet H-5's stated
-# rationale without that, but H-5 states the mechanism verbatim and STACK.md
-# wins on mechanism, so the deviation is raised in the ledger rather than
-# taken here. The over-match refuses a write to a path this repository does
-# not contain, which is the direction to err in.
+# `*/src/secrev/*.py` alone needs a leading directory, so it matches only
+# because the client happens to send absolute paths — true today,
+# undocumented, and not something a control should rest on. `*src/secrev/*.py`
+# fixes that and buys `foosrc/secrev/`; the scripts/ equivalent bought
+# `transcripts/` and `descripts/`. Spelling the relative case out explicitly
+# costs one alternative each and matches neither.
+#
+# The over-match failed closed rather than open — it refused writes to paths
+# this repository does not contain. That is still the wrong behaviour: a
+# control that fires on the wrong file teaches people to work around it.
 
 is_self_application_path() {
     case "$1" in
-      *src/secrev/*.py|*scripts/*.py) return 0 ;;
+      src/secrev/*.py|*/src/secrev/*.py|scripts/*.py|*/scripts/*.py) return 0 ;;
       *) return 1 ;;
     esac
 }
 
 is_scoped_path() {
     case "$1" in
-      *src/secrev/*|*patterns/*|*scripts/*) return 0 ;;
+      src/secrev/*|*/src/secrev/*|patterns/*|*/patterns/*|scripts/*|*/scripts/*) return 0 ;;
+      *) return 1 ;;
+    esac
+}
+
+# The four files that own an NFR-3 rule. Here rather than inline in
+# determinism-guard.sh for the same reason as the two predicates above: one
+# definition, so correcting the glob form is one edit and not a hunt (H-7).
+is_nfr3_path() {
+    case "$1" in
+      src/secrev/ids.py|*/src/secrev/ids.py) return 0 ;;
+      src/secrev/inventory.py|*/src/secrev/inventory.py) return 0 ;;
+      src/secrev/sweep.py|*/src/secrev/sweep.py) return 0 ;;
+      src/secrev/recon.py|*/src/secrev/recon.py) return 0 ;;
       *) return 1 ;;
     esac
 }

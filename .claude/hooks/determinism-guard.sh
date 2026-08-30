@@ -22,6 +22,13 @@ SYSPY=$(command -v python3 2>/dev/null) || {
     exit 2
 }
 
+PATHS="$ROOT/.claude/hooks/lib/paths.sh"
+[ -f "$PATHS" ] || {
+    echo "determinism-guard: $PATHS is missing — cannot check (H-1)." >&2
+    exit 2
+}
+. "$PATHS"
+
 read_field() {
     printf '%s' "$INPUT" | "$SYSPY" "$READER" "$1" || {
         echo "determinism-guard: unreadable hook payload — refusing (H-1)." >&2
@@ -30,10 +37,7 @@ read_field() {
 }
 path=$(read_field file_path)
 
-case "$path" in
-  *src/secrev/ids.py|*src/secrev/inventory.py|*src/secrev/sweep.py|*src/secrev/recon.py) ;;
-  *) exit 0 ;;
-esac
+is_nfr3_path "$path" || exit 0
 
 PY="$ROOT/.venv/bin/python"
 
@@ -52,7 +56,14 @@ if [ -d "$ROOT/src/secrev" ] && [ -d "$ROOT/tests/fixtures" ]; then
         exit 2
     fi
     echo "── re-running the determinism check"
-    if "$PY" "$ROOT/scripts/determinism_check.py" 2>&1 | head -20; then
+    # Captured, not piped: `cmd | head` makes $? the status of head, which
+    # succeeds whatever the check did. NFR-3 is the invariant this project
+    # calls unfixable later, and this hook would have announced
+    # "byte-identical across runs" over a failing comparison.
+    out=$("$PY" "$ROOT/scripts/determinism_check.py" 2>&1)
+    status=$?
+    printf '%s\n' "$out" | head -20
+    if [ "$status" = 0 ]; then
         echo "── byte-identical across runs"
     else
         echo "── determinism check FAILED — see above" >&2
