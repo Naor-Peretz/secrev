@@ -622,14 +622,28 @@ def test_documentation_architect_still_points_at_stack_md() -> None:
 # ------------------------------------------------------------ current milestone
 
 
-def test_milestone_marker_is_m0() -> None:
-    """.claude/MILESTONE was M1 while BRIEF_M0.md sat unbuilt beside it. The
-    marker is the harness's only notion of where the project is, and it had
-    been set forward past a milestone that never happened."""
-    assert (REPO / ".claude" / "MILESTONE").read_text(encoding="utf-8").strip() == "M0"
+def test_milestone_marker_is_m1() -> None:
+    """M0 is closed, so the marker moves.
+
+    It read M1 while BRIEF_M0.md sat unbuilt beside it, and TASK-011 pulled it
+    back. Leaving it at M0 now is the same defect pointing the other way: the
+    scope guard would refuse every write to src/ and patterns/, which is
+    exactly what M1 is. The marker is the harness's only notion of where the
+    project is, and it is wrong in both directions if nobody moves it.
+    """
+    assert (REPO / ".claude" / "MILESTONE").read_text(encoding="utf-8").strip() == "M1"
 
 
-def test_session_start_reports_m0_and_finds_its_brief() -> None:
+def test_m0_definition_of_done_is_fully_ticked() -> None:
+    """The marker may not move ahead of the work. That is the failure TASK-011
+    existed to fix, and moving it on a whose-turn-is-it basis would reproduce
+    it a milestone later."""
+    brief = (REPO / "BRIEF_M0.md").read_text(encoding="utf-8")
+    unticked = [line.strip() for line in brief.splitlines() if line.strip().startswith("- [ ]")]
+    assert not unticked, f"M0 closed with open DoD items: {unticked}"
+
+
+def test_session_start_reports_m1_and_finds_its_brief() -> None:
     proc = subprocess.run(
         [SH, str(HOOKS / "session-start.sh")],
         input="",
@@ -640,9 +654,9 @@ def test_session_start_reports_m0_and_finds_its_brief() -> None:
         check=False,
     )
     assert proc.returncode == PASS_THROUGH
-    assert "Milestone: M0" in proc.stdout
-    assert "BRIEF_M0.md" in proc.stdout
-    assert "No BRIEF_M0.md in the repo" not in proc.stdout
+    assert "Milestone: M1" in proc.stdout
+    assert "BRIEF_M1.md" in proc.stdout
+    assert "No BRIEF_M1.md in the repo" not in proc.stdout
 
 
 def test_m0_permits_the_work_m0_is_defined_to_do() -> None:

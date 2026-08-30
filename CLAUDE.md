@@ -10,31 +10,28 @@ exist, so every gate stage past `ruff` skips and says so.
 M0 work lives on `m0/harness-repair`; `main` holds only the baseline commit. Before TASK-000 the
 repository had no commits at all, so nothing could be reviewed as a diff or reverted.
 
-**There is no `.venv`.** Hooks and the gate fall back to system `python3`, which has no `ruff`,
-`mypy` or `pytest`; those stages skip rather than fail. Build it before trusting a green run —
-`STACK.md` §3 sets stdlib `venv` as the default, not `uv`.
+`.venv` exists (stdlib `venv`; `STACK.md` §3 no longer makes `uv` the default). The gate runs
+`ruff format`, `ruff check`, `pytest` and the guard assertions for real. `mypy` and the determinism
+check still skip, legitimately — there is no `src/secrev/` yet, which is what M1 builds.
 
-### The current milestone is M0
+### The current milestone is M1
 
-`.claude/MILESTONE` reads `M0`, and `BRIEF_M0.md` is harness repair. It read `M1` until TASK-011,
-while the milestone preceding M1 sat unbuilt — so `scope-guard.sh`, which reads that file, policed
-the M1 boundary throughout M0.
+`.claude/MILESTONE` reads `M1`, and **M0 is closed** — every box in `BRIEF_M0.md`'s Definition of
+done is ticked, with per-task receipts in `.claude/receipts.md` and the ledger in
+`.claude/TASKS_M0.md`.
 
-Task ledger: `.claude/TASKS_M0.md`. Receipts: `.claude/receipts.md`. **Not** `.claude/MILESTONE`,
-which holds a single token that `scope-guard.sh` compares by exact string and `commands/commit.md`
-pipes through `tr` to build a branch name.
+That marker is the harness's only notion of where the project is, and it has now been wrong in both
+directions: it read `M1` through the whole of M0, so `scope-guard.sh` policed a boundary the project
+had not reached; leaving it at `M0` after M0 closed would have refused every write to `src/` and
+`patterns/`, which is exactly what M1 is. **Move it when a milestone closes.** It holds a single
+token — `scope-guard.sh` compares it by exact string and `commands/commit.md` pipes it through `tr`
+to build a branch name — so a checklist does not go in it.
 
-| M0 item | State |
-|---|---|
-| Bash guard closing the write bypass | Done. `bash-guard.sh` wired as a `PreToolUse` matcher on `Bash` |
-| `.venv` with `ruff`/`pytest`, hooks resolving from it | Done. Stdlib `venv`; the two quality-check hooks no longer fall back to `PATH` |
-| No `\|\| true` on a quality check | Done — and no `cmd \| head` either, which lost the status just as completely |
-| Guards cover `src/`, `patterns/`, `scripts/` | Done. `hooks/lib/paths.sh` holds the definition once |
-| Scope guard refuses when `MILESTONE` has no rules | Done, and M0 has its own rules: permits `scripts/`, refuses `src/` and `patterns/` |
-| No hook invokes `jq` | Done. Six mention it in the comment recording its removal |
-| Path globs carry no leading anchor | Done |
-| No agent restates `STACK.md` | Done for live agents; `.claude/disabled/` is an open question |
-| Each guard attacked and observed to refuse | `tests/harness/attack.py`, run by the gate |
+M0 delivered, beyond its own list: `.claude/` entered the protected set, `STACK.md` §8 gained
+**H-9**, and three of the brief's own premises turned out to be wrong — the gate never caught an
+`eval` in `scripts/`, `|| true` was not the only way a status was lost (`cmd | head` discards it
+just as completely, twice), and the read/write allowlist needed a third category for *executing* a
+script. `BRIEF_M0.md`'s closing note records all three.
 
 **The Bash bypass is closed.** `bash-guard.sh` is wired as a `PreToolUse` matcher on `Bash`, and a
 write to `src/`, `patterns/`, `scripts/` or `.claude/` through a shell is refused.

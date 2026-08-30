@@ -181,7 +181,7 @@ One task per iteration. Do not start a second.
       further false claims were found while doing it — "the repository has no commits", and
       mypy being "recorded in STACK.md §2" (open question 10).
 
-- [ ] **TASK-016 — Close the milestone.** The last thing M0 does, and the thing most easily
+- [x] **TASK-016 — Close the milestone.** The last thing M0 does, and the thing most easily
       forgotten: `.claude/MILESTONE` moves to `M1`. The marker is the harness's only notion of
       where the project is. TASK-011 fixed it pointing *ahead* of reality; leaving it at `M0`
       after M0 closes is the same defect pointing the other way, and the scope guard would refuse
