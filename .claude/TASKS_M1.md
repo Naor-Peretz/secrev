@@ -74,10 +74,17 @@ wrong invalidates every verification recorded above it (D-4).
 
 - [ ] **TASK-M1-010 — Cross-platform verification.** The NFC divergence is the one difference a
       Linux-only run cannot see, and self-application will not catch it either: it surfaces months
-      later as verifications expiring for no reason. CI compares artifact hashes between Linux and
-      macOS (`.github/workflows/ci.yml` already has the job). **Needs a macOS run** — the local
-      NFD/NFC test proves normalisation is applied, not that the two platforms agree.
-      *Accept:* the cross-platform hash-comparison job passes on a real macOS runner.
+      later as verifications expiring for no reason.
+      **Partly done.** The job existed but compared nothing: it waited for `recon.py`, so both
+      runners wrote the same placeholder and `compare-platforms` printed "Linux and macOS agree"
+      having diffed two identical strings. It now hashes the inventory as soon as `inventory.py`
+      exists, which is where NFC and traversal order are actually decided — the artifact
+      comparison still waits for `recon.py` and `sweep.py`, and that wait *is* legitimate build
+      order (TASK-M1-007/008).
+      **Still needs a macOS run**, and nothing local can substitute: the digest has only ever been
+      produced on ext4. Whether APFS yields the same bytes is precisely the untested claim.
+      *Accept:* the cross-platform hash-comparison job passes on a real macOS runner, having
+      compared a non-empty digest.
 
 - [ ] **TASK-M1-011 — Close the milestone.** Tick `BRIEF_M1.md` §7, move `.claude/MILESTONE` to
       `M2`, and extend the DoD assertion in `attack.py` to cover `BRIEF_M1.md` as well — it
