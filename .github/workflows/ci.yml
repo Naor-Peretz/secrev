@@ -253,8 +253,32 @@ jobs:
       - name: generate artifacts
         run: |
           set -eu
-          if [ ! -f src/secrev/recon.py ] || [ ! -d tests/fixtures ]; then
-            echo "recon.py or tests/fixtures has not landed yet — nothing to hash" > digest.txt
+          if [ ! -d tests/fixtures ]; then
+            echo "NOTHING-COMPARED tests/fixtures has not landed yet" > digest.txt
+          elif [ ! -f src/secrev/recon.py ]; then
+            # The artifact comparison waits for recon.py. The *inventory* does
+            # not, and it is where the cross-platform question actually lives:
+            # NFC vs NFD filenames and traversal order are decided in
+            # inventory.py, they are the one divergence a Linux-only run cannot
+            # see, and they surface months later as verifications expiring for
+            # no reason (D-4). Keying this on recon.py would leave them
+            # unchecked across platforms for exactly as long as they were being
+            # written — the same mistake as keying the local determinism stage
+            # on the src/secrev directory.
+            if [ ! -f src/secrev/inventory.py ]; then
+              echo "NOTHING-COMPARED inventory.py has not landed yet" > digest.txt
+            else
+              .venv/bin/python - <<'PY' > digest.txt
+          from pathlib import Path
+          from secrev import inventory
+
+          for entry in inventory.walk(Path("tests/fixtures")):
+              print(
+                  f"{entry.sha256 or '-'}  {entry.path}  {entry.size}  "
+                  f"{int(entry.is_binary)}{int(entry.is_symlink)}{int(entry.escapes_root)}"
+              )
+          PY
+            fi
           else
             .venv/bin/python -m secrev recon tests/fixtures --workspace "$RUNNER_TEMP/ws"
             if [ -f src/secrev/sweep.py ]; then
@@ -288,6 +312,17 @@ jobs:
 
       - name: byte-identical across platforms
         run: |
+          set -eu
+          # Two identical placeholders diff clean and this job would print
+          # "Linux and macOS agree" having compared nothing — a green stage
+          # that verified as much as an absent one (H-1). Say which it was.
+          if grep -q '^NOTHING-COMPARED' digests/digest-ubuntu-latest/digest.txt; then
+            echo "::warning::No artifacts were compared across platforms."
+            sed -n 's/^NOTHING-COMPARED /reason: /p' digests/digest-ubuntu-latest/digest.txt
+            echo "::warning::This job is green because it had nothing to do, not"
+            echo "::warning::because Linux and macOS were shown to agree."
+            exit 0
+          fi
           if ! diff -u digests/digest-ubuntu-latest/digest.txt \
                      digests/digest-macos-latest/digest.txt; then
             echo "::error::Linux and macOS produced different output for the same input."

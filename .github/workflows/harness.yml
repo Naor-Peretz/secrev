@@ -113,13 +113,32 @@ jobs:
       - name: the assertions can fail
         run: |
           set -eu
-          cp .claude/hooks/self-application-guard.sh /tmp/guard.bak
-          sed -i.bak 's/^exit 2$/exit 0/' .claude/hooks/self-application-guard.sh
-          if sh .claude/check.sh >/dev/null 2>&1; then
-            echo "::error::a defeated guard left the harness gate green."
-            echo "::error::The suite is describing the harness, not testing it."
-            cp /tmp/guard.bak .claude/hooks/self-application-guard.sh
+          GUARD=.claude/hooks/self-application-guard.sh
+          cp "$GUARD" /tmp/guard.bak
+          # `-i.bak` because BSD sed requires the suffix and GNU accepts it
+          # (STACK.md §4). The backup it leaves is removed: a stray .bak beside
+          # a guard is the kind of thing a later scan reports and a reader has
+          # to work out.
+          sed -i.bak 's/^exit 2$/exit 0/' "$GUARD"
+          rm -f "$GUARD.bak"
+          # Asserted, not assumed: if the expression matched nothing, the gate
+          # below would stay green and this step would read as "the suite
+          # cannot fail" when in fact nothing was defeated. That is the no-op
+          # defeat that nearly passed for a verification once already.
+          if diff -q /tmp/guard.bak "$GUARD" >/dev/null; then
+            echo "::error::the defeat changed nothing — this step verified nothing."
             exit 1
           fi
-          cp /tmp/guard.bak .claude/hooks/self-application-guard.sh
+
+          set +e
+          sh .claude/check.sh >/dev/null 2>&1
+          still_green=$?
+          set -e
+          cp /tmp/guard.bak "$GUARD"
+
+          if [ "$still_green" = 0 ]; then
+            echo "::error::a defeated guard left the harness gate green."
+            echo "::error::The suite is describing the harness, not testing it."
+            exit 1
+          fi
           echo "defeating a guard turns the harness gate red, as it must"
