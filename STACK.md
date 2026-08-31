@@ -141,8 +141,43 @@ unachievable without fixing the following explicitly:
 - **No timestamps or absolute paths in deterministic outputs.** Paths are relative to the target
   root. Run metadata with timestamps belongs in a separate `run.json`, which is explicitly exempt
   from NFR-3.
-- **Stable IDs** — candidate `id` is derived from `(relative_path, line, rule_id, ordinal)`, not
-  from a counter over traversal. IDs must survive an unrelated file being added.
+- **The window** — ±20 lines around the matched line, tightened to the enclosing function or
+  block boundary where the language allows it. Fixed here rather than left to `window.sh`, because
+  since the correction below `window_sha256` is *inside* the candidate id: the window definition
+  now decides identity. Changing it later re-identifies every candidate in every ledger and
+  invalidates every verification recorded against them (FR-4.6), so it is a versioned decision and
+  a change to it is a migration, not a tuning knob.
+
+- **Stable IDs** — candidate `id` is derived from
+  **`(relative_path, rule_id, window_sha256, ordinal)`**, not from a counter over traversal, and
+  the `ordinal` ranges over *byte-identical windows only* — never over every match of the rule in
+  the file. IDs must survive an unrelated file being added.
+
+  This corrects an earlier version of this rule, which derived the id from
+  `(relative_path, line, rule_id, ordinal)`. The reasoning is recorded because the correction is
+  the kind someone reverts in six months while tidying:
+
+  - **`line` had to go.** PRD FR-4.5 says a verification "anchored only to a line number is lost
+    the moment the content moves". An id containing `line` anchors it to exactly that, so the
+    mechanism defeated the requirement it existed to serve — one added import shifts every line
+    below it and re-identifies every candidate in the file. Precedence gives the PRD intent; this
+    file was wrong.
+  - **A rule-wide `ordinal` had to go.** Two matches of one rule at lines 40 and 90: delete the
+    first and the second moves from ordinal 1 to 0. Nothing about the surviving match changed.
+  - **What each surviving component is for.** `window_sha256` answers "did this content change",
+    which is the question FR-4.6 invalidates on, so putting it in the id makes that structural
+    rather than a separate check that can be forgotten. The `ordinal` exists only because D-6
+    requires two byte-identical matches in one file to stay two candidates, and nothing in their
+    content can tell them apart.
+
+  **The residue, stated rather than discovered.** Two byte-identical windows in one file are the
+  one case where an id can still move: delete the first and the second's ordinal shifts. That is
+  irreducible — the two are indistinguishable by content, so any identity separating them is
+  positional, and positional identity shifts. It is bounded (identical windows only, same file)
+  where the old scheme's instability was not, and it is the price of D-6.
+
+  `line` remains a field on the candidate record, for a reader locating the hit. It simply takes
+  no part in the identity.
 
 ## 6. Workspace layout
 

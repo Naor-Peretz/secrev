@@ -148,8 +148,12 @@ later milestones and must not be stubbed with placeholders.
 }
 ```
 
-- `id` — stable, derived per `STACK.md` §5 from `(relative_path, line, rule_id, ordinal)`. Adding
-  an unrelated file must not renumber anything.
+- `id` — stable, derived per `STACK.md` §5 from
+  `(relative_path, rule_id, window_sha256, ordinal)`, where `ordinal` ranges over byte-identical
+  windows only. Adding an unrelated file must not renumber anything, and neither must an edit
+  above the match, nor another match of the same rule being added or deleted elsewhere in the
+  file. `line` is a field on the record for locating the hit; it takes no part in the identity —
+  see §5 there for why, because the reasoning is what stops this being reverted.
 - `match_excerpt` — the matched span with a small margin, truncated to 200 chars. Redact anything
   resembling a credential before writing it (G-3).
 - One line may produce several records if several patterns match it. This is correct and
