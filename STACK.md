@@ -27,6 +27,9 @@ this file wins on mechanism.
 | `pytest` | tests | dev only |
 | `ruff` | lint | dev only |
 | `mypy` | types (`--strict`) | dev only |
+| `pip-audit` | known-vulnerability audit (§2.2) | gate only, separate env |
+| `pip-licenses` | licence allowlist (§2.2) | gate only, separate env |
+| `gitleaks` | secret scanning (§2.2) | gate only, external binary |
 
 `mypy` was configured in `pyproject.toml` and run as a gate stage while appearing nowhere in this
 table, and `CLAUDE.md` asserted it was "recorded in `STACK.md` §2 with reasons". It was not. Recorded
@@ -58,6 +61,55 @@ Per AC-10 the tool is reviewed by its own rules. Non-negotiable consequences:
 - No `subprocess` with a shell string; argument lists only.
 - No network calls at runtime (NFR-4). Tests included.
 - No writes outside the workspace directory (§6).
+
+### 2.2 Supply-chain gates (binding)
+
+The gate checked whether the code was correct and said nothing about what it
+depended on. Three questions were missing, and each is one this tool asks of the
+targets it reviews — which under AC-10 is reason enough on its own:
+
+| Question | Stage | Where it runs |
+|---|---|---|
+| Is a credential in the repository? | `gitleaks dir` | every commit, push, and CI run |
+| Are the licences ones we accept? | `scripts/license_check.py` | every commit, push, and CI run |
+| Do the declared dependencies carry advisories? | `scripts/deps_audit.py` | push and CI |
+| Does untrusted input reach a dangerous sink? | `scripts/codeql_check.py` | CI; locally with `--sast` |
+
+Binding consequences:
+
+- **The audit tooling installs into `.venv-audit`, never `.venv`.** `pip-audit`
+  and `pip-licenses` bring 29 transitive packages, among them `requests`,
+  `urllib3` and `certifi` — a network client stack, in a project whose NFR-4
+  keeps one out of the runtime and whose §2 requires a written reason per
+  dependency. Both tools inspect another environment from outside it
+  (`pip-licenses --python`, `pip-audit --path` / `-r`), so the environment that
+  type-checks and tests the code stays the ten packages someone chose. Pinned in
+  `.github/requirements/audit.txt`.
+- **`gitleaks` is installed from a pinned, hash-verified release tarball.** Not
+  `curl … | sh`, and not `gitleaks/gitleaks-action`: the first is
+  `net.fetch_exec`, one of the eight seed patterns this project ships, and the
+  second is a third-party action with access to the checkout when a checksum
+  achieves the same thing. It is an external binary rather than a Python
+  dependency, so it is not in `pyproject.toml` and absent it the gate exits 2.
+- **Allowlist, not denylist, for licences (P3).** A licence nobody has
+  considered fails and names itself. `scripts/license_check.py` holds the set,
+  with the reason beside each entry that is not plainly permissive.
+- **A blocking "are the pins current" check is deliberately absent.** The
+  project this gate was compared against has one and it blocks CI. Here it would
+  contradict `.github/requirements/dev.txt`'s own reason for existing: a build
+  that turns red because someone else published a release, with no diff in this
+  repository to explain it. Dependabot answers the same question as a pull
+  request a person reads (`.github/dependabot.yml`).
+- **CodeQL is unconditional in CI and opt-in locally**, and carries no
+  `continue-on-error`. A SAST job that stays green when it analysed nothing
+  reports exactly like one that analysed everything and found nothing — H-1, in
+  the stage most likely to be trusted without being read.
+- **Each stage distinguishes "found nothing" from "could not check" (H-1).** A
+  scanner that produced no report, an OSV query that could not reach the
+  network, a missing binary: all exit 2. `scripts/deps_audit.py` reads the
+  report file rather than the exit code for exactly this reason — `pip-audit`
+  exits non-zero both when it finds a vulnerability and when the network is
+  gone, and only the first writes a report.
 
 ## 3. Packaging and interface
 

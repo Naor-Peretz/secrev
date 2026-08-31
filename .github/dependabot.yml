@@ -1,0 +1,46 @@
+# Dependency updates as reviewable pull requests.
+#
+# This repo argues that every dependency is a surface worth noticing (STACK.md
+# §2). Noticing them by hand does not scale and does not happen; this is the
+# mechanism that makes an update a diff someone reads, instead of a silent
+# resolution at install time.
+#
+# Both ecosystems matter and for different reasons:
+#   github-actions — the workflows are pinned to commit SHAs, which is what
+#     makes them immutable, and is also what makes them invisible when they go
+#     stale. Dependabot is the thing that moves a pinned SHA forward.
+#   pip — the gate's own toolchain (dev.txt) and its supply-chain tooling
+#     (audit.txt). A ruff release adds rules; that should arrive as a PR that
+#     turns the build red in review, not on a random Tuesday. This is also why
+#     the gate has no blocking "are the pins current" check of its own: that
+#     turns an unrelated commit red for a release nobody in this repository
+#     made, which is the exact drift dev.txt's header argues against.
+
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "ci"
+    labels: ["dependencies", "ci"]
+
+  - package-ecosystem: pip
+    directory: "/.github/requirements"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "build"
+    labels: ["dependencies"]
+    # A major bump to the linter or type checker changes what the gate enforces.
+    # That is a decision, so it arrives as its own PR rather than grouped with
+    # routine patches.
+    groups:
+      dev-tooling-patch:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]

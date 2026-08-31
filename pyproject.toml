@@ -31,7 +31,10 @@ where = ["src"]
 testpaths = ["tests"]
 addopts = "-q --strict-markers"
 # Golden tests compare bytes; keep output diffable rather than truncated.
-python_files = ["test_*.py", "attack.py"]   # the guard driver keeps its name (H-8)
+# `test_*.py` only. `attack.py` was added here so pytest would collect the
+# harness driver; it is removed because the harness is no longer part of this
+# gate. tests/harness/ belongs to .claude/check.sh, which runs it directly.
+python_files = ["test_*.py"]
 
 # --- mypy -----------------------------------------------------------------
 [tool.mypy]

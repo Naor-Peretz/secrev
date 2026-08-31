@@ -1056,16 +1056,44 @@ def test_gate_separates_no_tests_from_no_pytest() -> None:
     assert "no tests/ or pytest not installed" not in gate
 
 
-def test_gate_runs_the_attack_driver() -> None:
-    """The instrument has to be wired to the gate, or it is a check nobody sees.
+def test_the_harness_gate_runs_the_attack_driver() -> None:
+    """The instrument has to be wired to a gate, or it is a check nobody sees.
 
-    Reads scripts/check.sh rather than running it: the gate invokes this file,
-    so executing it here would recurse. The claim that the wiring actually
-    fires is verified by defeating a guard and watching the gate go red -- a
-    text check cannot establish that, and does not pretend to.
+    Inverted from an assertion that named `scripts/check.sh`. It ran here
+    until the two gates were separated: `.claude/` is the layer that writes
+    this project, and a stage asserting that a PreToolUse hook still refuses a
+    heredoc is not an answer to "is the software correct".
+
+    Reads the script rather than running it — the gate invokes this file, so
+    executing it here would recurse. That the wiring fires is established by
+    defeating a guard and watching the gate go red, which a text check cannot
+    do and does not pretend to.
+    """
+    gate = (REPO / ".claude" / "check.sh").read_text(encoding="utf-8")
+    assert "tests/harness/attack.py" in gate, ".claude/check.sh runs no guard assertions"
+
+
+def test_the_product_gate_does_not_reach_into_the_harness() -> None:
+    """The separation, asserted in the direction that actually erodes.
+
+    Nobody deletes a boundary deliberately; someone adds one convenient line.
+    The product gate ran the guard assertions and wrote its success marker into
+    `.claude/hooks/state/`, so a contributor without Claude Code could have
+    their build fail on a layer they never run, and the dependency pointed from
+    the thing being built into the thing building it.
+
+    Reading across is fine — the harness may read `.gate-passed`. Writing
+    across is not.
     """
     gate = (REPO / "scripts" / "check.sh").read_text(encoding="utf-8")
-    assert "tests/harness/attack.py" in gate, "scripts/check.sh does not run the guard assertions"
+    code = "\n".join(line.split("#", 1)[0] for line in gate.splitlines())
+    assert ".claude" not in code, (
+        "scripts/check.sh references .claude/ outside a comment — the product "
+        "gate must not read from, write to, or invoke the harness"
+    )
+    assert "tests/harness" not in code, (
+        "scripts/check.sh runs a harness test; that is .claude/check.sh's job"
+    )
 
 
 # ------------------------------------------------------------------- runner

@@ -3,6 +3,11 @@
 .venv-pip/
 uv.lock.bak
 
+# The supply-chain tooling's own environment, kept apart from .venv so that
+# pip-audit's 29 transitive packages never enter the environment the gate
+# type-checks and tests against (.github/requirements/audit.txt).
+.venv-audit/
+
 # Build
 dist/
 build/
@@ -34,3 +39,14 @@ __pycache__/
 # from being committed. A scanner that leaks a .env is not a scanner.
 .env
 .env.*
+
+# The product gate's success marker. Machine-local and per-checkout by design:
+# it records that *this* working tree passed, and a committed one would tell
+# every clone that it had. Written by scripts/check.sh, read by the harness —
+# the marker crosses the boundary in the readable direction only.
+.gate-passed
+
+# The audit environment (STACK.md §2.2). Kept out of .venv on purpose: pip-audit
+# and pip-licenses bring a network client stack, and the environment that
+# type-checks and tests the code stays the packages someone chose.
+.venv-audit/

@@ -1,0 +1,59 @@
+# Pinned supply-chain tooling. Installed into `.venv-audit`, never into `.venv`.
+#
+# Why a second environment. `pip-audit` and `pip-licenses` bring 29 transitive
+# packages with them — three times the whole pinned dev toolchain (`dev.txt`),
+# and among them `requests`, `urllib3` and `certifi`, a network client stack
+# NFR-4 keeps out of this project's runtime. Installing that set beside `ruff`,
+# `mypy` and `pytest` would mean the environment that vouches for the code is
+# mostly made of packages nobody chose, and a resolver conflict in one of them
+# could change what the gate enforces. Both tools can inspect another
+# environment from outside it — `pip-licenses --python`, `pip-audit --path`
+# and `-r` — so the separation costs nothing but this file.
+#
+# STACK.md §2.2 records why these two tools exist at all. Set it up with:
+#
+#     python3 -m venv .venv-audit
+#     .venv-audit/bin/pip install -r .github/requirements/audit.txt
+#
+# NOT hash-locked, for the same reason `dev.txt` is not, and with the same
+# next step. Do not describe this file as hash-locked until it is.
+#
+# Bumping: Dependabot opens the PR (.github/dependabot.yml watches this
+# directory). Regenerate the transitive block with `pip freeze` from a clean
+# install of the two direct pins.
+
+# Direct
+pip-audit==2.10.1
+pip-licenses==5.5.5
+
+# Transitive, pinned so the resolution is reproducible rather than merely
+# constrained. Generated from a working environment with `pip freeze`.
+boolean.py==5.0
+CacheControl==0.14.4
+certifi==2026.7.22
+charset-normalizer==3.5.1
+cyclonedx-python-lib==11.12.0
+defusedxml==0.7.1
+filelock==3.32.4
+idna==3.19
+license-expression==30.4.4
+markdown-it-py==4.2.0
+mdurl==0.1.2
+msgpack==1.2.2
+packageurl-python==0.17.6
+packaging==26.3
+pip-api==0.0.34
+pip-requirements-parser==32.0.1
+platformdirs==4.11.5
+prettytable==3.18.0
+Pygments==2.21.0
+pyparsing==3.3.2
+py-serializable==2.1.0
+requests==2.34.2
+rich==15.0.0
+sortedcontainers==2.4.0
+tomli==2.4.1
+tomli_w==1.2.0
+typing_extensions==4.16.0
+urllib3==2.7.0
+wcwidth==0.8.3

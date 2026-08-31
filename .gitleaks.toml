@@ -1,0 +1,26 @@
+# gitleaks configuration for the secrets stage of the gate (scripts/check.sh).
+#
+# The default rule set is extended, not replaced: `[extend] useDefault = true`
+# keeps every upstream rule and adds only the scoping this repository needs.
+# Replacing it would be a denylist authored here, which is P3 backwards.
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = """
+Fixtures are data, not code. tests/fixtures/ deliberately contains the
+constructs the catalog matches — that is the point of a positive fixture
+(STACK.md §9), and credential-shaped strings are among the seed patterns.
+pyproject.toml already exempts the same directory from ruff for the same
+reason; keeping the two exemptions identical means the linter, the scanner
+and the secret scanner never disagree about what fixtures are.
+
+This is a path scope, not a rule exception: every rule still applies to every
+other file, and a real credential placed anywhere else is still a finding.
+Nothing here may be widened to cover src/, scripts/, patterns/ or .claude/ —
+a secret in any of those is the finding this stage exists to catch.
+"""
+paths = [
+  '''^tests/fixtures/''',
+]

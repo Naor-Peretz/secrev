@@ -21,7 +21,7 @@ from pathlib import Path
 MAX_SUGGESTIONS = 3
 
 
-def main() -> int:  # noqa: PLR0912
+def main() -> int:
     root = Path(os.environ.get("CLAUDE_PROJECT_DIR", "."))
     rules_path = root / ".claude" / "skills" / "skill-rules.json"
     if not rules_path.is_file():

@@ -1,0 +1,60 @@
+name: codeql
+
+# Dataflow analysis over the Python source. The gate's fast half — ruff's
+# bandit rules and scripts/self_check.py — answers presence and structure
+# questions; this answers "does untrusted input reach this sink", which neither
+# of those can. It runs in minutes rather than milliseconds, which is why
+# `scripts/check.sh --sast` makes it opt-in locally and this workflow makes it
+# unconditional here.
+#
+# The weekly schedule is not redundant with the push trigger: CodeQL's queries
+# change, so the same commit can be clean in March and alerting in April.
+
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: "0 6 * * 1"   # Mondays, alongside the Dependabot run
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  security-events: write   # the only reason this workflow needs more than read
+  actions: read
+
+concurrency:
+  group: codeql-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: analyze (python)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      # Pinned to a commit SHA like every other action here (see ci.yml).
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - uses: github/codeql-action/init@6f5948dfacef28e207b48d0905cf90c03365536d # v3.37.9
+        with:
+          languages: python
+          queries: security-and-quality
+
+      # No autobuild step: Python needs no build, and a no-op step that looks
+      # like one invites the belief that something was compiled and checked.
+
+      - uses: github/codeql-action/analyze@6f5948dfacef28e207b48d0905cf90c03365536d # v3.37.9
+        with:
+          category: "/language:python"
+
+# Deliberately no `continue-on-error`. The project this workflow was modelled
+# on carries one, so that the job stays green when code scanning is not enabled
+# for the repository — which means a SAST job that has never analysed anything
+# reports exactly like one that analysed everything and found nothing. That is
+# the H-1 failure in the stage most likely to be trusted without reading.
+#
+# If this job fails with "code scanning is not enabled", the two honest answers
+# are to enable it in the repository settings or to delete this file. Making it
+# green is not one of them.

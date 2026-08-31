@@ -90,39 +90,134 @@ the green is taken as evidence.
 
 ```
 sh scripts/check.sh                    # the gate — exactly what CI runs, no second list
+sh scripts/check.sh --fast             # what pre-commit runs: no pytest, determinism or audit
+sh scripts/check.sh --sast             # the gate plus CodeQL (minutes; CI runs it every push)
 python3 scripts/self_check.py          # STACK.md §2.1 alone (AST-based, not grep)
 python3 scripts/determinism_check.py   # NFR-3 alone: two runs byte-identical + stable ids
+python3 scripts/license_check.py       # licence allowlist alone (STACK.md §2.2)
+python3 scripts/deps_audit.py          # known-vulnerability audit alone (needs the network)
 
 python3 -m venv .venv                  # env (STACK.md §3); needs the python3-venv package
 .venv/bin/pip install -e '.[dev]'      # uv is permitted, but is not the default
 pytest                                 # all tests
 pytest tests/test_sweep.py::test_name  # a single test
+
+python3 -m venv .venv-audit            # the supply-chain tooling, kept out of .venv (§2.2)
+.venv-audit/bin/pip install -r .github/requirements/audit.txt
+```
+
+`gitleaks` is an external binary and nothing here installs it. Pinned, hash-verified, the
+same way CI does it — `brew install gitleaks` is equivalent on macOS:
+
+```
+V=8.30.1; SHA=551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  # linux_x64
+curl -fsSL -o gl.tgz "https://github.com/gitleaks/gitleaks/releases/download/v$V/gitleaks_${V}_linux_x64.tar.gz"
+printf '%s  gl.tgz\n' "$SHA" | sha256sum -c - && tar -xzf gl.tgz gitleaks && mv gitleaks ~/.local/bin/
 ```
 
 The dev set is `pytest`, `ruff` and `mypy`, all recorded in `STACK.md` §2 with reasons —
 `mypy` only since TASK-014, having been configured and run for some time while appearing
-nowhere in the binding document.
+nowhere in the binding document. `pip-audit`, `pip-licenses` and `gitleaks` are §2.2, and
+the first two live in `.venv-audit` rather than `.venv`: they carry 29 transitive packages
+including a network client stack, and the environment that vouches for the code should hold
+only packages someone chose.
 
 `uv` is permitted but is no longer the default (§3). Its advertised install pipes a fetched
 script into a shell, which is `net.fetch_exec` — one of the eight seed patterns this tool
 ships. The objection is to the method, not the tool.
 
-The gate runs `ruff format --check`, `ruff check`, `mypy --strict`, `pytest`, the guard
-assertions (`tests/harness/attack.py`), the self-application check, and the determinism check,
-in that order. Only the guard assertions have anything to check today; every other stage skips.
+The gate runs, in order: `ruff format --check`, `ruff check`, `mypy --strict`, `pytest`, the
+self-application check, the secrets scan (`gitleaks dir`), the licence allowlist, the
+determinism check, and the dependency audit.
+
+### Two gates, and neither calls the other
+
+| | `scripts/check.sh` | `.claude/check.sh` |
+|---|---|---|
+| Question | Is the software correct? | Does the tooling still refuse what it claims to? |
+| Covers | `src/`, `tests/`, `scripts/`, `patterns/` | `.claude/`, `tests/harness/` |
+| Config | `pyproject.toml` | `.claude/ruff.toml` |
+| CI | `ci.yml` — every push | `harness.yml` — pushes touching those paths |
+| Run by | `.githooks/pre-commit`, `pre-push` | `/check`, CI |
+
+The guard assertions used to be stage 4 of the product gate, and the product gate used to write
+its success marker into `.claude/hooks/state/`. Both are gone. `.claude/` is the layer that
+*writes* this project; `src/` is the project. A stage asserting that a `PreToolUse` hook still
+refuses a heredoc is not an answer to "is the software correct", and a contributor without Claude
+Code should not have their build fail on a layer they never run.
+
+The marker is now `.gate-passed`, in the product's own space. **Reading across the boundary is
+fine — the harness reads it. Writing across it is not.** An assertion in `attack.py` fails if
+`scripts/check.sh` mentions `.claude` outside a comment, because nobody deletes a boundary
+deliberately; someone adds one convenient line.
+
+Two stages are absent from the harness gate and say so rather than being omitted: no dependency
+audit, no licence check, because the harness is stdlib throughout. A third-party import there
+would put a package on the critical path of every prompt in every session.
+`--sast` appends CodeQL. Every stage now has something to check.
+
+The last four are STACK.md §2.2 and came from comparing this gate against a mature
+JavaScript project's CI (format → lint → build → test → outdated → audit → licences →
+gitleaks → CodeQL). Two things did not come across. Its pre-push hook prints
+`⚠️ not installed - skipping` for gitleaks and CodeQL and still reaches `✅ All CI checks
+passed`, which is the H-1 collapse this harness exists to prevent — here a missing tool
+exits 2. And its blocking outdated-dependency check is deliberately absent: it turns a build
+red for a release nobody in this repository made, which is the drift
+`.github/requirements/dev.txt` was pinned to avoid. Dependabot answers that question as a PR.
 
 `self_check.py` is AST-based on purpose. `shell=True` is a structure question, and a grep here
 would be the exact mistake the catalog is designed not to make. The crude grep-shaped check inside
 `check.sh` is a separate backstop; both must pass and neither replaces the other.
 
-CI runs the same script on Linux **and** macOS, on 3.11 and 3.12, plus a job that compares the
-artifact hashes produced on the two operating systems against each other. NFR-3 says "across runs
-and machines"; a single-platform check cannot see the NFC/NFD divergence, so the cross-platform
-comparison is the one that actually tests it. A separate job installs with plain `pip install -e .`
-to keep STACK.md §3's "must also work without uv" from decaying quietly.
+### The gate runs in three places
 
-`git config core.hooksPath .githooks` is set, so `.githooks/pre-commit` runs the same gate before
-every commit. Bypass with `--no-verify` when you mean to.
+| Where | What runs | Why there |
+|---|---|---|
+| `.githooks/pre-commit` | `check.sh --fast` | Format, lint, types, guards, self-application, secrets, licences. Cheap enough that nobody learns to type `--no-verify` |
+| `.githooks/pre-push` | `check.sh` (full) | The last point before code leaves the machine. Adds pytest, determinism, and the dependency audit |
+| `.github/workflows/ci.yml` | `check.sh` (full) | On **every push to every branch**, every PR, and `workflow_dispatch` |
+
+`--fast` is a prefix of the same list, not a second list: nothing reaches a remote on its
+strength, because pre-push and CI both run the whole thing. `--fast` also does not write the
+`gate-passed` marker — a partial run must not read as a verified one.
+
+The secrets scan is in the fast half on purpose: `gitleaks dir` reads the working tree, so it
+catches a credential at the commit that would have introduced it rather than after it is
+history, where removal is a rewrite and the credential is burned anyway. The dependency audit
+is out of it for the opposite reason — it queries OSV, a push has a network by definition and
+a commit does not, and a stage that fails offline teaches people to bypass the hook.
+
+`git config core.hooksPath .githooks` is set. Both hooks honour `--no-verify`, which is not a
+bypass so much as a deferral: CI runs the identical gate and says so.
+
+### What CI covers beyond the gate
+
+| Job | Asserts |
+|---|---|
+| `gate` | The full gate on ubuntu + macos × 3.11 + 3.12 |
+| `install-paths` | Both documented pip routes work: `pip install -e .` and `pip install -e '.[dev]'` (STACK.md §3) |
+| `catalog` | A malformed catalog exits **2** *and* names the offending pattern id (BRIEF §4, §7) |
+| `cross-platform-determinism` → `compare-platforms` | The artifact hashes from Linux and macOS are identical |
+| `codeql.yml` | Dataflow analysis over the Python source, on every push and weekly. No `continue-on-error` |
+
+NFR-3 says byte-identical "across runs and machines". A single-platform check cannot see the
+NFC/NFD divergence, so the cross-platform comparison is the one that actually tests it.
+
+**Every action is pinned to a commit SHA**, never a tag. `@v4` resolves to whatever the maintainer
+last pointed it at — a remote code reference that can change with no diff here. Five actions are
+used at all (four in `ci.yml`, `codeql-action` twice in `codeql.yml`), and that is deliberate: each
+one is third-party code with access to the checkout. `gitleaks` is installed from a pinned,
+hash-verified release tarball rather than through `gitleaks/gitleaks-action`, for the same reason.
+Dependabot (`.github/dependabot.yml`) moves the pins forward as PRs someone reads.
+
+**The dev toolchain is pinned** in `.github/requirements/dev.txt`, and the supply-chain tooling
+in `.github/requirements/audit.txt`. Unpinned, every CI run resolved
+whatever ruff and mypy were newest, so the rules the gate enforces could change with no commit to
+explain it. Not hash-locked yet — `--require-hashes` is the next step, and the file says so rather
+than overstating what it provides.
+
+`uv` is deliberately absent from CI. §3 permits it but does not depend on it, so installing it to
+prove a path the document declined to require would add a supply-chain surface for nothing.
 
 ### What the `.claude/` harness enforces
 
