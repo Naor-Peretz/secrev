@@ -184,8 +184,28 @@ unachievable without fixing the following explicitly:
 - **Hashing** — `window_sha256` is SHA-256 over the NFC-normalised, LF-normalised window text.
   No filenames, timestamps, or line numbers in the hash input: the hash answers "did this content
   change," and must not fire when the content merely moved.
-- **Exclusions** — skip `.git/`, and any directory named `node_modules`, `.venv`, `venv`,
-  `__pycache__`, `dist`, `build`. Recorded in `recon.json` as exclusions applied, not silently.
+- **Exclusions** — skip `.git/`, and any directory named `node_modules`, `.venv`, `.venv-audit`,
+  `venv`, `__pycache__`, `dist`, `build`, `.mypy_cache`, `.ruff_cache`, `.pytest_cache`, `.tox`,
+  `.nox`, `.eggs`. Recorded in `recon.json` as exclusions applied, not silently.
+
+  The last six were added after the first recon run against a real repository, which is the
+  check `BRIEF_M1.md` §7 opens with and which a fixture tree structurally cannot perform. This
+  repository reported **1952 files and 703,763 lines**, and `by_language` claimed 1416 Python
+  files for a project with about a dozen. The excess was `.venv-audit/` and the tool caches.
+
+  Two things made it worse than a wrong number. `.venv` was excluded and `.venv-audit` was not,
+  while §2.2 of this same document is what requires `.venv-audit` to exist — the two sections
+  disagreed in effect, and neither was obviously wrong when read alone. And under P4 every
+  candidate must be resolved, so a sweep dragging in vendored third-party code does not merely
+  add noise: it makes the ledger unfinishable, which is the one failure this design cannot
+  absorb.
+
+  **Exact directory names, not a pattern.** `.venv*` and `*_cache` would each have caught more,
+  and both are a denylist over a shape rather than a list of decisions (P3). A named directory is
+  auditable, is reported verbatim in `recon.json`, and cannot quietly swallow a directory someone
+  meant to review. The cost is that a cache family nobody has met yet is inventoried until
+  someone adds it — which is visible in the output rather than silent, and is the direction this
+  project prefers to be wrong in.
 - **Binary files** — detected by NUL byte in the first 8 KiB; recorded in the inventory, not
   swept. Never guessed at by extension alone.
 - **Symlinks** — never followed. Recorded as symlinks with their target. A symlink pointing
@@ -199,6 +219,20 @@ unachievable without fixing the following explicitly:
   now decides identity. Changing it later re-identifies every candidate in every ledger and
   invalidates every verification recorded against them (FR-4.6), so it is a versioned decision and
   a change to it is a migration, not a tuning knob.
+
+  **The definition is therefore named and carried, not remembered.** Every candidate record and
+  every verification record holds a `window_spec` — `lines-20` for the untightened form,
+  `block-20` once a parser tightens it to the enclosing function or block — and a change to it is
+  an invalidation trigger in FR-4.6 beside `catalog_version`. Two window specs describe two
+  different spans, so their `window_sha256` values are not comparable at all: comparing them
+  answers "did this content change" when that question was never asked of the same content, and
+  answers it wrongly in the direction that looks like success.
+
+  **M1 ships `lines-20`.** Tightening to a block requires an AST, and `BRIEF_M1.md` §1 defers AST
+  analysis to M4 with a reason. M4 moving to `block-20` still re-identifies every candidate and
+  still invalidates every verification recorded against them — that is unchanged and it is still a
+  migration. What changes is that the tool detects it, rather than it depending on someone reading
+  this paragraph in six months.
 
 - **Stable IDs** — candidate `id` is derived from
   **`(relative_path, rule_id, window_sha256, ordinal)`**, not from a counter over traversal, and
@@ -339,3 +373,44 @@ It is in scope for AC-10, and the rules below are binding on it.
   rule honest.
 - Every pattern in the catalog ships with a positive and a negative fixture. A pattern with no
   negative fixture will drift into over-matching and nobody will notice.
+
+## 10. Distribution terms (binding)
+
+§2.2 asks what terms arrive with every dependency and fails a build over an answer nobody has
+read. It said nothing about the terms this project ships under, and there were none:
+`scripts/license_check.py` skips its own distribution and printed
+`secrev itself carries none and is skipped` on every green run. The check that refuses an
+unrecognised licence, shipping without one, is the shape of AC-10 failure this project exists to
+notice — a scanner that flags `yaml.load` and then calls it.
+
+- **The licence is PolyForm Noncommercial 1.0.0**, in `LICENSE`, verbatim from upstream with a
+  `Required Notice:` line as §Notices requires. Any noncommercial purpose is permitted, and the
+  licence names personal, research, educational, charitable, public-safety and government use
+  explicitly. Commercial use needs a separate grant.
+- **It is source-available, not open source, and is described that way everywhere.** The
+  noncommercial restriction fails the Open Source Definition's field-of-use criterion. Calling it
+  open source would be false, and the consequences are concrete rather than semantic: GitHub
+  reports the repository as *Other* with no licence badge, there is no PyPI trove classifier for
+  it, and distributions that only package OSI-approved terms cannot carry it. Those are accepted,
+  not worked around.
+- **Encoded as `license = { text = … }`, not PEP 639's SPDX string.** The string form requires
+  `setuptools >= 77`; the build-system pin admits 68, where it is a hard error rather than a
+  warning. The table form is deprecated and functions across the entire range the pin claims to
+  support, which is the range that matters. Verified rather than assumed: a build on current
+  setuptools emits `License: PolyForm-Noncommercial-1.0.0` with `Metadata-Version: 2.4`, and picks
+  up `LICENSE` through the default `license-files` glob with nothing declared. Revisit when the
+  floor moves — that is a change to the pin first, and this section second.
+- **The allowlist in `scripts/license_check.py` is not the place this is recorded.** That set
+  governs what may be *depended on*; these are the terms secrev is *offered under*, and the two
+  questions have different answers. The `SELF` skip stays, with its comment corrected to say the
+  project now carries terms rather than that it carries none.
+- **`SECURITY.md` distinguishes a vulnerability from a coverage gap.** For a scanner those are
+  routinely confused, and the confusion runs both ways: an embargoed report about a missed pattern
+  helps nobody, and a public issue about a credential surviving redaction (G-3) or a target
+  escaping the workspace (G-4) is a disclosure. The reporting route is GitHub private vulnerability
+  reporting, which is a repository setting and not only a file — the file is inert until the
+  setting is on.
+- **`CONTRIBUTING.md` carries `git config core.hooksPath .githooks`.** Before this it appeared only
+  in `CLAUDE.md`, which is read by the agent harness and not by a person cloning the repository.
+  A contributor who missed it committed and pushed with no gate running locally at all — H-1 one
+  layer up, where the absent check is the whole gate rather than one stage of it.

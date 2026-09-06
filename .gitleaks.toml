@@ -23,4 +23,11 @@ a secret in any of those is the finding this stage exists to catch.
 """
 paths = [
   '''^tests/fixtures/''',
+  # Compiled bytecode. `gitleaks dir` reads the working tree rather than the
+  # index, so it sees generated files git never will — and a .pyc embeds the
+  # string literals of the .py beside it, which means every finding in a test
+  # module is reported twice and the count stops matching the number of real
+  # problems. The source file is still scanned; this drops only the copy.
+  # Gitignored, never committed, and if that ever changes this line must go.
+  '''(^|/)__pycache__/''',
 ]
