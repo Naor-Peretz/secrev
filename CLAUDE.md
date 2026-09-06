@@ -106,6 +106,21 @@ python3 -m venv .venv-audit            # the supply-chain tooling, kept out of .
 .venv-audit/bin/pip install -r .github/requirements/audit.txt
 ```
 
+`--sast` needs the CodeQL CLI, which nothing here installs either. Pinned and hash-verified against
+the checksum GitHub publishes beside the bundle, the same discipline as `gitleaks`:
+
+```
+V=2.26.4; B=codeql-bundle-linux64.tar.zst
+curl -fsSL -O "https://github.com/github/codeql-action/releases/download/codeql-bundle-v$V/$B"
+curl -fsSL -O "https://github.com/github/codeql-action/releases/download/codeql-bundle-v$V/$B.checksum.txt"
+sha256sum -c "$B.checksum.txt" && tar --zstd -xf "$B" -C ~/.local/share/
+```
+
+`check.sh` looks for `~/.local/share/codeql/codeql/codeql`, or `$CODEQL_BIN`. Point it at the real
+binary inside the extracted bundle, never at a symlink to it: the CLI resolves its query packs
+relative to its own location, so a lone symlinked executable reports `codeql/python-queries cannot
+be found` — which is "could not run", and the stage correctly exits 2 rather than calling it clean.
+
 `gitleaks` is an external binary and nothing here installs it. Pinned, hash-verified, the
 same way CI does it — `brew install gitleaks` is equivalent on macOS:
 

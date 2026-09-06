@@ -145,11 +145,29 @@ def is_read_only(tokens: list[str]) -> bool:
 
 
 def is_execute(tokens: list[str]) -> bool:
-    """Running an existing script, as opposed to writing one."""
+    """Running an existing script, as opposed to writing one.
+
+    The script must be the *first* argument, and only that position is checked
+    for a leading dash. Everything after it is an argument to the script.
+
+    This was `any(token.startswith("-") for token in tokens[1:])`, which
+    refused a flag anywhere — and so refused `sh scripts/check.sh --fast` and
+    `--sast`, the two invocations CLAUDE.md documents and the git hooks use.
+    A guard that forbids the project's own documented workflow does not make
+    the workflow stop; it moves it somewhere the guard cannot see, and every
+    other refusal in this file loses credibility with it.
+
+    The security property is unchanged, because it never depended on the
+    trailing positions. `python3 -c '…'` and `sh -c '…'` are writes wearing an
+    interpreter's name, and both put the flag *before* the script — there is no
+    argument in a later position that makes an interpreter evaluate a string.
+    Passing `--anything` to an existing script grants no reach the script did
+    not already have, and running it at all is what this category permits.
+    """
     suffix = EXECUTE.get(tokens[0].rsplit("/", 1)[-1])
     if suffix is None or len(tokens) < INTERPRETER_AND_SCRIPT:
         return False
-    if any(token.startswith("-") for token in tokens[1:]):
+    if tokens[1].startswith("-"):
         return False
     return tokens[1].endswith(suffix)
 

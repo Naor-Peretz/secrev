@@ -281,6 +281,36 @@ def test_bash_refuses_truncating_redirect() -> None:
     assert bash("echo x > src/secrev/cli.py") == BLOCK
 
 
+def test_bash_permits_the_documented_gate_invocations() -> None:
+    """`--fast` and `--sast` are what CLAUDE.md documents and the git hooks run,
+    and the guard refused both: the execute rule rejected a dash-token in *any*
+    position, not only before the script.
+
+    A guard that forbids the project's own documented workflow does not stop
+    the workflow. It moves it somewhere the guard cannot see, and every other
+    refusal in that file loses credibility with it. That cost does not appear
+    as a failure anywhere, which is why it survived until someone tried to run
+    the SAST stage.
+    """
+    assert bash("sh scripts/check.sh") == PASS_THROUGH
+    assert bash("sh scripts/check.sh --fast") == PASS_THROUGH
+    assert bash("sh scripts/check.sh --sast") == PASS_THROUGH
+    assert bash("python3 scripts/codeql_check.py --codeql /opt/codeql/codeql") == PASS_THROUGH
+
+
+def test_bash_still_refuses_an_interpreter_flag_before_the_script() -> None:
+    """The property the old rule was protecting, kept exactly.
+
+    `-c` makes the interpreter evaluate a string, and both spellings are writes
+    wearing an interpreter's name. The flag has to come *before* the script for
+    that to work, so checking only the first argument loses nothing — there is
+    no later position that turns an interpreter into an evaluator.
+    """
+    assert bash("python3 -c \"open('src/secrev/pwn.py','w').write('x')\"") == BLOCK
+    assert bash("sh -c 'echo x > src/secrev/pwn.py'") == BLOCK
+    assert bash("python3 -m http.server --directory src/secrev") == BLOCK
+
+
 def test_bash_refuses_appending_redirect() -> None:
     assert bash("echo x >> scripts/check.sh") == BLOCK
 
