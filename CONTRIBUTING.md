@@ -77,6 +77,35 @@ Both git hooks honour `--no-verify`. That is a deferral rather than a bypass: CI
 runs the identical gate on every push to every branch. Use it when you mean to,
 not when it is inconvenient.
 
+## Never record a target's specifics in this repository
+
+Running the tool against real third-party code is part of the work — one of
+M1's Definition-of-Done items requires it. Writing up that run is where the
+trouble is, because the natural way to show a sweep worked is to say what it
+found and where.
+
+**Do not.** No file path inside a target, no function or constant name, no
+description of the shape of a weakness — not in a brief, not in a commit
+message, not in a receipt, not in a golden file. This repository is going
+public, so a commit that names someone else's unfixed weakness has disclosed
+it: to the maintainer and to everyone else at once, minus the part where the
+maintainer was told first. FR-8.4 requires explicit human action before
+anything reaches a maintainer, and a commit is not that action. G-1 says the
+output exists to help someone fix their exposure, not to publish it ahead of
+them.
+
+The question a milestone is entitled to answer is whether *the tool* did its
+job — how many candidates, over how many files, whether it reached the region
+a check required. All of that is recordable without coordinates.
+
+This happened twice while M1 was being written, which is why it is a rule and
+not a reminder. The first time a brief pronounced on a target's soundness — a
+Phase 4 verdict from a milestone that owns no triage. The second time it merely
+gave the file path, which is worse than it sounds: it is the part an attacker
+actually needs. Both had to be removed from the working tree *and* rewritten
+out of history, which is only cheap because nothing had been pushed. Assume
+that luck is not available next time.
+
 ## When the documents disagree
 
 `REQUIREMENTS_security-review-skill.md` (the PRD) beats `STACK.md`, which beats
