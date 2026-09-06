@@ -32,9 +32,12 @@ import pytest
 
 from secrev import inventory
 
-# "café" — the same grapheme, composed and decomposed. APFS stores NFD, ext4
-# stores whatever it is handed, so the same tree on two machines produces two
-# different byte sequences for one filename (STACK.md §5, D-4).
+# "café" — the same grapheme, composed and decomposed. Both forms occur in real
+# trees: HFS+ stored a decomposed form, and tools still emit one, so a name can
+# arrive either way and survives onto any filesystem. APFS does NOT decompose —
+# it preserves what it was given and is insensitive only on lookup (STACK.md §5,
+# D-4). Built with unicodedata rather than typed, because this file holds one
+# normalisation and two literals would be the same string.
 NFC_NAME = unicodedata.normalize("NFC", "café.txt")
 NFD_NAME = unicodedata.normalize("NFD", "café.txt")
 

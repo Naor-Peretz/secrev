@@ -60,7 +60,7 @@ the target being reviewed.
 machines is a hard requirement, not a nicety: verifications are anchored to
 content, and an anchor that moves when nothing changed expires every previous
 verification for no reason. Paths are collected then sorted, never emitted in
-traversal order; every path is NFC-normalised because APFS stores NFD; CRLF is
+traversal order; every path is NFC-normalised because decomposed names travel; CRLF is
 normalised before hashing and line numbers are reported against the original.
 No timestamps and no absolute paths appear in deterministic output.
 

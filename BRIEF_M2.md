@@ -106,6 +106,16 @@ matched here" is not a resolution (FR-3.11).
       has never run on this repository. **It is a box here because a carried obligation that lives
       only in a commit message stops being an obligation.**
 
+      **Narrowed since, by reading the platform documentation instead of only planning to observe
+      it.** APFS *preserves* filename normalisation and is merely insensitive on lookup; HFS+ was
+      the filesystem that stored a decomposed form. `STACK.md` §5 asserted both stored NFD and has
+      been corrected. So the first question is largely answered on paper — an APFS checkout of this
+      repository's NFC-stored fixture should yield the same bytes as an ext4 one — and what the
+      runner is really confirming is that nothing between git and the filesystem alters them. The
+      second question is the one that stays open and is the sharper of the two: APFS refuses to
+      hold two normalisation variants of one name in a directory, so a target containing both has
+      a *different inventory* on macOS, which no amount of NFC handling reconciles.
+
 ---
 
 ## 5. Notes for the implementer

@@ -175,8 +175,29 @@ unachievable without fixing the following explicitly:
 - **Traversal order** — collect paths, then `sorted()` on the POSIX path string. Never emit in
   `os.walk` order.
 - **Filename Unicode** — normalise every path to **NFC** before use, comparison, or hashing.
-  APFS/HFS+ store NFD, Linux stores NFC; without this the same target hashes differently on the
-  two platforms and invalidates verifications for no reason (D-4).
+  Without this the same target can hash differently on two machines and invalidate verifications
+  for no reason (D-4).
+
+  **The rule stands; the reason previously given for it was wrong.** This said "APFS/HFS+ store
+  NFD, Linux stores NFC". That is true of HFS+, which stores a near-NFD form on disk, and false of
+  APFS, which *preserves* whatever normalisation it was given and achieves insensitivity by
+  hashing the normalised form for lookup. Linux is not "NFC" either — ext4 is normalisation-
+  agnostic and stores the bytes it is handed. Checked rather than assumed, because a premise that
+  names the wrong mechanism survives until someone acts on it: the fixture filename in this
+  repository is stored NFC, so an APFS checkout yields the same bytes as an ext4 one, and the
+  divergence the old sentence predicted would never have appeared.
+
+  What actually makes the rule necessary is two different things:
+
+  - **NFD names exist and travel.** Anything authored on HFS+, or by a tool that emits NFD,
+    carries decomposed names that survive onto APFS and ext4 alike. Normalising on read is what
+    makes those the same candidate as their composed twin.
+  - **APFS insensitivity is a divergence normalisation cannot fix, and is the sharper one.** Two
+    normalisation variants of one name *cannot coexist in one directory* on APFS, while on ext4
+    they are simply two files. A tree holding both therefore has fewer entries on macOS than on
+    Linux — a difference in the inventory's *contents*, not in how a string was spelled. No amount
+    of NFC handling reconciles that; it is a fact about the target, and the cross-platform job is
+    what would surface it.
 - **Content decoding** — UTF-8 with `errors="replace"`. Record the decoding mode; never let a
   locale decide it.
 - **Line endings** — normalise CRLF → LF *before hashing*. Report line numbers against the

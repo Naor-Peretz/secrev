@@ -13,9 +13,13 @@ The rules, and what each one is actually defending against:
   order is stable on one machine and one filesystem, which is precisely why
   emitting it survives review and then diverges in CI.
 
-  Path normalisation — NFC before use, comparison or hashing. APFS hands back
-  the decomposed form, ext4 hands back whatever was written; without this the
-  same tree hashes differently on macOS and Linux.
+  Path normalisation — NFC before use, comparison or hashing. Not because
+  "macOS gives NFD": APFS preserves whatever normalisation it was given and is
+  merely insensitive on lookup, and it was HFS+ that stored a decomposed form.
+  The rule is needed because decomposed names exist and travel — authored on
+  HFS+, or by a tool that emits NFD — and survive onto any filesystem. See
+  STACK.md §5, which carries the correction and the one divergence normalising
+  cannot fix.
 
   Line endings — CRLF to LF before hashing, line numbers against the original.
   A checkout with autocrlf on must not invalidate the whole ledger.

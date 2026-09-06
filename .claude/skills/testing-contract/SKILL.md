@@ -28,9 +28,20 @@ key order, trailing newlines, and separator choices drift.
 ## 2. At least one non-ASCII filename
 
 Mandatory, and it is not decoration. Without it the NFC rule is untested, and
-the failure it guards against only appears when someone runs the tool on macOS
-(APFS stores NFD) — that is, in front of a user, on a target that then hashes
-differently for no reason (D-4).
+the failure it guards against appears in front of a user, on a target that then
+hashes differently for no reason (D-4).
+
+Two things this fixture must actually do, both learned the hard way. It has to
+*match something*, or it never reaches a golden file and the requirement is
+satisfied on paper by a file the generator emits no record for. And the two
+normalisation forms have to be built with `unicodedata`, never typed as
+literals — a source file holds one normalisation, so a literal-versus-literal
+comparison compares a string to itself and passes regardless.
+
+Do not describe this as "the macOS bug". APFS preserves the normalisation it
+was given and is only insensitive on lookup; it was HFS+ that stored a
+decomposed form (`STACK.md` §5). The NFC defect this repository actually
+shipped failed on **Linux** and would have worked on APFS.
 
 ## 3. Two fixtures per pattern
 

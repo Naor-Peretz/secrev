@@ -329,7 +329,9 @@ requirement of M1 — patterns will be revised many times, these rules will not,
 wrong invalidates everything above.
 
 - Collect paths, then `sorted()` on the POSIX string. Never emit in `os.walk` order.
-- NFC-normalise every path before use, comparison, or hashing (APFS stores NFD).
+- NFC-normalise every path before use, comparison, or hashing — because decomposed names exist
+  and travel, not because "macOS stores NFD". APFS *preserves* normalisation and is only
+  insensitive on lookup; HFS+ was the one that stored a decomposed form (`STACK.md` §5).
 - Decode UTF-8 with `errors="replace"`; normalise CRLF→LF *before* hashing; report line numbers
   against the original.
 - `window_sha256` covers window text only — no filenames, timestamps, or line numbers, so it fires
