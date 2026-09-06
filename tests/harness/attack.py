@@ -794,6 +794,40 @@ def test_scope_guard_refuses_on_unknown_milestone() -> None:
     assert rc == BLOCK, f"no rules for M9, so it must refuse, got rc={rc}"
 
 
+def test_m2_permits_the_work_m2_is_defined_to_do() -> None:
+    """The same reasoning as the M0 case, one milestone on.
+
+    Closing M1 moved the marker to M2 and H-6 correctly refused every write to
+    the scoped tree until M2 had rules. The answer to that is to write the
+    rules — never to move the marker back to buy write access, which would be
+    the marker being wrong in the third distinct direction.
+    """
+    rc, out = scope_at("M2", "src/secrev/surfaces.py", "def enumerate_surfaces():\n    pass\n")
+    assert rc == PASS_THROUGH and not asks(out), "M2 is the surface source; src/ is its remit"
+
+
+def test_m2_refuses_catalog_writes() -> None:
+    """M2 adds a candidate *source*, not rules. Packs are M5 (BRIEF_M2.md §1).
+    A milestone that can write anything has no scope."""
+    rc, _ = scope_at("M2", "patterns/_manifest.yaml", 'version: "2026.09.1"\n')
+    assert rc == BLOCK, f"patterns/ is outside M2's remit, got rc={rc}"
+
+
+def test_m2_does_not_object_to_its_own_subject() -> None:
+    """The surfaces heuristic fires under M1 and must not under M2.
+
+    A guard that objects to the work it exists to permit teaches people to
+    click through it, and every other check in that file is then read the same
+    way. This is the cost side of H-2/H-6 that does not show up as a refusal.
+    """
+    body = "def surface_entry_point(node):\n    return node\n"
+    rc_m2, out_m2 = scope_at("M2", "src/secrev/surfaces.py", body)
+    assert rc_m2 == PASS_THROUGH and not asks(out_m2), "M2 must not be asked about surfaces"
+
+    _, out_m1 = scope_at("M1", "src/secrev/sweep.py", body)
+    assert asks(out_m1), "under M1 the same body must still raise the question"
+
+
 def test_scope_guard_refuses_on_unknown_milestone_even_when_clean() -> None:
     """The refusal is about having no rules, not about what the body contains.
     A guard that only refuses suspicious content has rules after all."""

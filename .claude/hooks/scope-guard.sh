@@ -75,6 +75,30 @@ refuse_no_rules() {
 case "$MILESTONE" in
   M1) ;;
 
+  # M2 is the surface source (BRIEF_M2.md). src/ is its remit — surfaces.py,
+  # the cli subcommand, their tests. patterns/ is not: M2 adds a *source*, not
+  # rules, and catalog packs are M5. Refusing it here is the same reasoning as
+  # M0's, one milestone on: a milestone that can write anything has no scope.
+  #
+  # This branch exists because closing M1 moved the marker to M2, and until it
+  # was written H-6 correctly refused every write to the scoped tree. The
+  # answer to "no rules for this milestone" is to write the rules — never to
+  # move the marker back to buy write access.
+  M2)
+    case "$path" in
+      *patterns/*)
+        {
+          echo "BLOCKED — M2 adds a candidate source, not catalog rules."
+          echo "$path is in patterns/, and instruction and manifest packs are M5"
+          echo "(BRIEF_M2.md §1). If a seed pattern is genuinely wrong, that is an"
+          echo "M1 correction and belongs in its own commit, not in M2's work."
+        } >&2
+        exit 2
+        ;;
+      *) ;;
+    esac
+    ;;
+
   # M0 is harness repair (BRIEF_M0.md). Its own §2 edits scripts/check.sh, so
   # scripts/ is inside its remit; src/ and patterns/ are the tool and its
   # catalog, which M0 has no business touching. H-6 asks a guard to know what
@@ -115,18 +139,24 @@ printf '%s' "$body" | grep -qE '\bmultiline\b|re\.MULTILINE|re\.DOTALL' \
 printf '%s' "$body" | grep -qE '^import ast|^from ast |ast\.parse' \
   && note "uses the AST — that is structure.py, M4. The ledger format has to settle first."
 
-printf '%s' "$body" | grep -qE '\bsurfaces?\b.*entry.?point|def .*surface' \
-  && note "enumerates surfaces — M2, a separate candidate source with separate semantics."
+# Skipped under M2, where this is the milestone's entire subject. A guard that
+# objects to the work it exists to permit teaches people to click through it,
+# and that costs every other check in this file its credibility.
+if [ "$MILESTONE" != "M2" ]; then
+    printf '%s' "$body" | grep -qE '\bsurfaces?\b.*entry.?point|def .*surface' \
+      && note "enumerates surfaces — M2, a separate candidate source with separate semantics."
+fi
 
 printf '%s' "$body" | grep -qE '\bunresolved\b.*(count|gate|block)|def verify_ledger' \
   && note "gates on the ledger — M7. Nothing to gate until three sources exist."
 
 [ -z "$concerns" ] && exit 0
 
-reason="Milestone scope check (BRIEF_M1.md §1). This write appears to reach past M1: ${concerns}
+reason="Milestone scope check (BRIEF_${MILESTONE}.md §1). This write appears to reach past
+${MILESTONE}: ${concerns}
 Building it now is not merely early — the brief says each of these gets designed wrong before its
 prerequisite lands. If it is genuinely needed, that is a conflict with the brief and should be
-raised (BRIEF_M1.md §8), not resolved here."
+raised (BRIEF_M1.md §8 states the rule), not resolved here."
 
 printf '%s' "$reason" | "$SYSPY" "$ROOT/.claude/hooks/lib/hook_ask.py"
 exit 0
