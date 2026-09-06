@@ -239,6 +239,28 @@ def exclusions_applied(root: Path) -> list[str]:
     return sorted(found)
 
 
+class NormalisationCollision(ValueError):
+    """Two files whose names differ only by Unicode normalisation.
+
+    A `ValueError` so `cli.py` reports it as exit 2: the tool worked and the
+    target cannot be reviewed as it stands, which is a fact about the input.
+
+    Refusing is not conservatism. Both names normalise to one `path`, so the
+    two files become one record, and two candidates with identical content then
+    derive the *same id* — verified against `tests/test_determinism.py`. Under
+    P4 that means resolving one candidate silently resolves the other, and a
+    verification recorded against one file is applied to content nobody read.
+    A wrong merge losing a question is the failure D-6 exists to prevent; this
+    is that, plus a verification transferring to unreviewed bytes.
+
+    It cannot be engineered away either, and that is why this refuses rather
+    than disambiguating. APFS will not hold both variants in one directory at
+    all, so any scheme that told them apart would produce an inventory that
+    exists on Linux and cannot exist on macOS — trading a silent collision for
+    a guaranteed cross-platform divergence (`STACK.md` §5).
+    """
+
+
 def walk(root: Path) -> list[FileEntry]:
     """Every file under `root`, sorted on the POSIX path string.
 
@@ -272,4 +294,25 @@ def walk(root: Path) -> list[FileEntry]:
                 entries.append(_file_entry(root, path))
 
     # Collect, then sort. Never emit in traversal order (STACK.md §5).
-    return sorted(entries, key=lambda entry: entry.path)
+    ordered = sorted(entries, key=lambda entry: entry.path)
+
+    # Two names that differ only by normalisation collapse to one `path`, and
+    # from there to one candidate id. Checked after sorting so the colliding
+    # pair is adjacent and the message can name both spellings.
+    seen: dict[str, str] = {}
+    for entry in ordered:
+        if entry.path in seen and seen[entry.path] != entry.os_path:
+            raise NormalisationCollision(
+                f"{root}: two files differ only by Unicode normalisation and both "
+                f"normalise to {entry.path!r} — on disk they are {seen[entry.path]!r} "
+                f"and {entry.os_path!r}.\n"
+                "They would share one record and, with equal content, one candidate id, "
+                "so resolving one would resolve the other and a verification would apply "
+                "to a file nobody read (P4, D-6). macOS cannot hold both in one directory, "
+                "so there is no spelling of this inventory that is stable across platforms "
+                "(STACK.md §5).\n"
+                "Rename one, or review the two directories separately."
+            )
+        seen[entry.path] = entry.os_path
+
+    return ordered

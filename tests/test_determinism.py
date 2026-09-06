@@ -152,6 +152,52 @@ def test_nfd_and_nfc_filenames_produce_one_identical_inventory(tmp_path: Path) -
         assert unicodedata.normalize("NFC", name) == name
 
 
+def test_normalisation_variants_in_one_directory_are_refused(tmp_path: Path) -> None:
+    """The collision NFC normalisation creates rather than removes.
+
+    Both names normalise to one `path`, so two distinct files become one
+    record — and with equal content they derive the *same candidate id*. Under
+    P4 resolving one would resolve the other, and a verification recorded
+    against one file would apply to bytes nobody read. That is D-6's "a wrong
+    merge silently loses a question", with a verification transferring on top.
+
+    Refused rather than disambiguated, because APFS will not hold both variants
+    in one directory: any scheme that told them apart would build an inventory
+    that exists on Linux and cannot exist on macOS, trading a silent collision
+    for a guaranteed divergence.
+
+    Skipped where the filesystem folds the two together, which is the correct
+    outcome there — the collision cannot arise because the second write lands
+    on the first file.
+    """
+    root = tmp_path / "variants"
+    root.mkdir()
+    (root / NFC_NAME).write_text("a\n", encoding="utf-8")
+    (root / NFD_NAME).write_text("b\n", encoding="utf-8")
+
+    if len(list(root.iterdir())) == 1:
+        pytest.skip("normalisation-insensitive filesystem: the two names are one file")
+
+    with pytest.raises(inventory.NormalisationCollision) as caught:
+        inventory.walk(root)
+    message = str(caught.value)
+    assert "normalisation" in message
+    assert "Rename one" in message
+
+
+def test_a_lone_variant_is_not_refused(tmp_path: Path) -> None:
+    """The refusal must be about the collision, not about decomposed names.
+    NFD filenames are ordinary and must inventory normally — refusing them
+    would reject most trees authored on HFS+."""
+    root = tmp_path / "single"
+    root.mkdir()
+    (root / NFD_NAME).write_text("a\n", encoding="utf-8")
+
+    entries = inventory.walk(root)
+    assert len(entries) == 1
+    assert entries[0].path == NFC_NAME
+
+
 def test_an_unrelated_file_changes_no_existing_entry(tmp_path: Path) -> None:
     """D-4, and the assertion an id derived from a counter passes until the
     day something is inserted ahead of it.
