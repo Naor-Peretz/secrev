@@ -40,6 +40,12 @@ __pycache__/
 .env
 .env.*
 
+# Private working notes. These describe other people's projects by name,
+# including their weak points, and this repository is heading for public. A
+# competitive analysis being readable is a relationship problem, and it is not
+# the kind of thing anyone remembers to remove before the first push.
+notes/
+
 # The product gate's success marker. Machine-local and per-checkout by design:
 # it records that *this* working tree passed, and a committed one would tell
 # every clone that it had. Written by scripts/check.sh, read by the harness —

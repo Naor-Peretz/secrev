@@ -9,6 +9,15 @@ build-backend = "setuptools.build_meta"
 name = "secrev"
 version = "0.0.0"
 description = "Security review of agentic artifacts"
+readme = "README.md"
+authors = [{ name = "Naor Peretz" }]
+# PolyForm Noncommercial 1.0.0 — source-available, not open source. Recorded in
+# STACK.md §10 with the reasoning. The table form rather than PEP 639's
+# `license = "<SPDX id>"` string: that form requires setuptools >= 77, and the
+# build-system pin above admits 68, where it is a hard error rather than a
+# warning. The table form is deprecated and works across the whole range this
+# project claims to build on. Revisit when that floor moves, not before.
+license = { text = "PolyForm-Noncommercial-1.0.0" }
 requires-python = ">=3.11"          # STACK.md §1 — no 3.12-only syntax
 dependencies = ["PyYAML>=6.0"]      # STACK.md §2 — the only runtime dependency
 
