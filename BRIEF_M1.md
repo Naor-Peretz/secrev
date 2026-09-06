@@ -246,18 +246,46 @@ For `deser.unsafe`, the `yaml.load` case needs a negative lookahead to avoid mat
 - [x] Adding an unrelated file to the fixture tree changes no existing candidate `id`.
 - [x] The codebase passes the self-application rules in `STACK.md` §2.1 — verified by running
       `secrev sweep` against `src/secrev/` and confirming no unexplained high-precision hits.
-- [ ] `secrev sweep` run against `gemini-notebook-mcp-cli` produces a plausible candidate set and
+- [x] `secrev sweep` run against `gemini-notebook-mcp-cli` produces a plausible candidate set and
       flags the region of the known path-validation issue.
 
 The last item is a sanity check against a target whose contents are already known, not a
 regression test. The corpus (Q-1) is M10 and is deliberately not started here.
 
-**The last item is the one still open, and it is blocked on the target rather than on the tool.**
-`gemini-notebook-mcp-cli` is named here and nowhere else — no URL, no local copy, and nothing in
-the repository says which project it is. Cloning a plausibly-named repository and sweeping that
-would produce a green box for a check that never ran against the intended artifact, which is worse
-than an unticked one: the whole point of the item is that the contents are *already known*, and
-they are only known to whoever chose it. It needs the URL.
+**The last item was run against the target the DoD names**, identified from §3's own entry-point
+example rather than guessed. Cloned read-only; nothing in it was executed. It produced a plausible
+candidate set — 164 candidates over 30 files — and reached the region the item requires.
+
+**Where that region is, and what is in it, are deliberately not recorded here.** The owner has an
+unfixed finding in this target. Naming the file, the construct, or the shape of the weakness in a
+repository heading for public is disclosure — it reaches the maintainer, and everyone else, minus
+the part where the maintainer was told first. G-1 and FR-8.4 both land on this: FR-8.4 requires
+explicit human action before anything reaches a maintainer, and a commit is not that action.
+
+Earlier drafts of this paragraph did name it, and did pronounce on its soundness. That was a Phase
+4 verdict written by a milestone that owns no triage — M1 runs Phase 3, FR-3.2 says patterns are
+questions, and §1 puts every stage that turns a candidate into a finding in a later milestone. Both
+the location and the characterisation have been removed from this file and from the history behind
+it.
+
+This costs the brief nothing that matters. The DoD asks whether the *tool* surfaced the region, and
+that is answerable — and answered — without republishing the region. Details live with the owner
+until disclosure (Phase 8) says otherwise.
+
+The candidates are unresolved, which is their correct and only M1 status. Whether any describes a
+real weakness is not this milestone's to say, and not this repository's to publish.
+If that assessment is ever made it goes through disclosure (Phase 8), not through a brief.
+
+**How it got there is the part worth keeping, and that part is about this tool.** The rule that
+matched was looking for agent-configuration path strings, and the region happens to contain such
+strings for reasons of its own. Nothing in the catalog asked the question that would have aimed at
+that region deliberately — that rule is one of the two §1 removed to M4, because it is a question
+about the shape of control flow rather than the presence of a token.
+
+So the run is both the DoD item passing and a demonstration of why D-11 promotes structural
+analysis to v1: the catalog arrived at the right place through a coincidence of vocabulary.
+Coincidence is not coverage, and a DoD item a coincidence can satisfy is weaker evidence than it
+looks. That is a finding about `secrev`, which this brief is entitled to record.
 
 The first item's "against a real repository" half is discharged against this repository, which
 resolves a git SHA, a declared entry point, three workflows and all three `security_process`

@@ -130,7 +130,12 @@ wrong invalidates every verification recorded above it (D-4).
       where the timestamps and the tool version go, being the one artifact NFR-3 exempts.
       *Accept:* `secrev sweep <fixtures> > out` produces parseable JSONL with nothing else in it.
 
-- [ ] **TASK-M1-010 — Cross-platform verification.** The NFC divergence is the one difference a
+- [ ] **TASK-M1-010 — Cross-platform verification. CARRIED INTO M2 by owner decision.** Everything
+      testable without macOS is done and is listed below; what remains is two claims about a
+      filesystem and a git remote that does not exist. It stays unticked deliberately — a carried
+      obligation that reads as complete is how an obligation stops being one. It must appear in
+      `BRIEF_M2.md`'s Definition of Done, or `attack.py`'s marker assertion will let the marker
+      reach M3 with this never having run. The NFC divergence is the one difference a
       Linux-only run cannot see, and self-application will not catch it either: it surfaces months
       later as verifications expiring for no reason.
       **Partly done.** The job existed but compared nothing: it waited for `recon.py`, so both
@@ -154,9 +159,43 @@ wrong invalidates every verification recorded above it (D-4).
       the platform *without* the forgiving filesystem — the mirror image of the divergence the
       cross-platform job was built to catch, and invisible to a macOS-only run.
 
-      **Still needs a macOS run**, and the residue is now precise: whether APFS actually hands
-      back NFD for a name written NFC. That is a claim about the filesystem, not about this code,
-      and no Linux machine can settle it.
+      **The Linux half of the job is verified, not assumed.** `ci.yml`'s `generate artifacts`
+      step was run locally with only the runner paths changed. It now takes the third branch —
+      recon and sweep both exist — and produces a two-entry digest covering `recon.json` and
+      `hits.jsonl`, stable across runs. Three failure modes were checked rather than hoped for:
+      the digest is non-empty (the job's original defect was being green having compared nothing),
+      it carries no `NOTHING-COMPARED` placeholder, and **it contains no absolute path** — that
+      last one matters because `/home/runner` against `/Users/runner` would make the two platforms
+      disagree forever for a reason having nothing to do with determinism.
+
+      **Two security properties of this task were untested and now are.** Both live in
+      `tests/test_sweep.py`, at artifact level where the consequence is:
+      *an escaping symlink is never read through* — the inventory already recorded and marked one
+      (P9), but nothing asserted the sweep refuses to follow it, and following it would pull
+      content from outside the reviewed tree into a `match_excerpt`, so a review of one directory
+      would quote a file nobody pointed it at; and *ordering does not depend on case folding* —
+      §4 makes case a finding class rather than a portability note, and a case-folding sort would
+      order `Alpha.py`, `Beta.py`, `alpha.py` differently from a byte sort, diverging across
+      platforms for a second reason independent of NFC.
+
+      **The comparison job itself is now defeat-tested (H-8 applied to CI).** It had never been
+      shown to *fail* — it was green having compared nothing once already, so "it would catch a
+      real divergence" was an assumption. Its `byte-identical across platforms` step was replayed
+      verbatim against three digest pairs: identical digests exit 0; one hash differing exits 1
+      and names NFR-3; two placeholders exit 0 while saying they compared nothing. That third
+      state is the one that made this job worthless before, and the first is worth nothing without
+      the second. It matters now rather than later: when the macOS run does happen it will be the
+      only evidence for a property nothing else can check, and a comparison that cannot fail would
+      launder a real divergence into a green tick.
+
+      **Still needs a macOS run**, and the residue is now one sentence: whether APFS actually
+      hands back NFD for a name written NFC, and whether its case folding collapses two inventory
+      entries into one. Both are claims about a filesystem, not about this code, and no Linux
+      machine can settle either.
+
+      **It is also blocked on infrastructure that does not exist.** `git remote -v` is empty —
+      there is no remote, so CI has never run on this repository at all. This is not waiting on
+      approval to push; it is waiting on somewhere to push to.
       *Accept:* the cross-platform hash-comparison job passes on a real macOS runner, having
       compared a non-empty digest.
 
@@ -192,7 +231,28 @@ wrong invalidates every verification recorded above it (D-4).
       *Accept:* §5 says what is excluded and why, and recon of this repository reports a file
       count in the right order of magnitude. Both hold.
 
-- [ ] **TASK-M1-011 — Close the milestone.** Tick `BRIEF_M1.md` §7, move `.claude/MILESTONE` to
+- [x] **TASK-M1-011 — Close the milestone.** Tick `BRIEF_M1.md` §7, move `.claude/MILESTONE` to
       `M2`, and extend the DoD assertion in `attack.py` to cover `BRIEF_M1.md` as well — it
       currently guards the M0 boxes only, which would let the marker move past an unfinished M1.
       *Accept:* `session-start.sh` reports M2; no unticked box in either brief.
+
+      **Two of three done.** §7 is fully ticked — all ten boxes, including the real-target item.
+      The `attack.py` assertion is generalised: it reads the marker, and for every milestone
+      *below* it that has a brief, refuses any unticked box. Keyed off the marker rather than
+      hardcoded to M1, so it keeps working at M3 without anyone remembering to extend it, which is
+      precisely what did not happen the first time. Defeat verified per H-8: with the marker set to
+      `M2` and one §7 box unticked it fails and names the box; both were restored.
+
+      **Closed by owner decision: the marker reads `M2` and the macOS run carries into M2.** §7 is
+      the contract and all ten items are met; TASK-M1-010's remaining half is extra rigour this
+      ledger added, and it is blocked on a git remote that does not exist rather than on work.
+      The reasoning given was that deferring it is a real but *bounded* cost, where the
+      alternative risk is not — see the correction recorded under DOD-ITEM-10.
+
+      **Moving the marker write-locks `src/` and `patterns/`, and that is correct.**
+      `scope-guard.sh` ends in `*) refuse_no_rules`, so with no M2 rules H-6 now refuses every
+      write to the scoped tree. Verified by attempting one: the refusal fires and names H-6. This
+      is the guard saying the project claims to be in a milestone nobody has scoped. **The remedy
+      is to write `BRIEF_M2.md` and give the guard its M2 rules — never to move the marker back to
+      buy write access.** `session-start.sh` reports `M2` and says `BRIEF_M2.md` is absent, which
+      is the honest state between one milestone closing and the next being written.

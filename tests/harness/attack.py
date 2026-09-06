@@ -653,28 +653,74 @@ def test_documentation_architect_still_points_at_stack_md() -> None:
 # ------------------------------------------------------------ current milestone
 
 
-def test_milestone_marker_is_m1() -> None:
-    """M0 is closed, so the marker moves.
+def test_milestone_marker_is_m2() -> None:
+    """M1 is closed, so the marker moves again.
 
     It read M1 while BRIEF_M0.md sat unbuilt beside it, and TASK-011 pulled it
-    back. Leaving it at M0 now is the same defect pointing the other way: the
-    scope guard would refuse every write to src/ and patterns/, which is
-    exactly what M1 is. The marker is the harness's only notion of where the
-    project is, and it is wrong in both directions if nobody moves it.
+    back; leaving it at M0 after M0 closed would have refused every write to
+    src/ and patterns/, which is exactly what M1 was. The marker is the
+    harness's only notion of where the project is and it is wrong in both
+    directions if nobody moves it.
+
+    Moving it to M2 has a consequence worth stating rather than discovering:
+    scope-guard.sh has no M2 rules, so H-6 now refuses every write to src/ and
+    patterns/. That is the guard working, not breaking — it is saying the
+    project claims to be in a milestone nobody has scoped. The remedy is to
+    write BRIEF_M2.md and give the guard its rules, never to move the marker
+    back to buy write access.
     """
-    assert (REPO / ".claude" / "MILESTONE").read_text(encoding="utf-8").strip() == "M1"
+    assert (REPO / ".claude" / "MILESTONE").read_text(encoding="utf-8").strip() == "M2"
+
+
+def _unticked(brief: str) -> list[str]:
+    text = (REPO / brief).read_text(encoding="utf-8")
+    return [line.strip() for line in text.splitlines() if line.strip().startswith("- [ ]")]
 
 
 def test_m0_definition_of_done_is_fully_ticked() -> None:
     """The marker may not move ahead of the work. That is the failure TASK-011
     existed to fix, and moving it on a whose-turn-is-it basis would reproduce
     it a milestone later."""
-    brief = (REPO / "BRIEF_M0.md").read_text(encoding="utf-8")
-    unticked = [line.strip() for line in brief.splitlines() if line.strip().startswith("- [ ]")]
-    assert not unticked, f"M0 closed with open DoD items: {unticked}"
+    assert not _unticked("BRIEF_M0.md"), (
+        f"M0 closed with open DoD items: {_unticked('BRIEF_M0.md')}"
+    )
 
 
-def test_session_start_reports_m1_and_finds_its_brief() -> None:
+def test_the_marker_may_not_pass_a_brief_with_open_boxes() -> None:
+    """The general form of the assertion above, which guarded M0 alone.
+
+    Guarding only the milestone already closed is guarding the one that can no
+    longer regress. The marker reaching `M2` while `BRIEF_M1.md` still has an
+    unticked box is the same defect one milestone later, and it would be
+    invisible: `scope-guard.sh` would simply stop policing the boundary M1 was
+    supposed to hold, and every stage would stay green while doing so.
+
+    Keyed off the marker rather than hardcoded, so it keeps working at M3
+    without anyone remembering to extend it — which is exactly what did not
+    happen the first time.
+    """
+    marker = (REPO / ".claude" / "MILESTONE").read_text(encoding="utf-8").strip()
+    if not (match := re.fullmatch(r"M(\d+)", marker)):
+        raise AssertionError(f"MILESTONE holds {marker!r}, which is not a milestone token")
+
+    for number in range(int(match.group(1))):
+        brief = f"BRIEF_M{number}.md"
+        if (REPO / brief).is_file():
+            assert not _unticked(brief), (
+                f"MILESTONE is {marker} but {brief} still has open DoD items: {_unticked(brief)}"
+            )
+
+
+def test_session_start_reports_the_marker_and_says_when_the_brief_is_absent() -> None:
+    """M1 is closed, so the marker reads M2 and there is no `BRIEF_M2.md` yet.
+
+    The assertion is on the *pairing*, not on a fixed milestone. Reporting a
+    marker with no brief is the honest state at exactly this moment — between
+    one milestone closing and the next being written — and the hook must say so
+    rather than print a scope line naming a file nobody can read. A version of
+    this test that hardcoded `M1` would have had to be edited anyway; one that
+    hardcoded the brief's *presence* would fail here for the wrong reason.
+    """
     proc = subprocess.run(
         [SH, str(HOOKS / "session-start.sh")],
         input="",
@@ -685,9 +731,16 @@ def test_session_start_reports_m1_and_finds_its_brief() -> None:
         check=False,
     )
     assert proc.returncode == PASS_THROUGH
-    assert "Milestone: M1" in proc.stdout
-    assert "BRIEF_M1.md" in proc.stdout
-    assert "No BRIEF_M1.md in the repo" not in proc.stdout
+
+    marker = (REPO / ".claude" / "MILESTONE").read_text(encoding="utf-8").strip()
+    assert f"Milestone: {marker}" in proc.stdout
+
+    brief = f"BRIEF_{marker}.md"
+    if (REPO / brief).is_file():
+        assert brief in proc.stdout
+        assert f"No {brief} in the repo" not in proc.stdout
+    else:
+        assert f"No {brief} in the repo" in proc.stdout
 
 
 def test_m0_permits_the_work_m0_is_defined_to_do() -> None:

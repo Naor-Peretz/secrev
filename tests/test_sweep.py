@@ -203,6 +203,53 @@ def test_nfd_and_nfc_filenames_produce_identical_artifacts(
     ]
 
 
+def test_an_escaping_symlink_is_never_read_through(tmp_path: Path, catalog: Catalog) -> None:
+    """Containment, asserted at the level where it would actually leak.
+
+    `tests/test_determinism.py` asserts the *inventory* records an escaping
+    symlink and marks it. This asserts the sweep never reads through one, which
+    is the half with consequences: following it would pull content from outside
+    the reviewed tree into `hits.jsonl` and into a `match_excerpt`, so a review
+    of one directory would quote a file the reviewer never pointed it at.
+
+    Cross-platform because symlink resolution is where the platforms differ
+    most, and because the failure is silent — a followed link produces a
+    perfectly ordinary-looking candidate.
+    """
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "secret.py").write_text("token = eval(untrusted_blob)\n", encoding="utf-8")
+
+    target = tmp_path / "target"
+    target.mkdir()
+    (target / "ok.py").write_text("value = 1\n", encoding="utf-8")
+    (target / "link.py").symlink_to(outside / "secret.py")
+
+    hits = sweep(target, catalog)
+    assert all("untrusted_blob" not in hit.match_excerpt for hit in hits)
+    assert all(hit.file != "link.py" for hit in hits)
+
+
+def test_ordering_does_not_depend_on_case_folding(tmp_path: Path, catalog: Catalog) -> None:
+    """`STACK.md` §5 sorts on the POSIX string, which is case-sensitive.
+
+    §4 makes case a finding class rather than a portability note: macOS folds
+    case and Linux does not, so `Alpha.py` and `alpha.py` are one file on one
+    platform and two on the other. Nothing here can create the macOS behaviour
+    on ext4 — that is TASK-M1-010's residue — but the ordering rule can be
+    pinned, because a sort that case-folded would put these two in a different
+    order than a byte sort and the artifact would differ across platforms for a
+    second, independent reason.
+    """
+    for name in ("Beta.py", "alpha.py", "Alpha.py"):
+        (tmp_path / name).write_text("result = eval(x)\n", encoding="utf-8")
+
+    files = [hit.file for hit in sweep(tmp_path, catalog)]
+    assert files == sorted(files)
+    # Byte order, not dictionary order: uppercase sorts first.
+    assert files == ["Alpha.py", "Beta.py", "alpha.py"]
+
+
 def test_binary_files_are_not_swept(tmp_path: Path, catalog: Catalog) -> None:
     (tmp_path / "blob.py").write_bytes(b"result = eval(x)\n\x00\x01\x02")
     assert sweep(tmp_path, catalog) == []
