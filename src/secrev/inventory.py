@@ -35,13 +35,84 @@ from __future__ import annotations
 import hashlib
 import os
 import unicodedata
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 # STACK.md §5. Directory names, matched exactly, at any depth.
-EXCLUDED_DIRS = frozenset({".git", "node_modules", ".venv", "venv", "__pycache__", "dist", "build"})
+#
+# Exact names rather than a `.venv*` / `*_cache` pattern: a pattern is a
+# denylist over a shape (P3), while a named directory is auditable and is
+# reported verbatim in `recon.json`. The tool caches and `.venv-audit` were
+# added after the first recon against a real repository reported 1952 files
+# and 703,763 lines for this one — see §5, which carries the reasoning.
+EXCLUDED_DIRS = frozenset(
+    {
+        ".git",
+        "node_modules",
+        ".venv",
+        ".venv-audit",
+        "venv",
+        "__pycache__",
+        "dist",
+        "build",
+        ".mypy_cache",
+        ".ruff_cache",
+        ".pytest_cache",
+        ".tox",
+        ".nox",
+        ".eggs",
+    }
+)
 
 BINARY_SNIFF_BYTES = 8192
+
+# Extension to language. One map, owned here, because two consumers need the
+# identical answer and a second copy would drift: `recon.py` reports
+# `by_language`, and `sweep.py` decides whether a pattern carrying
+# `languages: [python]` applies to a file. If those two disagreed about what
+# "python" means, a rule would be reported as covering a file it never ran
+# against — a coverage claim with nothing behind it, which is the failure this
+# project exists to notice.
+#
+# Extension only, deliberately. Shebang sniffing would make the answer depend
+# on file content and give an extensionless script a language on one machine
+# and not another; `recon.json` is a deterministic artifact (NFR-3), so the
+# classification has to be a pure function of the path.
+LANGUAGE_BY_SUFFIX = {
+    ".py": "python",
+    ".pyi": "python",
+    ".js": "javascript",
+    ".mjs": "javascript",
+    ".cjs": "javascript",
+    ".jsx": "javascript",
+    ".ts": "typescript",
+    ".tsx": "typescript",
+    ".rb": "ruby",
+    ".go": "go",
+    ".rs": "rust",
+    ".sh": "shell",
+    ".bash": "shell",
+    ".zsh": "shell",
+    ".yaml": "yaml",
+    ".yml": "yaml",
+    ".json": "json",
+    ".toml": "toml",
+    ".md": "markdown",
+    ".txt": "text",
+    ".cfg": "ini",
+    ".ini": "ini",
+}
+
+
+def language_of(path: str) -> str | None:
+    """The language for a relative POSIX path, or None when unrecognised.
+
+    None rather than a guess: an unknown extension is a real state, and
+    `recon.json` reports it as one. Inventing "text" for everything would make
+    the coverage-gap line (FR-3.8) claim reach the tool does not have.
+    """
+    suffix = path[path.rfind(".") :].lower() if "." in path.rsplit("/", 1)[-1] else ""
+    return LANGUAGE_BY_SUFFIX.get(suffix)
 
 
 @dataclass(frozen=True, order=True)
@@ -60,6 +131,23 @@ class FileEntry:
     symlink_target: str | None
     escapes_root: bool
     sha256: str | None
+
+    # The name the OS actually reported, native separators, NOT normalised —
+    # the only string that will reopen the file.
+    #
+    # `compare=False` because it is not part of the record. `path` is NFC so
+    # that two machines describe one tree identically; `os_path` is whatever
+    # bytes that machine's filesystem holds, and two trees differing only in
+    # stored normalisation are the same inventory. Including it in equality
+    # would make the record machine-dependent, which is the exact property NFC
+    # exists to remove.
+    #
+    # Reopening by `path` instead is a real bug and was one: on ext4 an NFD
+    # filename simply does not exist under its NFC spelling, so the read raises
+    # — while on APFS, which matches either form, the same code silently works.
+    # A defect that fails only on the platform without the forgiving filesystem
+    # is the kind cross-platform CI is for.
+    os_path: str = field(default="", compare=False)
 
 
 def normalise_path(value: str) -> str:
@@ -111,19 +199,22 @@ def _symlink_entry(root: Path, link: Path) -> FileEntry:
         symlink_target=normalise_path(str(link.readlink())),
         escapes_root=_escapes(root, link),
         sha256=None,
+        os_path=str(link.relative_to(root)),
     )
 
 
 def _file_entry(root: Path, path: Path) -> FileEntry:
     raw = path.read_bytes()
+    relative = str(path.relative_to(root))
     return FileEntry(
-        path=normalise_path(str(path.relative_to(root))),
+        path=normalise_path(relative),
         size=len(raw),
         is_binary=is_binary(raw),
         is_symlink=False,
         symlink_target=None,
         escapes_root=False,
         sha256=content_sha256(raw),
+        os_path=relative,
     )
 
 

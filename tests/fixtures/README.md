@@ -19,6 +19,31 @@ Deliberate shapes, each covering one rule in `STACK.md` §5:
 any depth, so a fixture there would be written, pass locally, and never survive
 a clone — a fixture that exists only on the machine that made it.
 
+## `rules/` — the per-pattern fixture pairs
+
+One directory per catalog rule id, each holding `positive.*` and `negative.*`.
+`tests/test_patterns.py` asserts the pairing in both directions: a pattern with
+no fixture directory fails, and a fixture directory naming no pattern fails
+too, because that is what an id rename leaves behind.
+
+The negative half is the one that earns its place. §9's reason is that a
+pattern without one "will drift into over-matching and nobody will notice", and
+it happened immediately: `net.bind_all` was written as a bare `0\.0\.0\.0`,
+which matches inside `10.0.0.0/8` — a private range, not a bind to every
+interface. The negative fixture caught it before the rule had run against
+anything real.
+
+Named `rules/` rather than `patterns/` deliberately. The harness `Bash` guard
+matches the protected catalog directory with an unanchored glob (`STACK.md` §8
+H-5), so a fixture tree called `patterns` reads to it as the catalog. It fails
+closed, which is the right direction, but a refusal naming the wrong directory
+costs a reader time.
+
+Fixture content is data, not code: `pyproject.toml` exempts `tests/fixtures/**`
+from linting entirely, which is what lets a fixture contain the constructs the
+catalog looks for. Without that exemption the seed patterns could not be tested
+at all, because the linter would reject the only inputs that exercise them.
+
 There is no symlink here on purpose: git stores one as a path, and a checkout
 on a filesystem without symlink support silently materialises a regular file
 containing the target path. The symlink rules are tested against trees built

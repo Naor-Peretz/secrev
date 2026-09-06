@@ -1,0 +1,7 @@
+# Loopback: reachable from this machine, not from the network.
+app.run(host="127.0.0.1", port=8080)
+# A private range that contains the all-interfaces address as a
+# substring, and is not a bind to every interface. This line is the
+# whole reason the rule carries lookaround rather than a literal.
+ALLOWED_CIDR = 10.0.0.0/8
+VERSION = "1.0.0.0-rc1"

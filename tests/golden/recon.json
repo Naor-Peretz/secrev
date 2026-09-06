@@ -1,0 +1,51 @@
+{
+  "target": {
+    "root": "fixtures",
+    "version": "unversioned",
+    "source": "directory",
+    "sha": null
+  },
+  "inventory": {
+    "files_total": 23,
+    "by_language": {
+      "markdown": 1,
+      "python": 13,
+      "text": 8
+    },
+    "loc_total": 183,
+    "binary": [
+      "assets/blob.bin"
+    ],
+    "symlinks": [],
+    "excluded": [
+      ".eggs/",
+      ".git/",
+      ".mypy_cache/",
+      ".nox/",
+      ".pytest_cache/",
+      ".ruff_cache/",
+      ".tox/",
+      ".venv/",
+      ".venv-audit/",
+      "__pycache__/",
+      "build/",
+      "dist/",
+      "node_modules/",
+      "venv/"
+    ]
+  },
+  "entrypoints": {
+    "declared": [],
+    "workflows": []
+  },
+  "security_process": {
+    "security_md": false,
+    "dependabot": false,
+    "sast_config": false,
+    "test_files": 0
+  },
+  "coverage_gaps": [
+    "structural analysis not implemented (M4); no coverage for: markdown, python, text",
+    "surface enumeration not implemented (M2); entry points are declared metadata only"
+  ]
+}

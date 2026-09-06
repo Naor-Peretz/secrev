@@ -73,10 +73,12 @@ ALIASES = {
     "the unlicense (unlicense)": "Unlicense",
 }
 
-# The project itself. An editable install reports it with no licence metadata,
-# and it appears twice. It is not a dependency and its terms are not this
-# check's business — but silence about it would be the wrong kind, so it is
-# named in the output.
+# The project itself, which an editable install reports twice. It is skipped
+# because this allowlist governs what may be *depended on*, and secrev's own
+# terms are a different question with a different answer (STACK.md §10:
+# PolyForm Noncommercial 1.0.0, which is deliberately not in ALLOWED — nothing
+# here may depend on a noncommercial package). Skipped, but named in the
+# output: silence about it would be the wrong kind.
 SELF = "secrev"
 
 
@@ -157,7 +159,8 @@ def main() -> int:
         return 1
 
     print(
-        f"{checked} dependencies, every licence allowed ({SELF} itself carries none and is skipped)"
+        f"{checked} dependencies, every licence allowed "
+        f"({SELF} skipped — its own terms are STACK.md §10)"
     )
     return 0
 
