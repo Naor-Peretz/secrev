@@ -237,7 +237,11 @@ was decided in the third round above; Q9 was fixed in `CLAUDE.md` on 2026-09-15.
       *Accept:* `sweep` then `surfaces` and the reverse both yield both blocks; the pattern block is
       byte-identical to today's golden.
 
-- [ ] **TASK-M2-008 — `coverage_gaps`.** Names what is still unreachable: HTTP routes, IPC
+- [x] **TASK-M2-008 — `coverage_gaps`.** *Done:* the line "surface enumeration not implemented"
+      is gone; one line names the code languages present that no kind reads ("read in Python
+      only; not read for: …"), and one line per limit below. Fixed text in `recon.py`, not derived
+      from the kinds, because recon is a peer of the surface source and does not import it. Names
+      what is still unreachable: HTTP routes, IPC
       handlers, the CLI parser, a package with no `__all__`, the names of an `__all__` longer
       than the `decl-20` window (a multi-line `__all__` itself enters, on its first line, with
       its names in the window), `__all__` built dynamically, non-Python surfaces, and any declaration
