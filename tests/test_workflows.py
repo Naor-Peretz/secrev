@@ -1,10 +1,11 @@
-"""The CI workflows, checked here because nothing else has ever checked them.
+"""The CI workflows, checked here because GitHub only checks them after a push.
 
-There is no git remote, so these files have never run. Everything they assert
-about this project is therefore untested, and so is the project's claim about
-*them*: `CLAUDE.md` says "Every action is pinned to a commit SHA, never a tag"
-and until now nothing enforced it. A supply-chain control that exists only as a
-sentence in a document is the shape this repository distrusts everywhere else.
+These assertions were written while the repository had no remote and the
+workflows had never run, so the project's claim about *them* was enforced by
+nothing: `CLAUDE.md` says "Every action is pinned to a commit SHA, never a tag".
+A supply-chain control that exists only as a sentence in a document is the
+shape this repository distrusts everywhere else. It still applies now that CI
+runs — a green run proves the workflows work, not that they are pinned.
 
 That claim is the substance here. `@v4` resolves to whatever the maintainer
 last pointed it at — a remote code reference, with access to the checkout, that
@@ -12,8 +13,9 @@ can change with no diff in this repository to explain it. A SHA cannot.
 
 The rest is the cheap half: YAML that parses, `needs:` that resolve, and
 `run:` steps naming scripts that exist. None of it is clever, and all of it is
-the class of defect that otherwise surfaces as a red first push for a silly
-reason, on the day someone finally adds a remote.
+the class of defect that otherwise surfaces as a red push for a silly reason.
+None of it could have caught what the first real CI run did find — four
+defects in what the steps *do*, which only running them shows.
 """
 
 from __future__ import annotations

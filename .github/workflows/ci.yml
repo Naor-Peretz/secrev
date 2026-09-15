@@ -41,8 +41,9 @@ concurrency:
 jobs:
   gate:
     # Both supported platforms, both supported interpreters (STACK.md §1, §4).
-    # macOS is not optional here: it is where APFS stores filenames as NFD and
-    # where BSD tools diverge, which is exactly what NFR-3 is exposed to.
+    # macOS is not optional here: APFS is case-insensitive on lookup and keeps
+    # whatever Unicode normalisation a name arrived in (it does not decompose —
+    # STACK.md §5), and BSD tools diverge. Both are what NFR-3 is exposed to.
     name: gate (${{ matrix.os }}, py${{ matrix.python }})
     strategy:
       fail-fast: false
@@ -101,7 +102,11 @@ jobs:
               exit 2 ;;
           esac
           URL="https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}/gitleaks_${VERSION}_${ASSET}.tar.gz"
-          curl -fsSL --retry 3 -o gitleaks.tgz "$URL"
+          # --retry-all-errors: on 2026-09-15 this download got HTTP 500 and
+          # curl exited 56 in 0.4s without retrying — `--retry` alone retries
+          # only what curl classes as transient. Retrying cannot weaken the
+          # step: the checksum below still decides whether the file is used.
+          curl -fsSL --retry 3 --retry-all-errors -o gitleaks.tgz "$URL"
           printf '%s  gitleaks.tgz\n' "$SHA" | shasum -a 256 -c -
           tar -xzf gitleaks.tgz gitleaks
           rm -f gitleaks.tgz
@@ -115,7 +120,7 @@ jobs:
   install-paths:
     # STACK.md §3 names stdlib venv + pip as the default and demotes uv, on the
     # grounds that uv's advertised install is `curl … | sh` — `net.fetch_exec`,
-    # one of the eight seed patterns this project ships. So CI verifies the two
+    # one of the patterns this project ships. So CI verifies the two
     # documented pip routes and does not install uv at all: pulling in
     # astral-sh/setup-uv to exercise a path the document explicitly does not
     # depend on would add a supply-chain surface to make a point the spec
@@ -333,8 +338,9 @@ jobs:
                      digests/digest-macos-latest/digest.txt; then
             echo "::error::Linux and macOS produced different output for the same input."
             echo "::error::This is NFR-3. Usual cause: a path was hashed before NFC"
-            echo "::error::normalisation (APFS stores NFD), or traversal order leaked"
-            echo "::error::into the output instead of a sorted() list."
+            echo "::error::normalisation (decomposed names exist and travel; APFS keeps"
+            echo "::error::them as given), or traversal order leaked into the output"
+            echo "::error::instead of a sorted() list."
             exit 1
           fi
           echo "Linux and macOS agree."
