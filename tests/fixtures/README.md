@@ -20,6 +20,7 @@ Deliberate shapes, each covering one rule in `STACK.md` §5:
 | `mcp/.mcp.json` | `surface.mcp_server`: a local server's `command` and a remote server's `url` are two records; an `--command-…` argument and a `COMMAND_…` env key are not declarations |
 | `plugin/hooks/hooks.json` | `surface.hook_binding`: two event bindings are two records; the lower-case `"hooks": [` and the capitalised value `"matcher": "Bash"` are not bindings. A plugin's hooks rather than the agent config directory's settings file, because a fixture under that directory cannot be staged (the guard protects its name at any depth); `tests/test_surfaces.py` builds those trees at runtime. The path is not spelled here: this README is part of the fixture tree, and `fs.agent_config_write` matches the path wherever it appears |
 | `cli/pyproject.toml` | `surface.cli_command`: one `[project.scripts]` entry is one record; `build-backend`, the version specifier and the URL are not. In a subdirectory, not at the root, because `recon.py` reads the root's `pyproject.toml` as the tree's own declared entry points |
+| `exports/__init__.py` | `surface.public_export`: an `__all__` written over several lines is one record, on its first line, with the names in its window; `list(__all__)` reads the name and is not a declaration |
 
 Never name a directory here `surfaces`, `patterns`, `src` or `scripts`: those are
 protected names (`STACK.md` §8 H-4), and the Bash guard and scope guard match

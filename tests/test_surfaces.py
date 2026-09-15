@@ -232,6 +232,11 @@ CASES: dict[str, tuple[str, str, str]] = {
         '[build-system]\nbuild-backend = "setuptools.build_meta"\n'
         '[project]\nrequires-python = ">=3.11"\nhomepage = "https://example.invalid"\n',
     ),
+    "surface.public_export": (
+        "__init__.py",
+        '__all__ = ["render"]\n',
+        "def names():\n    return list(__all__)\n",
+    ),
 }
 
 
@@ -360,6 +365,37 @@ def test_a_script_shape_outside_pyproject_is_not_a_command(tmp_path: Path, kinds
     """Scoped by file: the same shape in another TOML file declares nothing
     a package installs."""
     assert surfaces(skill_tree(tmp_path, "config.toml", 'notes = "notes.cli:main"\n'), kinds) == []
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        '__all__ = ["render"]',
+        "__all__ = (",
+        '__all__: list[str] = ["render"]',
+        '__all__ += ["parse"]',
+        '__all__.extend(["parse"])',
+        '__all__.append("parse")',
+        '    __all__ = ["inside_an_if_block"]',
+    ],
+)
+def test_every_public_export_declaration(tmp_path: Path, kinds: Kinds, line: str) -> None:
+    [hit] = surfaces(skill_tree(tmp_path, "pkg/__init__.py", f"{line}\n"), kinds)
+    assert hit.rule_id == "surface.public_export"
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "names = list(__all__)",
+        "exported = module.__all__",
+        "if __all__ == expected:",
+        "self.__all__ = []",
+        '# __all__ = ["commented_out"]',
+    ],
+)
+def test_what_is_not_a_public_export(tmp_path: Path, kinds: Kinds, line: str) -> None:
+    assert surfaces(skill_tree(tmp_path, "pkg/__init__.py", f"{line}\n"), kinds) == []
 
 
 def test_surface_and_pattern_rule_ids_are_disjoint(kinds: Kinds, catalog: Catalog) -> None:

@@ -154,7 +154,7 @@ was decided in the third round above; Q9 was fixed in `CLAUDE.md` on 2026-09-15.
       happens to match cannot make it pass by coincidence of vocabulary.
       *Accept:* AC-9a, TASK-M2-003 green, `tests/golden/surfaces.jsonl` byte for byte.
 
-- [ ] **TASK-M2-006 — The remaining kinds, one per commit.** Each with a negative that separates an
+- [x] **TASK-M2-006 — The remaining kinds, one per commit.** Each with a negative that separates an
       entry point from a call site. A package with no `__all__` is a recorded gap.
       `tests/test_surfaces.py` carries one row per shipped kind — a declaration it must enter and
       a near miss it must not — and asserts the rows and the shipped kinds match in both
@@ -196,7 +196,14 @@ was decided in the third round above; Q9 was fixed in `CLAUDE.md` on 2026-09-15.
             it. `build-backend`, version specifiers and URLs do not match. Fixture
             `cli/pyproject.toml`, in a subdirectory so `recon.py` does not read it as the tree's
             own entry points (`entrypoints.declared` confirmed unchanged).
-      - [ ] `surface.public_export`
+      - [x] `surface.public_export` (kinds `2026.09.7`): an assignment to `__all__` — plain,
+            annotated, `+=`, `.extend(`, `.append(` — indentation allowed, since an `__all__` in an
+            `if` block is still the module's. A multi-line `__all__` enters on its first line with
+            its names in the `decl-20` window, so Q3's "multi-line `__all__`" gap is narrower than
+            planned; TASK-M2-008 now names what is really missed. Reading, comparing,
+            `self.__all__` and a comment are not entered. Fixture `exports/__init__.py`.
+      Every kind carries a row in `CASES`, and every kind was defeat-tested (H-8): its
+      declaration loosened, its near miss and the golden failed, restored.
 
 - [ ] **TASK-M2-007 — `secrev surfaces` and the two-block ledger (Q1).** No catalog dependency;
       `run.json` names the right command (it is hard-coded `"recon"` today, `cli.py:132`).
@@ -204,7 +211,9 @@ was decided in the third round above; Q9 was fixed in `CLAUDE.md` on 2026-09-15.
       byte-identical to today's golden.
 
 - [ ] **TASK-M2-008 — `coverage_gaps`.** Names what is still unreachable: HTTP routes, IPC
-      handlers, the CLI parser, multi-line `__all__`, non-Python surfaces, and any declaration
+      handlers, the CLI parser, a package with no `__all__`, the names of an `__all__` longer
+      than the `decl-20` window (a multi-line `__all__` itself enters, on its first line, with
+      its names in the window), `__all__` built dynamically, non-Python surfaces, and any declaration
       split across lines for any kind — a decorator or a key wrapped onto a second line is missed
       by a line-oriented kind (Q3) — and the reverse, several declarations on one line (minified
       JSON holding several MCP servers) entering as one record. Hooks declared outside
