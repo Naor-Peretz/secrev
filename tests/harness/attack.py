@@ -235,6 +235,25 @@ def test_determinism_guard_silent_elsewhere() -> None:
     assert rc == PASS_THROUGH and not out.strip(), "cli.py owns no NFR-3 rule"
 
 
+def test_determinism_guard_speaks_on_surfaces_before_it_exists() -> None:
+    """TASK-M2-001. `surfaces.py` derives ids into the same ledger as `sweep.py`,
+    so it owns an NFR-3 rule from its first line. The guard has to be watching
+    before that line is written: a check that starts after the first write has
+    already missed the one that decided the ids.
+    """
+    rc, out, _ = run_hook(
+        "determinism-guard.sh", write_payload(str(REPO / "src" / "secrev" / "surfaces.py"), "")
+    )
+    assert rc == PASS_THROUGH, (
+        f"got rc={rc}. rc=2 means the determinism check it re-ran failed — read the "
+        f"determinism stage of the gate, not this assertion."
+    )
+    assert "surfaces.py" in out and "NFR-3" in out, (
+        "touching surfaces.py must restate the determinism rules — is_nfr3_path "
+        "in .claude/hooks/lib/paths.sh does not name it"
+    )
+
+
 # ----------------------------------------------------------------- plan-review
 
 
@@ -925,6 +944,11 @@ def test_relative_path_reaches_scope_guard() -> None:
 def test_relative_path_reaches_determinism_guard() -> None:
     rc, out, _ = run_hook("determinism-guard.sh", write_payload("src/secrev/ids.py", ""))
     assert rc == PASS_THROUGH and "NFR-3" in out
+
+
+def test_relative_path_reaches_determinism_guard_for_surfaces() -> None:
+    rc, out, _ = run_hook("determinism-guard.sh", write_payload("src/secrev/surfaces.py", ""))
+    assert rc == PASS_THROUGH and "surfaces.py" in out and "NFR-3" in out
 
 
 def test_every_anchored_glob_has_a_relative_sibling() -> None:

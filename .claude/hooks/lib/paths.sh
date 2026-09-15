@@ -48,15 +48,20 @@ is_scoped_path() {
     esac
 }
 
-# The four files that own an NFR-3 rule. Here rather than inline in
+# The files that own an NFR-3 rule. Here rather than inline in
 # determinism-guard.sh for the same reason as the two predicates above: one
 # definition, so correcting the glob form is one edit and not a hunt (H-7).
+#
+# surfaces.py is here before it exists (TASK-M2-001). It is a third consumer of
+# the walk and a third generator of ids in hits.jsonl, and a guard that starts
+# watching after the first write has already missed the write that matters.
 is_nfr3_path() {
     case "$1" in
       src/secrev/ids.py|*/src/secrev/ids.py) return 0 ;;
       src/secrev/inventory.py|*/src/secrev/inventory.py) return 0 ;;
       src/secrev/sweep.py|*/src/secrev/sweep.py) return 0 ;;
       src/secrev/recon.py|*/src/secrev/recon.py) return 0 ;;
+      src/secrev/surfaces.py|*/src/secrev/surfaces.py) return 0 ;;
       *) return 1 ;;
     esac
 }
