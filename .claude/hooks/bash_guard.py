@@ -70,7 +70,10 @@ REFUSE = 2
 # own -- the guards covered the tool, and the tool's guards were not covered.
 # That is composition risk in the sense of FR-0.8, found in the reviewer
 # rather than in something reviewed.
-PROTECTED = ("src", "patterns", "scripts", r"\.claude")
+# `surfaces` joined in M2 (TASKS_M2.md C-1): the surface kinds are tool input
+# exactly as the catalog is, and they decide which entry points enter the
+# ledger at all. Protected in the change that created the directory.
+PROTECTED = ("src", "patterns", "surfaces", "scripts", r"\.claude")
 # The boundary is "not a path-name character" rather than "/ or start", so a
 # path inside a quoted argument still counts: shlex strips the quotes and
 # leaves `open('scripts/check.sh'` as one token. This widens the trigger; it
@@ -222,7 +225,7 @@ def main() -> int:
     if code == PERMIT:
         return PERMIT
     sys.stderr.write(
-        "BLOCKED — this command touches src/, patterns/ or scripts/ and "
+        "BLOCKED — this command touches src/, patterns/, surfaces/ or scripts/ and "
         f"{reason}.\n\n"
         "Guards hook Write|Edit|MultiEdit, so a write through Bash is invisible "
         "to them (BRIEF_M0.md §1). Use the Write or Edit tool for this change so "

@@ -8,7 +8,7 @@
 #   is_self_application_path — Python under src/ and scripts/. What §2.1 forbids
 #   is a construct in code the tool ships or runs.
 #
-#   is_scoped_path — anything under src/, patterns/ and scripts/. Milestone
+#   is_scoped_path — anything under src/, patterns/, surfaces/ and scripts/. Milestone
 #   scope is about what is being built, whatever the file format.
 #
 # patterns/ is in the second and absent from the first, and that is the whole
@@ -44,6 +44,9 @@ is_self_application_path() {
 is_scoped_path() {
     case "$1" in
       src/secrev/*|*/src/secrev/*|patterns/*|*/patterns/*|scripts/*|*/scripts/*) return 0 ;;
+      # The surface kinds (M2, TASKS_M2.md C-1): data like the catalog, and
+      # scoped like it — self-application does not apply, milestone scope does.
+      surfaces/*|*/surfaces/*) return 0 ;;
       *) return 1 ;;
     esac
 }

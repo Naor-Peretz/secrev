@@ -348,6 +348,24 @@ def test_bash_refuses_tee() -> None:
     assert bash("echo x | tee src/secrev/cli.py") == BLOCK
 
 
+def test_bash_refuses_writing_the_surface_kinds() -> None:
+    """H-4 as amended in M2. The kinds decide which entry points enter the
+    ledger at all, so an unreviewed edit narrows the review with nothing
+    reporting it — the same reason `patterns/` is protected."""
+    assert bash("echo x | tee surfaces/_surfaces.yaml") == BLOCK
+
+
+def test_bash_permits_reading_the_surface_kinds() -> None:
+    assert bash("cat surfaces/_surfaces.yaml") == PASS_THROUGH
+
+
+def test_bash_does_not_protect_a_file_merely_named_surfaces() -> None:
+    """The negative. `surfaces` is protected as a directory, not as a word:
+    `src/secrev/surfaces.py` must not read as the data directory, and neither
+    must an unrelated `surfaces.txt`."""
+    assert bash("echo x > build/surfaces.txt") == PASS_THROUGH
+
+
 def test_bash_refuses_python_dash_c() -> None:
     assert bash("python3 -c \"open('scripts/check.sh','w')\"") == BLOCK
 
@@ -1070,6 +1088,19 @@ def test_scope_guard_covers_scripts() -> None:
 def test_scope_guard_covers_patterns() -> None:
     rc, out = scope_at("M1", "patterns/_base.yaml", "multiline: true\n")
     assert rc == PASS_THROUGH and asks(out), "patterns/ is the tool's input"
+
+
+def test_scope_guard_covers_surfaces() -> None:
+    """surfaces/ is in the scoped tree: a milestone with no business there
+    refuses it, as M0 refuses patterns/."""
+    rc, _ = scope_at("M0", "surfaces/_surfaces.yaml", 'version: "2026.09.1"\n')
+    assert rc == BLOCK, f"surfaces/ is outside M0's remit, got rc={rc}"
+
+
+def test_m2_permits_the_surface_kinds() -> None:
+    """...and the milestone that owns the surface source may write its data."""
+    rc, out = scope_at("M2", "surfaces/_surfaces.yaml", 'version: "2026.09.1"\n')
+    assert rc == PASS_THROUGH and not asks(out), "surfaces/ is M2's remit"
 
 
 def test_protected_paths_have_one_definition() -> None:

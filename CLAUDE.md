@@ -97,7 +97,7 @@ directory index orders by a hash of the name; it is kept as a cross-filesystem c
 labelled as not being the control.
 
 **The Bash bypass is closed.** `bash-guard.sh` is wired as a `PreToolUse` matcher on `Bash`, and a
-write to `src/`, `patterns/`, `scripts/` or `.claude/` through a shell is refused.
+write to `src/`, `patterns/`, `surfaces/`, `scripts/` or `.claude/` through a shell is refused.
 
 What it permits beside a protected path: the read-only set (`cat`, `grep`, `head`, `tail`, `wc`,
 `ls`, `rg`, `git diff`, `git log`), and running an existing script — `sh <x.sh>`, `python3 <x.py>`
@@ -273,7 +273,7 @@ them, no tool that can write to a protected path is unwatched (H-3).
 
 | Hook | Event | Effect |
 |---|---|---|
-| `bash-guard.sh` | PreToolUse Bash | **Refuses** a Bash command touching `src/`, `patterns/`, `scripts/` or `.claude/` unless it reads (allowlisted command) or runs an existing script (`sh <x.sh>`, `python3 <x.py>`, no flags). Every shell operator refuses — chaining carries a write past the command that was checked |
+| `bash-guard.sh` | PreToolUse Bash | **Refuses** a Bash command touching `src/`, `patterns/`, `surfaces/`, `scripts/` or `.claude/` unless it reads (allowlisted command) or runs an existing script (`sh <x.sh>`, `python3 <x.py>`, no flags). Every shell operator refuses — chaining carries a write past the command that was checked |
 | `self-application-guard.sh` | PreToolUse Write/Edit | **Blocks** a write that would put `eval`, `exec`, `pickle`, `shell=True`, `yaml.load`, `Loader=`, or a network client into Python under `src/` or `scripts/` |
 | `scope-guard.sh` | PreToolUse Write/Edit | **Asks** when a write reaches past the milestone in `.claude/MILESTONE`; **refuses** when that milestone has no rules (H-6) |
 | `spec-guard.sh` | PreToolUse Write/Edit | **Asks** before any edit to the PRD, `STACK.md`, or a brief, restating precedence |
@@ -430,9 +430,11 @@ stays there.
   `python -c`, `dd` is not a closeable list. Reaching for another verb to block means the polarity
   is wrong — which is P3 applied to our own tooling, and this project's founding finding was a
   denylist bypass.
-- **H-4** Protected paths are `src/`, `patterns/`, `scripts/` and `.claude/` — `patterns/`
-  especially, since it is the tool's input and an unreviewed rule is a check that silently
-  disappears. `.claude/` is protected against `Bash` only.
+- **H-4** Protected paths are `src/`, `patterns/`, `surfaces/`, `scripts/` and `.claude/` —
+  `patterns/` and `surfaces/` especially, since they are the tool's input and an unreviewed rule
+  or surface kind is a check that silently disappears (a kind decides which entry points enter the
+  ledger at all). `surfaces/` joined in M2, in the change that created it. `.claude/` is protected
+  against `Bash` only.
 - **H-5** Path globs carry no leading anchor: `src/secrev/*.py|*/src/secrev/*.py`, not
   `*/src/secrev/*.py` alone, which relies on the client always sending absolute paths. The earlier
   form `*src/secrev/*.py` over-matched — `scripts/` caught `transcripts/`.

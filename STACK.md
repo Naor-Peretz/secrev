@@ -343,9 +343,13 @@ It is in scope for AC-10, and the rules below are binding on it.
 - **H-3 — Guards cover every tool that can write, not every tool that usually writes.**
   `Write|Edit|MultiEdit` alone leaves `Bash` as an open path. Under P7 a write is an execution
   primitive regardless of which tool performed it.
-- **H-4 — Protected paths are `src/`, `patterns/`, `scripts/`, and `.claude/`.** `patterns/`
-  especially: it is the tool's input, and a rule added without review is a check that silently
-  disappears. `.claude/` is protected against **`Bash` only** — writes through `Write`/`Edit` stay
+- **H-4 — Protected paths are `src/`, `patterns/`, `surfaces/`, `scripts/`, and `.claude/`.**
+  `patterns/` and `surfaces/` especially: they are the tool's input. The catalog decides which
+  questions are asked; the surface kinds decide which entry points enter the ledger at all (P11,
+  NFR-6), so a kind edited without review narrows the review's scope with nothing reporting it. A
+  rule or kind added without review is a check that silently disappears. `surfaces/` joined in M2
+  (`TASKS_M2.md`, C-1), in the same change that created it — protecting an input after it exists
+  leaves a window in which it is not. `.claude/` is protected against **`Bash` only** — writes through `Write`/`Edit` stay
   permitted there, so repairing the harness remains possible and remains visible, while the path
   that disables a guard without anything objecting closes. Nothing guarded the harness itself: a
   `sed -i` on `bash-guard.sh` removed the control, and no component was defective on its own. That

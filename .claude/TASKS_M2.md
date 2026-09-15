@@ -67,6 +67,16 @@ manifest-declared per `STACK.md` §7, or the Python decorator), C-4 (`BRIEF_M2.m
       determinism stage green, 99 guard assertions; removing the new `paths.sh` line fails
       exactly the new assertion (H-8), then restored.
 
+- [x] **TASK-M2-002b — `surfaces/` is protected before it exists.** `STACK.md` §8 H-4 amended
+      (through spec-guard); `bash_guard.py` `PROTECTED` += `surfaces`; `is_scoped_path` +=
+      `surfaces/*|*/surfaces/*`; `scope-guard.sh`'s message and M2 comment; `CLAUDE.md`'s three
+      restatements of the protected set. Five assertions: Bash refuses a write and permits a read;
+      a file merely *named* `surfaces.txt` is not protected (the directory is, not the word — so
+      `src/secrev/surfaces.py` does not read as the data directory); M0 refuses `surfaces/`, M2
+      permits it.
+      *Accept:* 104 guard assertions; removing both additions fails exactly the two refusal
+      assertions and leaves the three permit/negative ones passing (H-8), then restored.
+
 - [ ] **TASK-M2-002 — Surface-kind data and its validator.** A data file outside `patterns/` (C-1),
       strict validation, exit 2 naming the kind. Kinds carry `id` (`surface.<kind>`), `layer`,
       `precision`, `question`. The loader is in the scoped tree; the data file's protection is the
