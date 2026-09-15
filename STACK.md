@@ -255,6 +255,15 @@ unachievable without fixing the following explicitly:
   migration. What changes is that the tool detects it, rather than it depending on someone reading
   this paragraph in six months.
 
+  **M2 adds `decl-20`** for surface candidates: the same ±20 lines, anchored on the line that
+  declares the entry point. PRD FR-4.1 says surface candidates are "traced rather than windowed" —
+  a surface is resolved by an account of what the entry point reaches, not by reading a span — so
+  the span is not what anyone judges. It still has to exist, because the id derives from
+  `window_sha256` and an entry point whose declaration changes must become a new candidate. The
+  distinct name is what keeps that honest: two specs are never comparable, so a surface window
+  cannot be mistaken for a pattern window that happens to cover the same lines (`TASKS_M2.md`,
+  C-2).
+
 - **Stable IDs** — candidate `id` is derived from
   **`(relative_path, rule_id, window_sha256, ordinal)`**, not from a counter over traversal, and
   the `ordinal` ranges over *byte-identical windows only* — never over every match of the rule in

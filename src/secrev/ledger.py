@@ -36,6 +36,14 @@ PRECISIONS = frozenset({"high", "medium", "low"})
 WINDOW_RADIUS = 20
 WINDOW_SPEC = "lines-20"
 
+# The surface source's window: the same ±20 lines, anchored on the declaration
+# line, under its own name (TASKS_M2.md C-2, STACK.md §5). PRD FR-4.1 says
+# surfaces are "traced rather than windowed", so a surface verification is not
+# a judgment of this span; the name says what the span is anchored on, and two
+# specs are never comparable, so a surface window can never be read as a
+# pattern window that happens to cover the same lines.
+DECL_WINDOW_SPEC = "decl-20"
+
 # §5: "the matched span with a small margin, truncated to 200 chars".
 EXCERPT_MARGIN = 24
 EXCERPT_LIMIT = 200

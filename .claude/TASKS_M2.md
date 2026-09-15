@@ -100,7 +100,11 @@ manifest-declared per `STACK.md` §7, or the Python decorator), C-4 (`BRIEF_M2.m
       *Accept:* a malformed kind exits 2 and names it; a kind id equal to a catalog pattern id is
       refused.
 
-- [ ] **TASK-M2-003 — `tests/test_surfaces.py`, written red, kept local.** Two runs identical; ids
+- [x] **TASK-M2-003 — `tests/test_surfaces.py`, written red, kept local.** *Done:* red on
+      `ModuleNotFoundError` before the module; 14 tests green after. H-8 on the test: with the
+      within-file sort removed exactly the ordering test failed — `(2, 'surface.alpha')` first — and
+      the other 13, two-run identity and the golden included, stayed green, which is the reason
+      the order needs its own assertion. Two runs identical; ids
       stable when an unrelated file is added; NFD and NFC spellings give one id; no surface id is a
       pattern id. Red tests stay on the machine until the module exists — pre-push runs pytest.
       The H-8 control is the **within-file ordering**, which `surfaces.py` owns; files arrive
@@ -108,12 +112,17 @@ manifest-declared per `STACK.md` §7, or the Python decorator), C-4 (`BRIEF_M2.m
       why), so the assertion must see the order itself.
       *Accept:* red before the module, green after, red again with the within-file sort removed.
 
-- [ ] **TASK-M2-004 — The fixture.** An entry point no pattern matches (AC-9a) and one example per
+- [x] **TASK-M2-004 — The fixture.** *Done:* `tests/fixtures/skills/quiet/SKILL.md`. The sweep
+      golden passed unchanged against the new tree (no pattern matches it); the recon golden
+      changed in exactly three lines — `files_total` 23→24, `markdown` 1→2, `loc_total` 184→202 —
+      diffed in the scratchpad before being copied in. An entry point no pattern matches (AC-9a) and one example per
       kind, never under `.claude/`, `src/` or `scripts/` (`bash_guard.py:78`).
       *Accept:* `tests/golden/hits.jsonl` unchanged; `recon.json` changes only in counts,
       `by_language` and `entrypoints.declared`.
 
-- [ ] **TASK-M2-005 — `surfaces.py`, first kind.** Records in `Hit` field order, ids via
+- [x] **TASK-M2-005 — `surfaces.py`, first kind.** *Done:* `surface.skill_activation`; AC-9a
+      asserted both halves; `tests/golden/surfaces.jsonl` is one record; `decl-20` in `ledger.py`
+      and amended into `STACK.md` §5 through spec-guard. Records in `Hit` field order, ids via
       `ids.assign`, `window_spec: "decl-20"`. The AC-9a test asserts **both halves** — `sweep`
       yields nothing for the file and `surfaces` yields a candidate — so a later pattern that
       happens to match cannot make it pass by coincidence of vocabulary.

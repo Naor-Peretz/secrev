@@ -14,6 +14,11 @@ Deliberate shapes, each covering one rule in `STACK.md` §5:
 | `pkg/deep/nested.py` | Nesting, so traversal order is not trivially sorted |
 | `assets/blob.bin` | A NUL byte in the first 8 KiB — binary by content, not extension |
 | `node_modules/` | An excluded directory that is present, so the exclusion is recorded |
+| `skills/quiet/SKILL.md` | AC-9a: an entry point **no pattern matches**. The surface source must still enter it (P11); `tests/test_surfaces.py` asserts both halves, so a pattern that later matches it by coincidence turns the test red rather than passing it |
+
+Never name a directory here `surfaces`, `patterns`, `src` or `scripts`: those are
+protected names (`STACK.md` §8 H-4), and the Bash guard and scope guard match
+them at any depth, so a fixture there cannot be staged from a shell.
 
 `node_modules/` rather than `.venv/`: the root `.gitignore` ignores `.venv/` at
 any depth, so a fixture there would be written, pass locally, and never survive
