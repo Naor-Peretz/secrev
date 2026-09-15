@@ -61,6 +61,15 @@ and `git log origin/m2/...` spelled out. Options for the owner: narrow the guard
 must be followed by `/` (a directory) rather than also accepting end-of-token, or accept it and
 avoid spelling the branch. Not changed yet — a guard edit gets its own H-8 defeat test.
 
+**Open finding, from the TASK-M2-007 review — for the owner.** `sweep.py` and `surfaces.py`
+split file content with `str.splitlines()`, which also breaks on `\v`, `\f` (form feed, `^L`,
+which Python source does contain), `\x1c`–`\x1e`, U+0085, U+2028 and U+2029. Deterministic, so
+NFR-3 holds — but every line number and window after such a character disagrees with what an
+editor counting `\n` shows, and `STACK.md` §5 says line numbers are reported against the
+original. Not fixed: it is M1 code and changes candidates' `line` and window, so a verification
+made against a shifted window would be invalidated. The same defect in `cli.merge_ledger` was fixed
+in TASK-M2-007, where it could lock the workspace ledger.
+
 **Carried to M4, not a surface (owner, 2026-09-15).** The result of an outbound call —
 `res = session.call_tool(...)` — is untrusted input arriving, but the reviewed code chose to make
 the call and when; nobody outside can initiate it, so it is not an entry point and no surface kind
@@ -213,8 +222,16 @@ was decided in the third round above; Q9 was fixed in `CLAUDE.md` on 2026-09-15.
       on disk (the id derives from it), leave the declaration case-sensitive, and leave the shared
       `glob_to_regex` alone — it also serves `paths_exclude`, where ignoring case fails open.
 
-- [ ] **TASK-M2-007 — `secrev surfaces` and the two-block ledger (Q1).** No catalog dependency;
-      `run.json` names the right command (it is hard-coded `"recon"` today, `cli.py:132`).
+- [x] **TASK-M2-007 — `secrev surfaces` and the two-block ledger (Q1).** No catalog dependency;
+      `run.json` names the right command (it is hard-coded `"recon"` today, `cli.py:133`).
+      Owner decisions, 2026-09-15:
+      - **stdout is the run's own block only.** The workspace `hits.jsonl` is where the two
+        blocks are joined; a pipe's output depends only on its inputs, so `secrev surfaces t > x`
+        is the same every time whatever ran earlier in the workspace. "The file and stdout agree"
+        becomes "stdout equals this source's block of the file".
+      - **`run.json` holds one entry per command** (`recon`, `sweep`, `surfaces`), each replaced
+        only by its own command, so the catalog version behind the pattern block survives a
+        later `surfaces` run and no command has to load another's input.
       *Accept:* `sweep` then `surfaces` and the reverse both yield both blocks; the pattern block is
       byte-identical to today's golden.
 

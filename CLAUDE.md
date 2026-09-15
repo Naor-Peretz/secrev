@@ -390,7 +390,7 @@ rendering while any hit is `unresolved` (P4, AC-2).
 ```
 secrev recon     <target>    # → recon.json  (M1, implemented)
 secrev sweep     <target>    # → hits.jsonl  (M1, implemented)
-secrev surfaces  <target>    # → hits.jsonl  (M2, not yet a subcommand — TASK-M2-007)
+secrev surfaces  <target>    # → hits.jsonl  (M2, implemented; its own block of the ledger)
 secrev structure <target>    # → hits.jsonl  (M4)
 secrev verify    <workspace> # gate          (M7)
 secrev report    <workspace> # → report.md   (M9)
