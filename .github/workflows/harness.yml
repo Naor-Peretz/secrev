@@ -83,8 +83,8 @@ jobs:
           .venv/bin/pip install -q --disable-pip-version-check -e .
 
       # Pinned and hash-verified, exactly as in ci.yml. Installing a secret
-      # scanner with `curl … | sh` would be `net.fetch_exec` — one of the eight
-      # seed patterns this project ships, and the finding secrev would raise
+      # scanner with `curl … | sh` would be `net.fetch_exec` — one of the
+      # patterns this project ships, and the finding secrev would raise
       # about anyone else (AC-10). A platform with no pin exits 2 rather than
       # skipping the stage.
       - name: gitleaks (pinned, hash-verified)
@@ -104,7 +104,9 @@ jobs:
               exit 2 ;;
           esac
           URL="https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}/gitleaks_${VERSION}_${ASSET}.tar.gz"
-          curl -fsSL --retry 3 -o gitleaks.tgz "$URL"
+          # --retry-all-errors: see the same step in ci.yml. This is the job
+          # that failed on 2026-09-15 — HTTP 500, curl exit 56, no retry.
+          curl -fsSL --retry 3 --retry-all-errors -o gitleaks.tgz "$URL"
           printf '%s  gitleaks.tgz\n' "$SHA" | shasum -a 256 -c -
           tar -xzf gitleaks.tgz gitleaks
           rm -f gitleaks.tgz
