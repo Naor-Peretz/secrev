@@ -43,13 +43,39 @@ Second round, taken at TASK-M2-002 because the schema is a contract:
 - **Protected now, not at close.** The file is tool input exactly as `patterns/` is. The `STACK.md`
   §8 H-4 amendment, `paths.sh` and `bash_guard.py` land in the same task, with a defeat test.
 
+Third round, at TASK-M2-006:
+
+- **C-3 — two MCP kinds.** `surface.mcp_tool`: a tool declared in code (a Python decorator such
+  as `@mcp.tool(`), layer `code`. `surface.mcp_server`: a server declared in a manifest
+  (`.mcp.json`, the command that starts it), layer `manifest`. `STACK.md` §7 says MCP tools are
+  "manifest-declared"; in practice a manifest declares the *server* and the tools are declared in
+  its code, so taking only one would miss either every code-defined tool or every server with no
+  Python in the tree. §7's wording is corrected at close (TASK-M2-011).
+
+**Open finding, introduced by TASK-M2-002b.** `bash_guard.py` matches `surfaces` as a protected
+directory wherever it ends a token after `/`, and the branch this milestone is built on is called
+`m2/surfaces`. So `git push -u origin m2/surfaces` was refused as a write to a protected path. A
+branch name is not a path; the push went through as `git push -u origin HEAD`, which writes to
+nothing protected and still ran the full pre-push gate. The same will refuse `gh pr create --head`
+and `git log origin/m2/...` spelled out. Options for the owner: narrow the guard so a protected name
+must be followed by `/` (a directory) rather than also accepting end-of-token, or accept it and
+avoid spelling the branch. Not changed yet — a guard edit gets its own H-8 defeat test.
+
+**Carried to M4, not a surface (owner, 2026-09-15).** The result of an outbound call —
+`res = session.call_tool(...)` — is untrusted input arriving, but the reviewed code chose to make
+the call and when; nobody outside can initiate it, so it is not an entry point and no surface kind
+records it. What it raises is a data-flow question: where `res` goes — into a model's context
+(P8, G-6: a tool's output can carry an injection), a shell, a file. That is the structural
+source (M4) and the closure (M5). No M2 task covers it, and no later brief exists yet to hold it,
+so it is recorded here to be carried into `BRIEF_M4.md` when that is written.
+
 TASK-M2-002 is therefore three commits: **002a** the `ledger.py` move, **002b** the protection,
 **002c** the kinds file and its loader.
 
-Still open, decided before the step that needs them: Q6 (tick TASK-M1-010), C-3 (MCP tools:
-manifest-declared per `STACK.md` §7, or the Python decorator), C-4 (`BRIEF_M2.md:10` says "§1 and
-§7 bind"; there is no §7), C-5 (stale "no git remote" in `BRIEF_M2.md` §4 and `TASKS_M1.md`), Q7
-(escaping symlinks have no owner), Q9 (`CLAUDE.md` gives the old id derivation).
+Still open, decided before the step that needs them: Q4 (`catalog_version` on a surface record),
+Q6 (tick TASK-M1-010), C-4 (`BRIEF_M2.md:10` says "§1 and §7 bind"; there is no §7), C-5 (stale
+"no git remote" in `BRIEF_M2.md` §4 and `TASKS_M1.md`), Q7 (escaping symlinks have no owner). C-3
+was decided in the third round above; Q9 was fixed in `CLAUDE.md` on 2026-09-15.
 
 ---
 
@@ -130,6 +156,24 @@ manifest-declared per `STACK.md` §7, or the Python decorator), C-4 (`BRIEF_M2.m
 
 - [ ] **TASK-M2-006 — The remaining kinds, one per commit.** Each with a negative that separates an
       entry point from a call site. A package with no `__all__` is a recorded gap.
+      `tests/test_surfaces.py` carries one row per shipped kind — a declaration it must enter and
+      a near miss it must not — and asserts the rows and the shipped kinds match in both
+      directions, so a kind cannot ship without its negative.
+      - [x] `surface.mcp_tool` (kinds `2026.09.2`): the SDK's decorator forms and `add_tool(`;
+            `call_tool(` call sites and `list_tools` are not entered. Fixture `mcp/server.py`.
+            Goldens: `surfaces.jsonl` gains one record and the skill record changes only in
+            `catalog_version`; `recon.json` changes in three counts; `hits.jsonl` unchanged.
+      - [x] `surface.mcp_tool_listing` (same commit, same kinds version). Owner decision,
+            2026-09-15, extending C-3: a low-level server's `@server.list_tools()` returns the
+            names, descriptions and schemas a model reads, which is behaviour-defining prose (P8)
+            that no kind recorded; FastMCP's docstring already sits in the `mcp_tool` window.
+            Layer `instruction`, precision `medium`, because the decorator is matched by name
+            and not by import. A client's `session.list_tools()` is not entered. Fixture
+            `mcp/lowlevel.py`.
+      - [ ] `surface.mcp_server`
+      - [ ] `surface.hook_binding`
+      - [ ] `surface.cli_command`
+      - [ ] `surface.public_export`
 
 - [ ] **TASK-M2-007 — `secrev surfaces` and the two-block ledger (Q1).** No catalog dependency;
       `run.json` names the right command (it is hard-coded `"recon"` today, `cli.py:132`).
@@ -137,7 +181,10 @@ manifest-declared per `STACK.md` §7, or the Python decorator), C-4 (`BRIEF_M2.m
       byte-identical to today's golden.
 
 - [ ] **TASK-M2-008 — `coverage_gaps`.** Names what is still unreachable: HTTP routes, IPC
-      handlers, the CLI parser, multi-line `__all__`, non-Python surfaces.
+      handlers, the CLI parser, multi-line `__all__`, non-Python surfaces, and any declaration
+      split across lines for any kind — a decorator or a key wrapped onto a second line is missed
+      by a line-oriented kind (Q3). The owner accepted the line-oriented limits on this condition:
+      each one has to be named here rather than left implicit.
 
 - [ ] **TASK-M2-009 — Determinism across runs and platforms includes surfaces.** Only after
       TASK-M2-007. `scripts/determinism_check.py` and `ci.yml`'s cross-platform digest.

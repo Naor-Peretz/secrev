@@ -192,6 +192,82 @@ def test_order_within_a_file_is_by_line_then_kind(tmp_path: Path) -> None:
     ]
 
 
+# --- every kind: one declaration it enters, one near miss it does not ------
+
+# One row per shipped kind: the file it is written in, a declaration the kind
+# must enter, and a near miss it must not. The near miss earns its place, as a
+# pattern's negative fixture does (STACK.md §9): a kind that matches call sites
+# as well as declarations turns entry points back into a grep, and a large
+# surface count is the symptom (BRIEF_M2.md §5).
+CASES: dict[str, tuple[str, str, str]] = {
+    "surface.skill_activation": (
+        "SKILL.md",
+        "---\ndescription: Does a thing\n---\n",
+        "---\nname: x\n  description: nested, not the skill's own key\n---\n",
+    ),
+    "surface.mcp_tool": (
+        "server.py",
+        "@mcp.tool()\ndef lookup(name):\n    return name\n",
+        "async def relay(session):\n    return await session.call_tool('lookup', {})\n",
+    ),
+    "surface.mcp_tool_listing": (
+        "server.py",
+        "@server.list_tools()\nasync def listing():\n    return []\n",
+        "async def discover(session):\n    return await session.list_tools()\n",
+    ),
+}
+
+
+def test_every_shipped_kind_has_a_case(kinds: Kinds) -> None:
+    """Both directions, like the pattern fixture pairing: a kind with no row
+    has no negative, and a row naming no kind is what a rename leaves behind."""
+    assert set(CASES) == {kind.id for kind in kinds.kinds}
+
+
+@pytest.mark.parametrize("kind_id", sorted(CASES))
+def test_a_kind_enters_its_declaration(tmp_path: Path, kinds: Kinds, kind_id: str) -> None:
+    relative, positive, _ = CASES[kind_id]
+    hits = surfaces(skill_tree(tmp_path, relative, positive), kinds)
+    assert [hit.rule_id for hit in hits] == [kind_id]
+
+
+@pytest.mark.parametrize("kind_id", sorted(CASES))
+def test_a_kind_ignores_its_near_miss(tmp_path: Path, kinds: Kinds, kind_id: str) -> None:
+    relative, _, negative = CASES[kind_id]
+    assert surfaces(skill_tree(tmp_path, relative, negative), kinds) == []
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "@mcp.tool()",
+        "@mcp.tool",
+        "    @app.mcp.tool(name='x')",
+        "@server.call_tool()",
+        "mcp.add_tool(lookup)",
+    ],
+)
+def test_every_mcp_tool_declaration_form(tmp_path: Path, kinds: Kinds, line: str) -> None:
+    [hit] = surfaces(skill_tree(tmp_path, "server.py", f"{line}\n"), kinds)
+    assert hit.rule_id == "surface.mcp_tool"
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "@server.list_tools()",
+        "result = await session.call_tool('x', {})",
+        "@mcp.tools_registry()",
+        "# @mcp.tool() in a comment is still a comment",
+    ],
+)
+def test_what_is_not_an_mcp_tool(tmp_path: Path, kinds: Kinds, line: str) -> None:
+    """`list_tools` is a surface, but of another kind: what it returns is read
+    by the model, not called by it (`surface.mcp_tool_listing`)."""
+    hits = surfaces(skill_tree(tmp_path, "server.py", f"{line}\n"), kinds)
+    assert "surface.mcp_tool" not in {hit.rule_id for hit in hits}
+
+
 def test_surface_and_pattern_rule_ids_are_disjoint(kinds: Kinds, catalog: Catalog) -> None:
     """One ledger, two sources: a shared `rule_id` would be two questions under
     one name. The loaders enforce the namespace; this asserts the shipped data."""

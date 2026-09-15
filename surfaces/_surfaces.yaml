@@ -16,8 +16,47 @@
 # `version` changes on any add or semantic change to a kind, for the reason the
 # catalog's does: a verification is only valid for the question it was made
 # against.
-version: "2026.09.1"
+version: "2026.09.2"
 kinds:
+  # A tool declared in server code (TASKS_M2.md C-3): every client connected to
+  # the server can call it, with arguments a model chose. The decorator forms
+  # of the Python SDK — `@mcp.tool()` (FastMCP) and `@server.call_tool()` (the
+  # low-level server, one dispatcher for every tool) — and programmatic
+  # registration with `add_tool(`. A call *to* a tool (`session.call_tool(`)
+  # is a call site, not an entry point, and is not matched. `list_tools` is
+  # not a tool; it is `surface.mcp_tool_listing`. A server with no Python in
+  # the tree is `surface.mcp_server`.
+  - id: surface.mcp_tool
+    layer: [code]
+    precision: high
+    files: ["**/*.py"]
+    declaration: '^\s*@[A-Za-z_][\w.]*\.(?:tool|call_tool)\b|^\s*[A-Za-z_][\w.]*\.add_tool\s*\('
+    question: >
+      What does this tool do with the arguments a model supplies, and what can
+      it reach with them — files, processes, the network, credentials? Any
+      connected client can call it. Trace each argument to its sinks.
+
+  # What a low-level server tells a model about its tools. `@server.list_tools()`
+  # returns each tool's name, description and input schema, and that text
+  # enters the model's context as written: behaviour-defining prose (P8), the
+  # tool-side counterpart of a skill's description. FastMCP needs no kind of
+  # its own, because there the description is the decorated function's
+  # docstring, inside the `surface.mcp_tool` record's window. A client's
+  # `session.list_tools()` reads someone else's listing and is not matched.
+  # Medium, not high: the decorator is matched by name, not by import, so
+  # another library's `list_tools` decorator enters too and a reader resolves
+  # it.
+  - id: surface.mcp_tool_listing
+    layer: [instruction]
+    precision: medium
+    files: ["**/*.py"]
+    declaration: '^\s*@[A-Za-z_][\w.]*\.list_tools\b'
+    question: >
+      What do the tool names, descriptions and input schemas returned here tell
+      a model to do? Look for instructions addressed to the model, a description
+      broader than what the tool does, and one that differs from the code behind
+      it. Where does the text come from, and is any of it built from input?
+
   # The description decides when a skill is loaded into an agent's context at
   # all, which makes it the skill's activation surface (FR-1.3, and the manifest
   # layer's "activation descriptions broad enough to load the artifact into
