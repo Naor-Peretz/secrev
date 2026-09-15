@@ -226,6 +226,12 @@ CASES: dict[str, tuple[str, str, str]] = {
         '{\n  "hooks": {\n    "PreToolUse": [\n      {"matcher": "Bash"}\n    ]\n  }\n}\n',
         '{\n  "hooks": [\n    {"matcher": "Bash"}\n  ],\n  "env": {"PATH": "x"}\n}\n',
     ),
+    "surface.cli_command": (
+        "pyproject.toml",
+        '[project.scripts]\nnotes = "notes.cli:main"\n',
+        '[build-system]\nbuild-backend = "setuptools.build_meta"\n'
+        '[project]\nrequires-python = ">=3.11"\nhomepage = "https://example.invalid"\n',
+    ),
 }
 
 
@@ -334,6 +340,26 @@ def test_a_binding_shape_outside_a_hook_config_is_not_a_hook(tmp_path: Path, kin
     root = skill_tree(tmp_path, "config/settings.json", '"PreToolUse": [\n')
     skill_tree(root, ".vscode/settings.json", '"PreToolUse": [\n')
     assert surfaces(root, kinds) == []
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        'notes = "notes.cli:main"',
+        '"my-tool" = "my_tool.__main__:run"',
+        "legacy = 'pkg.cli:main'",
+        '  plugin = "pkg.plugins:register"',
+    ],
+)
+def test_every_cli_command_declaration(tmp_path: Path, kinds: Kinds, line: str) -> None:
+    [hit] = surfaces(skill_tree(tmp_path, "pyproject.toml", f"{line}\n"), kinds)
+    assert hit.rule_id == "surface.cli_command"
+
+
+def test_a_script_shape_outside_pyproject_is_not_a_command(tmp_path: Path, kinds: Kinds) -> None:
+    """Scoped by file: the same shape in another TOML file declares nothing
+    a package installs."""
+    assert surfaces(skill_tree(tmp_path, "config.toml", 'notes = "notes.cli:main"\n'), kinds) == []
 
 
 def test_surface_and_pattern_rule_ids_are_disjoint(kinds: Kinds, catalog: Catalog) -> None:

@@ -6,14 +6,15 @@
     "sha": null
   },
   "inventory": {
-    "files_total": 28,
+    "files_total": 29,
     "by_language": {
       "json": 2,
       "markdown": 2,
       "python": 15,
-      "text": 8
+      "text": 8,
+      "toml": 1
     },
-    "loc_total": 266,
+    "loc_total": 279,
     "binary": [
       "assets/blob.bin"
     ],
@@ -46,7 +47,7 @@
     "test_files": 0
   },
   "coverage_gaps": [
-    "structural analysis not implemented (M4); no coverage for: json, markdown, python, text",
+    "structural analysis not implemented (M4); no coverage for: json, markdown, python, text, toml",
     "surface enumeration not implemented (M2); entry points are declared metadata only"
   ]
 }

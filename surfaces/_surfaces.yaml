@@ -16,7 +16,7 @@
 # `version` changes on any add or semantic change to a kind, for the reason the
 # catalog's does: a verification is only valid for the question it was made
 # against.
-version: "2026.09.5"
+version: "2026.09.6"
 kinds:
   # A tool declared in server code (TASKS_M2.md C-3): every client connected to
   # the server can call it, with arguments a model chose. The decorator forms
@@ -110,6 +110,27 @@ kinds:
       the tool call or prompt that fired it? Can a model, or content in the
       reviewed tree, shape that input? If the hook gates something, can the
       gate be bypassed, and does it fail open? Trace it to its sinks.
+
+  # A command a Python package installs: `name = "module.path:function"`, the
+  # value shape of a `[project.scripts]` entry, and of `gui-scripts` and
+  # `entry-points` groups, which are entry points too (a plugin group's
+  # entries run inside whatever loads the group). Whoever can run the command
+  # — a user, a script, an agent with a shell — chooses its arguments.
+  #
+  # Medium: a line cannot see which TOML section it is in, so the same shape
+  # under another table enters too and a reader resolves it. `build-backend`
+  # (no colon), version specifiers and URLs (`https:` is followed by `//`, not
+  # a name) do not match. The parser beneath the command, and commands
+  # declared in `setup.cfg`, `setup.py` or `package.json`, are recorded gaps.
+  - id: surface.cli_command
+    layer: [manifest]
+    precision: medium
+    files: ["**/pyproject.toml"]
+    declaration: '^\s*["'']?[\w.-]+["'']?\s*=\s*["''][\w.]+:[\w.]+["'']'
+    question: >
+      What does this command do with the arguments, environment and working
+      directory it is run with? Whoever can run it chooses them. Trace the
+      entry function through its argument parser to its sinks.
 
   # The description decides when a skill is loaded into an agent's context at
   # all, which makes it the skill's activation surface (FR-1.3, and the manifest

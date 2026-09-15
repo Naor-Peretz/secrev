@@ -189,7 +189,13 @@ was decided in the third round above; Q9 was fixed in `CLAUDE.md` on 2026-09-15.
             enter. Precision `medium`, since the shape cannot confirm an event. Fixture
             `plugin/hooks/hooks.json`, because a fixture under the agent config directory cannot
             be staged; those trees are built at runtime in the tests.
-      - [ ] `surface.cli_command`
+      - [x] `surface.cli_command` (kinds `2026.09.6`): `name = "module.path:function"` in
+            `pyproject.toml` — `[project.scripts]`, and `gui-scripts` and `entry-points` groups,
+            which are entry points too. Precision `medium`: a line cannot see its TOML table (the
+            section issue named in the plan), so the shape elsewhere enters and a reader resolves
+            it. `build-backend`, version specifiers and URLs do not match. Fixture
+            `cli/pyproject.toml`, in a subdirectory so `recon.py` does not read it as the tree's
+            own entry points (`entrypoints.declared` confirmed unchanged).
       - [ ] `surface.public_export`
 
 - [ ] **TASK-M2-007 — `secrev surfaces` and the two-block ledger (Q1).** No catalog dependency;
@@ -203,7 +209,8 @@ was decided in the third round above; Q9 was fixed in `CLAUDE.md` on 2026-09-15.
       by a line-oriented kind (Q3) — and the reverse, several declarations on one line (minified
       JSON holding several MCP servers) entering as one record. Hooks declared outside
       Claude Code's settings files and plugin `hooks/hooks.json` — in agent or skill frontmatter,
-      and in other clients' hook configs — are not enumerated. The owner accepted the
+      and in other clients' hook configs — are not enumerated. CLI commands declared in
+      `setup.cfg`, `setup.py` or `package.json` are not enumerated either. The owner accepted the
       line-oriented limits on this condition:
       each one has to be named here rather than left implicit.
 
