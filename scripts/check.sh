@@ -260,7 +260,11 @@ fi
 # deliberately.
 if [ "$SAST" = 1 ]; then
     printf '\n\033[1m── SAST (CodeQL, python)\033[0m\n'
-    CODEQL_BIN=${CODEQL_BIN:-$HOME/.local/share/codeql/codeql/codeql}
+    # The bundle's top-level directory is `codeql/` and the CLI sits directly
+    # inside it, so the documented `tar -xf <bundle> -C ~/.local/share/` puts it
+    # here. The default used to be one `codeql/` deeper, which no documented
+    # install produced: --sast only ever ran with CODEQL_BIN set by hand.
+    CODEQL_BIN=${CODEQL_BIN:-$HOME/.local/share/codeql/codeql}
     if [ ! -x "$CODEQL_BIN" ]; then
         missing "codeql" "install the CodeQL CLI, or set CODEQL_BIN to its path"
     fi
