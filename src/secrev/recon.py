@@ -24,7 +24,8 @@ up in the workspace path and silently split one target's history in two.
 
 **What `loc_total` counts** is fixed here because nothing else fixes it, and it
 is bytes in a deterministic artifact: lines in text files, counted with
-`splitlines()`, excluding binaries and symlinks. Binaries have no lines, and a
+`inventory.split_lines` — the same lines the candidate sources number, and the
+ones an editor shows — excluding binaries and symlinks. Binaries have no lines, and a
 symlink's content is the file it points at, which is counted once at its own
 path or lies outside the tree entirely.
 """
@@ -39,7 +40,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from secrev.inventory import EXCLUDED_DIRS, FileEntry, language_of, walk
+from secrev.inventory import EXCLUDED_DIRS, FileEntry, language_of, split_lines, walk
 
 # Files whose name marks them as tests, for `security_process.test_files`.
 _TEST_FILE = re.compile(r"(^|/)(test_[^/]+|[^/]+_test)\.[a-z]+$|(^|/)tests?/")
@@ -207,7 +208,7 @@ def recon(root: Path) -> Recon:
             languages[language] = languages.get(language, 0) + 1
         # `os_path`, never `path`: the record is NFC, the filesystem may not be.
         raw = (root / entry.os_path).read_bytes()
-        loc_total += len(raw.decode("utf-8", errors="replace").splitlines())
+        loc_total += len(split_lines(raw.decode("utf-8", errors="replace")))
 
     source, sha = git_identity(root)
 

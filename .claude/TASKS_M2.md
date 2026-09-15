@@ -61,7 +61,9 @@ and `git log origin/m2/...` spelled out. Options for the owner: narrow the guard
 must be followed by `/` (a directory) rather than also accepting end-of-token, or accept it and
 avoid spelling the branch. Not changed yet — a guard edit gets its own H-8 defeat test.
 
-**Open finding, from the TASK-M2-007 review — for the owner.** `sweep.py` and `surfaces.py`
+**Fixed by owner decision (2026-09-15), from the TASK-M2-007 review.** Now one
+`inventory.split_lines` (CRLF, CR and LF only) serves `sweep.py`, `surfaces.py` and `recon.py`'s
+line count, asserted per character in `tests/test_lines.py`. The finding as raised: `sweep.py` and `surfaces.py`
 split file content with `str.splitlines()`, which also breaks on `\v`, `\f` (form feed, `^L`,
 which Python source does contain), `\x1c`–`\x1e`, U+0085, U+2028 and U+2029. Deterministic, so
 NFR-3 holds — but every line number and window after such a character disagrees with what an

@@ -49,13 +49,13 @@ from __future__ import annotations
 from pathlib import Path
 
 from secrev.ids import Match, assign
-from secrev.inventory import FileEntry, walk
+from secrev.inventory import FileEntry, split_lines, walk
 from secrev.kinds import Kind, Kinds
 from secrev.ledger import DECL_WINDOW_SPEC, Hit, excerpt, window
 
 
 def _file_hits(entry: FileEntry, text: str, kinds: tuple[Kind, ...], version: str) -> list[Hit]:
-    lines = text.splitlines()
+    lines = split_lines(text)
 
     found: list[tuple[int, str, Kind]] = []
     for kind in kinds:

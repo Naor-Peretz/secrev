@@ -14,12 +14,14 @@ Three rules here decide bytes in every ledger this tool will ever produce, so
 they are stated rather than left to be inferred:
 
   **Line numbers come from the original, content is hashed LF-normalised.**
-  `STACK.md` §5 requires both, and they pull in opposite directions. Splitting
-  with `str.splitlines()` satisfies them at once: it breaks on CR, LF and CRLF
-  alike, so numbering matches what an editor shows, and it discards the
-  terminators, so the window text is LF-joined whatever the file used. A
-  checkout with `autocrlf` on must not re-identify every candidate in the
-  ledger.
+  `STACK.md` §5 requires both, and they pull in opposite directions.
+  `inventory.split_lines` satisfies them at once: it breaks on CR, LF and CRLF
+  and nowhere else, so numbering matches what an editor shows, and it
+  discards the terminators, so the window text is LF-joined whatever the file
+  used. A checkout with `autocrlf` on must not re-identify every candidate in
+  the ledger. This said `str.splitlines()` until the TASK-M2-007 review:
+  that also breaks on a form feed and six other characters, so every line
+  after one was numbered past the editor's count.
 
   **The window is `lines-20`** — ±20 lines, no tightening to the enclosing
   block, because that needs a parser and `BRIEF_M1.md` §1 defers AST analysis
@@ -45,7 +47,7 @@ from pathlib import Path
 
 from secrev.catalog import Catalog, Pattern
 from secrev.ids import Match, assign
-from secrev.inventory import FileEntry, glob_to_regex, language_of, walk
+from secrev.inventory import FileEntry, glob_to_regex, language_of, split_lines, walk
 from secrev.ledger import WINDOW_SPEC, Hit, excerpt, window
 
 
@@ -66,7 +68,7 @@ def applies(pattern: Pattern, relative_path: str) -> bool:
 
 
 def _file_hits(entry: FileEntry, text: str, catalog: Catalog) -> list[Hit]:
-    lines = text.splitlines()
+    lines = split_lines(text)
 
     found: list[tuple[int, str, int, int, Pattern]] = []
     for pattern in catalog.patterns:
