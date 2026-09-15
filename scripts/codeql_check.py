@@ -6,6 +6,12 @@ CodeQL answers the dataflow ones — does untrusted input reach this sink — wh
 neither of the other two can, and which take minutes rather than milliseconds.
 Hence opt-in locally and unconditional in CI (.github/workflows/codeql.yml).
 
+Two modes, one rule. `--codeql` builds the database and analyses it here.
+`--sarif` judges a report something else already produced — in CI, the CodeQL
+action, which cannot upload to code scanning on a private repository without a
+paid feature. Either way an alert is decided by `_alerts` below, so "CodeQL
+fails the build" has one definition rather than one per place it runs.
+
 The CodeQL CLI is not a dependency of this repository: nothing installs it,
 `pyproject.toml` does not mention it, and the gate does not need it. Absent, and
 with --sast typed, this exits 2 — a check that was explicitly asked for and
@@ -54,8 +60,14 @@ def _alerts(sarif: Path) -> list[str]:
     except (OSError, json.JSONDecodeError) as exc:
         raise CannotRun(f"the SARIF report could not be read — {exc}") from exc
 
+    # A report with no runs is not a clean report: it is one in which nothing
+    # was analysed, and reading it as "no alerts" is the H-1 collapse.
+    runs = parsed.get("runs") if isinstance(parsed, dict) else None
+    if not isinstance(runs, list) or not runs:
+        raise CannotRun(f"{sarif.name} contains no runs — nothing was analysed")
+
     found: list[str] = []
-    for run in parsed.get("runs", []):
+    for run in runs:
         for result in run.get("results", []):
             rule = result.get("ruleId", "?")
             locations = result.get("locations") or [{}]
@@ -69,8 +81,17 @@ def _alerts(sarif: Path) -> list[str]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--codeql", required=True, type=Path, help="path to the CodeQL CLI")
+    source = parser.add_mutually_exclusive_group(required=True)
+    source.add_argument("--codeql", type=Path, help="path to the CodeQL CLI")
+    source.add_argument("--sarif", type=Path, help="judge an existing SARIF report")
     args = parser.parse_args()
+
+    if args.sarif is not None:
+        try:
+            return _report(_alerts(args.sarif))
+        except CannotRun as exc:
+            sys.stderr.write(f"{exc}\nThis is 'could not run', not 'no alerts'.\n")
+            return 2
 
     if not args.codeql.is_file():
         sys.stderr.write(f"CodeQL CLI not found at {args.codeql} — cannot check.\n")
@@ -114,6 +135,10 @@ def main() -> int:
             )
             return 2
 
+    return _report(alerts)
+
+
+def _report(alerts: list[str]) -> int:
     if alerts:
         sys.stderr.write(f"CodeQL: {len(alerts)} alert(s)\n")
         for alert in sorted(alerts):

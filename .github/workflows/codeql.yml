@@ -19,8 +19,9 @@ on:
 
 permissions:
   contents: read
-  security-events: write   # the only reason this workflow needs more than read
   actions: read
+  # No `security-events: write`. Nothing is uploaded to code scanning — see
+  # the note at the end of this file — so the permission would be unused.
 
 concurrency:
   group: codeql-${{ github.workflow }}-${{ github.ref }}
@@ -48,6 +49,15 @@ jobs:
       - uses: github/codeql-action/analyze@6f5948dfacef28e207b48d0905cf90c03365536d # v3.37.9
         with:
           category: "/language:python"
+          upload: never
+          upload-database: false
+          output: sarif-results
+
+      # The verdict. Same script, same rule as `scripts/check.sh --sast`:
+      # exit 1 on any alert, exit 2 when the report is missing or holds no
+      # runs — "nothing was analysed" never reads as "nothing was found".
+      - name: judge the report
+        run: python3 scripts/codeql_check.py --sarif sarif-results/python.sarif
 
 # Deliberately no `continue-on-error`. The project this workflow was modelled
 # on carries one, so that the job stays green when code scanning is not enabled
@@ -55,6 +65,12 @@ jobs:
 # reports exactly like one that analysed everything and found nothing. That is
 # the H-1 failure in the stage most likely to be trusted without reading.
 #
-# If this job fails with "code scanning is not enabled", the two honest answers
-# are to enable it in the repository settings or to delete this file. Making it
-# green is not one of them.
+# This file used to say that when the job fails with "code scanning is not
+# enabled", the two honest answers are to enable it or to delete this file. The
+# first CI run on this repository hit exactly that: it is private, and code
+# scanning on a private repository is a paid feature. There is a third honest
+# answer, and it is the one taken: analyse, do not upload, and let the job's
+# own exit status carry the verdict. What was objected to was a green that
+# verified nothing. This green still requires an analysis that produced a
+# report with no alerts in it. The cost is GitHub's alert UI — findings are
+# read in the job log, not the Security tab.
