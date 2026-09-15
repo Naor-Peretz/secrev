@@ -398,6 +398,36 @@ def test_what_is_not_a_public_export(tmp_path: Path, kinds: Kinds, line: str) ->
     assert surfaces(skill_tree(tmp_path, "pkg/__init__.py", f"{line}\n"), kinds) == []
 
 
+@pytest.mark.parametrize(
+    ("relative", "text", "kind_id"),
+    [
+        (".Claude/settings.json", '"PreToolUse": [\n', "surface.hook_binding"),
+        (".CLAUDE/SETTINGS.JSON", '"PreToolUse": [\n', "surface.hook_binding"),
+        ("skills/x/skill.md", "description: x\n", "surface.skill_activation"),
+        (".MCP.json", '"command": "python"\n', "surface.mcp_server"),
+        ("Server.PY", "@mcp.tool()\n", "surface.mcp_tool"),
+    ],
+)
+def test_a_kind_finds_its_file_whatever_the_case(
+    tmp_path: Path, kinds: Kinds, relative: str, text: str, kind_id: str
+) -> None:
+    """A case-insensitive filesystem hands the agent `.Claude/settings.json`
+    when it asks for `.claude/settings.json`, so the kind must not miss it
+    (CLAUDE.md: case sensitivity is a finding class). The record keeps the
+    name as it is on disk, because the id derives from it."""
+    [hit] = surfaces(skill_tree(tmp_path, relative, text), kinds)
+    assert hit.rule_id == kind_id
+    assert hit.file == relative
+
+
+def test_a_declaration_stays_case_sensitive(tmp_path: Path, kinds: Kinds) -> None:
+    """Only the path ignores case. `"Command"` is not a key an MCP client
+    reads, and `DESCRIPTION:` is not a skill's frontmatter key."""
+    root = skill_tree(tmp_path, ".mcp.json", '"Command": "python"\n')
+    skill_tree(root, "SKILL.md", "DESCRIPTION: x\n")
+    assert surfaces(root, kinds) == []
+
+
 def test_surface_and_pattern_rule_ids_are_disjoint(kinds: Kinds, catalog: Catalog) -> None:
     """One ledger, two sources: a shared `rule_id` would be two questions under
     one name. The loaders enforce the namespace; this asserts the shipped data."""

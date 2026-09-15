@@ -13,10 +13,14 @@
 # Line-oriented, like the catalog (TASKS_M2.md Q3 — no AST in M2). What a single
 # line cannot see is a recorded coverage gap, not an approximation.
 #
+# A kind's `files` match without regard to case, because the filesystems an
+# agent runs on often resolve names that way (kinds.py). Its `declaration`
+# matches as written unless it carries the `i` flag.
+#
 # `version` changes on any add or semantic change to a kind, for the reason the
 # catalog's does: a verification is only valid for the question it was made
 # against.
-version: "2026.09.7"
+version: "2026.09.8"
 kinds:
   # A tool declared in server code (TASKS_M2.md C-3): every client connected to
   # the server can call it, with arguments a model chose. The decorator forms

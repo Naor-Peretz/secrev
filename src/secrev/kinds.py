@@ -124,6 +124,35 @@ def _declaration(raw: str, flags: tuple[str, ...], kind_id: str) -> re.Pattern[s
         _fail(f"`declaration` does not compile: {exc}", kind_id=kind_id)
 
 
+def _file_pattern(glob: str) -> re.Pattern[str]:
+    """A kind's `files` glob, matched without regard to case.
+
+    macOS and Windows filesystems resolve `.Claude/settings.json` when an agent
+    asks for `.claude/settings.json`, so a kind that matched the name exactly
+    would miss an entry point the agent loads — case sensitivity is a finding
+    class here, not portability. Deterministic all the same: the answer depends
+    on the name, never on the filesystem the tool happens to run on (NFR-3).
+
+    The path only. A declaration is matched as written, because the keys and
+    names it looks for are case-sensitive to whatever reads them; a kind whose
+    language is not opts in with the `i` flag.
+
+    Here, not in `glob_to_regex`: that also serves the catalog's
+    `paths_exclude`, where ignoring case would exclude *more* files from
+    review — the direction that fails open. The record keeps the path as it is
+    on disk; the id derives from it (`ids.py`). The glob's own flags are kept,
+    so a flag `glob_to_regex` gains later reaches kinds and `paths_exclude`
+    alike rather than splitting one glob into two meanings.
+
+    Unicode case folding comes with it: U+017F (long s) matches `s` and U+212A
+    (Kelvin sign) matches `k`, so a long-s `skill.md` is a `SKILL.md`. That
+    only adds candidates, and it is the same on every platform on one Python
+    (the `re` tables are CPython's own).
+    """
+    pattern = glob_to_regex(glob)
+    return re.compile(pattern.pattern, pattern.flags | re.IGNORECASE)
+
+
 def _kind(raw: Any, index: int) -> Kind:
     if not isinstance(raw, dict):
         _fail(f"entry {index} in `kinds` is not a mapping")
@@ -173,7 +202,7 @@ def _kind(raw: Any, index: int) -> Kind:
         ),
         precision=precision,
         question=_require_str(entry["question"], "question", kind_id),
-        _file_patterns=tuple(glob_to_regex(glob) for glob in files),
+        _file_patterns=tuple(_file_pattern(glob) for glob in files),
     )
 
 

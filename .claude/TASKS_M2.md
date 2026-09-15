@@ -205,6 +205,14 @@ was decided in the third round above; Q9 was fixed in `CLAUDE.md` on 2026-09-15.
       Every kind carries a row in `CASES`, and every kind was defeat-tested (H-8): its
       declaration loosened, its near miss and the golden failed, restored.
 
+- [x] **TASK-M2-006b — A kind's `files` ignore case (owner, 2026-09-15).** Found while writing
+      `hook_binding`: a case-insensitive filesystem hands the agent `.Claude/settings.json` when it
+      asks for `.claude/settings.json`, and the kinds matched names exactly, so the entry point
+      would enter on macOS-authored trees only by luck. The owner's approach: compare the path
+      case-insensitively (`re.IGNORECASE` on each kind's compiled glob), keep the recorded path as
+      on disk (the id derives from it), leave the declaration case-sensitive, and leave the shared
+      `glob_to_regex` alone — it also serves `paths_exclude`, where ignoring case fails open.
+
 - [ ] **TASK-M2-007 — `secrev surfaces` and the two-block ledger (Q1).** No catalog dependency;
       `run.json` names the right command (it is hard-coded `"recon"` today, `cli.py:132`).
       *Accept:* `sweep` then `surfaces` and the reverse both yield both blocks; the pattern block is
