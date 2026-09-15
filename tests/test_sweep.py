@@ -235,19 +235,24 @@ def test_ordering_does_not_depend_on_case_folding(tmp_path: Path, catalog: Catal
 
     §4 makes case a finding class rather than a portability note: macOS folds
     case and Linux does not, so `Alpha.py` and `alpha.py` are one file on one
-    platform and two on the other. Nothing here can create the macOS behaviour
-    on ext4 — that is TASK-M1-010's residue — but the ordering rule can be
-    pinned, because a sort that case-folded would put these two in a different
-    order than a byte sort and the artifact would differ across platforms for a
-    second, independent reason.
+    platform and two on the other. That collision is TASK-M1-010's residue and
+    is not what this test pins. It pins the ordering rule: a sort that
+    case-folded would order these names differently from a byte sort, and the
+    artifact would differ across platforms for a second, independent reason.
+
+    No two names here differ only by case. The first version used `Alpha.py`
+    beside `alpha.py`, and on the first macOS CI run APFS made them one file —
+    the test asserted three hits over a tree that held two. A fixture whose
+    shape depends on the filesystem cannot pin a rule about ordering.
     """
-    for name in ("Beta.py", "alpha.py", "Alpha.py"):
+    for name in ("Beta.py", "alpha.py", "Zeta.py"):
         (tmp_path / name).write_text("result = eval(x)\n", encoding="utf-8")
 
     files = [hit.file for hit in sweep(tmp_path, catalog)]
     assert files == sorted(files)
-    # Byte order, not dictionary order: uppercase sorts first.
-    assert files == ["Alpha.py", "Beta.py", "alpha.py"]
+    # Byte order, not dictionary order: uppercase sorts first. A case-folded
+    # sort would give alpha, Beta, Zeta.
+    assert files == ["Beta.py", "Zeta.py", "alpha.py"]
 
 
 def test_binary_files_are_not_swept(tmp_path: Path, catalog: Catalog) -> None:
