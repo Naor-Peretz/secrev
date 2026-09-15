@@ -61,16 +61,24 @@ jobs:
         with:
           python-version: "3.11"
 
-      # ruff and mypy only. The harness has no dependencies to install: it is
-      # stdlib throughout, deliberately, because a third-party import here
-      # would put a package on the critical path of every prompt in every
-      # session. That is also why this workflow has no dependency-audit or
-      # licence stage — see .claude/check.sh, where the absence is stated
-      # rather than left to be inferred.
+      # The harness itself has no dependencies: it is stdlib throughout,
+      # deliberately, because a third-party import here would put a package on
+      # the critical path of every prompt in every session. That is also why
+      # this workflow has no dependency-audit or licence stage — see
+      # .claude/check.sh, where the absence is stated rather than left to be
+      # inferred.
+      #
+      # The project is installed anyway, because one guard runs it:
+      # determinism-guard.sh re-runs scripts/determinism_check.py, which
+      # invokes `python -m secrev`. Without `-e .` that fails to import and the
+      # guard exits 2 — which the assertions read as NFR-3 broken. The first CI
+      # run on this repository failed exactly that way on both platforms while
+      # every local run passed, because a local .venv always has the project.
       - name: environment
         run: |
           python -m venv .venv
           .venv/bin/pip install -q --disable-pip-version-check -r .github/requirements/dev.txt
+          .venv/bin/pip install -q --disable-pip-version-check -e .
 
       # Pinned and hash-verified, exactly as in ci.yml. Installing a secret
       # scanner with `curl … | sh` would be `net.fetch_exec` — one of the eight
