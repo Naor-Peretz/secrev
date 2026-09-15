@@ -1,97 +1,334 @@
 name: ci
 
+# Every push, every branch. A branch that is not built is a branch whose state
+# nobody knows; the local pre-push hook runs the identical gate, so this is the
+# second opinion rather than the first.
 on:
   push:
-    branches: [main]
   pull_request:
+  workflow_dispatch: {}
 
 permissions:
   contents: read          # the workflow reads the repo and nothing else
 
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
+
+# Every action is pinned to a commit SHA, not a tag. A tag is mutable: `@v4`
+# resolves to whatever the maintainer last pointed it at, which is a remote code
+# reference that can change with no diff in this repository. STACK.md §2 calls
+# every dependency a supply-chain surface and says this is the tool whose
+# purpose is to notice them — a mutable action reference in its own CI is
+# exactly the finding secrev would raise about someone else (AC-10).
+# Dependabot moves these forward as reviewable PRs (.github/dependabot.yml).
+#
+# Four actions are used here, and that is deliberate: every action is
+# third-party code running with access to the checkout. gitleaks is installed
+# from a pinned, hash-verified release tarball rather than through
+# gitleaks/gitleaks-action, which would have been a fifth.
+#
+# (This comment said "two" while the file used four — checkout, setup-python,
+# upload-artifact, download-artifact. A count that drifts is how a reader stops
+# believing the reasons beside it.)
 
 jobs:
   gate:
     # Both supported platforms, both supported interpreters (STACK.md §1, §4).
     # macOS is not optional here: it is where APFS stores filenames as NFD and
     # where BSD tools diverge, which is exactly what NFR-3 is exposed to.
+    name: gate (${{ matrix.os }}, py${{ matrix.python }})
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
         python: ["3.11", "3.12"]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
-          enable-cache: true
-      - run: uv python install ${{ matrix.python }}
-      - name: uv sync
-        run: uv sync --all-extras --dev
+          persist-credentials: false
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: ${{ matrix.python }}
+
+      # Built the way a developer builds it locally, from the pinned set, so
+      # "passes on my machine" and "passes in CI" are the same statement rather
+      # than two resolutions of the same constraint.
+      - name: environment
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install -q --disable-pip-version-check -r .github/requirements/dev.txt
+          .venv/bin/pip install -q --disable-pip-version-check -e .
+
+      # The supply-chain tooling lives in its own environment, never beside
+      # ruff/mypy/pytest: it brings 29 transitive packages including a network
+      # client stack, and the environment that vouches for the code should be
+      # made of packages someone chose (.github/requirements/audit.txt).
+      - name: audit environment
+        run: |
+          python -m venv .venv-audit
+          .venv-audit/bin/pip install -q --disable-pip-version-check -r .github/requirements/audit.txt
+
+      # gitleaks is a binary, so it is pinned the way the actions above are
+      # pinned: an exact version and a SHA-256 that is verified before anything
+      # is executed. The project's own catalog flags `net.fetch_exec` — a
+      # fetched artifact piped into a shell — and installing our secret scanner
+      # that way would be the finding secrev raises about other people (AC-10).
+      # A platform with no pin here exits 2 rather than skipping the stage.
+      - name: gitleaks (pinned, hash-verified)
+        run: |
+          set -eu
+          VERSION=8.30.1
+          case "$(uname -s)-$(uname -m)" in
+            Linux-x86_64)
+              ASSET=linux_x64
+              SHA=551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb ;;
+            Darwin-arm64)
+              ASSET=darwin_arm64
+              SHA=b40ab0ae55c505963e365f271a8d3846efbc170aa17f2607f13df610a9aeb6a5 ;;
+            *)
+              echo "::error::no pinned gitleaks build for $(uname -s)-$(uname -m)."
+              echo "::error::Add one with its checksum; do not skip the secrets stage."
+              exit 2 ;;
+          esac
+          URL="https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}/gitleaks_${VERSION}_${ASSET}.tar.gz"
+          curl -fsSL --retry 3 -o gitleaks.tgz "$URL"
+          printf '%s  gitleaks.tgz\n' "$SHA" | shasum -a 256 -c -
+          tar -xzf gitleaks.tgz gitleaks
+          rm -f gitleaks.tgz
+          mkdir -p "$HOME/.local/bin"
+          mv gitleaks "$HOME/.local/bin/gitleaks"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
       - name: gate
         run: sh scripts/check.sh
 
-  pip-install:
-    # STACK.md §3: "a plain `pip install -e .` in a venv must also work — do not
-    # depend on uv-specific features." Untested, that sentence decays quietly.
+  install-paths:
+    # STACK.md §3 names stdlib venv + pip as the default and demotes uv, on the
+    # grounds that uv's advertised install is `curl … | sh` — `net.fetch_exec`,
+    # one of the eight seed patterns this project ships. So CI verifies the two
+    # documented pip routes and does not install uv at all: pulling in
+    # astral-sh/setup-uv to exercise a path the document explicitly does not
+    # depend on would add a supply-chain surface to make a point the spec
+    # already declined to make.
+    name: install (${{ matrix.extras }})
+    strategy:
+      fail-fast: false
+      matrix:
+        extras: ["plain", "dev"]
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.11"
-      - name: install without uv
+
+      - name: install and smoke-test
         run: |
-          python -m venv .venv-pip
-          .venv-pip/bin/pip install -e .
-          if [ -d src/secrev ]; then .venv-pip/bin/secrev --help >/dev/null; fi
+          set -eu
+          python -m venv .venv
+          if [ "${{ matrix.extras }}" = "dev" ]; then
+            .venv/bin/pip install -q --disable-pip-version-check -e '.[dev]'
+            .venv/bin/python -m ruff --version
+            .venv/bin/python -m mypy --version
+            .venv/bin/python -m pytest --version
+          else
+            .venv/bin/pip install -q --disable-pip-version-check -e .
+          fi
+          if [ -f src/secrev/cli.py ]; then
+            .venv/bin/secrev --help >/dev/null
+            echo "entry point resolves"
+          else
+            echo "cli.py has not landed yet — install verified, entry point not"
+          fi
+
+  catalog:
+    # BRIEF_M1.md §4 and §7: "a malformed catalog file exits 2 with a message
+    # naming the offending pattern id." That is a behaviour, so it is asserted
+    # rather than asserted-about. Exit 2 specifically — a validation failure
+    # that exits 1 would tell a hook the tool said no, when it said broken.
+    name: catalog validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.11"
+
+      - name: malformed catalog must exit 2
+        run: |
+          set -eu
+          if [ ! -f src/secrev/catalog.py ] || [ ! -d patterns ]; then
+            echo "catalog.py or patterns/ has not landed yet — nothing to assert"
+            exit 0
+          fi
+          python -m venv .venv
+          .venv/bin/pip install -q --disable-pip-version-check -e .
+
+          # This assertion needs a way to point sweep at a specific catalog.
+          # If that option is spelled differently when it lands, say so plainly
+          # rather than failing as though the exit-code contract were broken —
+          # a check that misreports which thing is wrong is worse than absent.
+          if ! .venv/bin/python -m secrev sweep --help 2>&1 | grep -q -- '--catalog'; then
+            echo "::warning::sweep has no --catalog option; the malformed-catalog"
+            echo "::warning::assertion cannot run. Update this job to match the real"
+            echo "::warning::flag — BRIEF_M1.md §7 still requires exit 2 to be tested."
+            exit 0
+          fi
+
+          # A pattern missing its required `question` field, and a `flags` value
+          # outside the fixed subset. Both are §4 violations.
+          mkdir -p "$RUNNER_TEMP/bad"
+          cat > "$RUNNER_TEMP/bad/broken.yaml" <<'EOF'
+          version: "0000.00.0"
+          patterns:
+            - id: ci.deliberately_broken
+              layer: [code]
+              regex: 'nothing'
+              flags: [zzz]
+              precision: high
+          EOF
+
+          set +e
+          .venv/bin/python -m secrev sweep . --catalog "$RUNNER_TEMP/bad/broken.yaml" >/dev/null 2>err.txt
+          code=$?
+          set -e
+
+          if [ "$code" != "2" ]; then
+            echo "::error::A malformed catalog exited $code; BRIEF_M1.md §7 requires 2."
+            cat err.txt
+            exit 1
+          fi
+          if ! grep -q 'ci.deliberately_broken' err.txt; then
+            echo "::error::Exit 2 is right, but the message does not name the offending pattern id."
+            echo "::error::§4: a silently ignored typo in a pattern file is a missing check nobody sees."
+            cat err.txt
+            exit 1
+          fi
+          echo "exit 2, and the message names the pattern."
 
   cross-platform-determinism:
     # NFR-3 says byte-identical "across runs and machines". A single-machine
     # check cannot see the NFC/NFD divergence (D-4) or a path-ordering
     # difference; only comparing two operating systems can.
+    #
+    # This job previously built a venv with pip and then invoked the tool
+    # through `uv run`, which resolves its own environment — so the artifacts it
+    # hashed came from a different installation than the one the gate verified.
+    # One environment, built once, used for both.
+    name: determinism (${{ matrix.os }})
     needs: gate
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
-      - run: uv sync --all-extras --dev
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.11"
+
+      - name: environment
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install -q --disable-pip-version-check -r .github/requirements/dev.txt
+          .venv/bin/pip install -q --disable-pip-version-check -e .
+
       - name: generate artifacts
         run: |
-          if [ ! -d src/secrev ] || [ ! -d tests/fixtures ]; then
-            echo "M1 has not landed yet — nothing to hash" > digest.txt
+          set -eu
+          if [ ! -d tests/fixtures ]; then
+            echo "NOTHING-COMPARED tests/fixtures has not landed yet" > digest.txt
+          elif [ ! -f src/secrev/recon.py ]; then
+            # The artifact comparison waits for recon.py. The *inventory* does
+            # not, and it is where the cross-platform question actually lives:
+            # NFC vs NFD filenames and traversal order are decided in
+            # inventory.py, they are the one divergence a Linux-only run cannot
+            # see, and they surface months later as verifications expiring for
+            # no reason (D-4). Keying this on recon.py would leave them
+            # unchecked across platforms for exactly as long as they were being
+            # written — the same mistake as keying the local determinism stage
+            # on the src/secrev directory.
+            if [ ! -f src/secrev/inventory.py ]; then
+              echo "NOTHING-COMPARED inventory.py has not landed yet" > digest.txt
+            else
+              .venv/bin/python - <<'PY' > digest.txt
+          from pathlib import Path
+          from secrev import inventory
+
+          for entry in inventory.walk(Path("tests/fixtures")):
+              print(
+                  f"{entry.sha256 or '-'}  {entry.path}  {entry.size}  "
+                  f"{int(entry.is_binary)}{int(entry.is_symlink)}{int(entry.escapes_root)}"
+              )
+          PY
+            fi
           else
-            uv run secrev recon tests/fixtures --workspace "$RUNNER_TEMP/ws"
-            uv run secrev sweep tests/fixtures --workspace "$RUNNER_TEMP/ws"
-            find "$RUNNER_TEMP/ws" \( -name recon.json -o -name hits.jsonl \) \
-              -exec shasum -a 256 {} \; | sed "s#$RUNNER_TEMP/ws/##" | sort > digest.txt
+            .venv/bin/python -m secrev recon tests/fixtures --workspace "$RUNNER_TEMP/ws"
+            if [ -f src/secrev/sweep.py ]; then
+              .venv/bin/python -m secrev sweep tests/fixtures --workspace "$RUNNER_TEMP/ws"
+            fi
+            # shasum is present on both runners; sha256sum is GNU-only (STACK.md §4).
+            find "$RUNNER_TEMP/ws" \( -name recon.json -o -name hits.jsonl \) -print \
+              | sort \
+              | while read -r f; do
+                  printf '%s  %s\n' "$(shasum -a 256 "$f" | cut -d' ' -f1)" \
+                                    "${f#"$RUNNER_TEMP/ws"/}"
+                done > digest.txt
           fi
           cat digest.txt
-      - uses: actions/upload-artifact@v4
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: digest-${{ matrix.os }}
           path: digest.txt
+          if-no-files-found: error
 
   compare-platforms:
+    name: linux vs macos
     needs: cross-platform-determinism
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
-      - uses: actions/download-artifact@v4
-        with: {path: digests}
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          path: digests
+
       - name: byte-identical across platforms
         run: |
+          set -eu
+          # Two identical placeholders diff clean and this job would print
+          # "Linux and macOS agree" having compared nothing — a green stage
+          # that verified as much as an absent one (H-1). Say which it was.
+          if grep -q '^NOTHING-COMPARED' digests/digest-ubuntu-latest/digest.txt; then
+            echo "::warning::No artifacts were compared across platforms."
+            sed -n 's/^NOTHING-COMPARED /reason: /p' digests/digest-ubuntu-latest/digest.txt
+            echo "::warning::This job is green because it had nothing to do, not"
+            echo "::warning::because Linux and macOS were shown to agree."
+            exit 0
+          fi
           if ! diff -u digests/digest-ubuntu-latest/digest.txt \
                      digests/digest-macos-latest/digest.txt; then
             echo "::error::Linux and macOS produced different output for the same input."
             echo "::error::This is NFR-3. Usual cause: a path was hashed before NFC"
-            echo "::error::normalisation, or traversal order leaked into the output."
+            echo "::error::normalisation (APFS stores NFD), or traversal order leaked"
+            echo "::error::into the output instead of a sorted() list."
             exit 1
           fi
           echo "Linux and macOS agree."

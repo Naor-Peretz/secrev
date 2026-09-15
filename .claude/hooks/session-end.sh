@@ -9,7 +9,11 @@ set -eu
 ROOT="${CLAUDE_PROJECT_DIR:-.}"
 cd "$ROOT" 2>/dev/null || exit 0
 
-STAMP=".claude/hooks/state/gate-passed"
+# The product gate's marker, in the product's own space. It used to be written
+# into .claude/hooks/state/, which made scripts/check.sh reach into the harness
+# — a dependency pointing from the thing being built into the thing building
+# it. The harness reads it; nothing in the product writes here.
+STAMP=".gate-passed"
 
 changed=$(git status --porcelain -- src tests patterns scripts 2>/dev/null | wc -l | tr -d ' ')
 [ "$changed" = "0" ] && exit 0

@@ -1,0 +1,6 @@
+# Fetched to a file, verified against a pinned digest, then run.
+# The bytes that were reviewed and the bytes that execute are the
+# same bytes, which is the entire difference.
+curl -fsSL -o installer.sh https://example.invalid/install.sh
+sha256sum -c installer.sha256
+sh installer.sh

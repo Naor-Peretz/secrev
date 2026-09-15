@@ -1,0 +1,35 @@
+# Lint configuration for the harness, separate from the product's.
+#
+# `pyproject.toml` configures the tool being built. This configures the tooling
+# that builds it. Two configs can drift, and that is the accepted cost of the
+# separation: a rule the product needs is not automatically a rule the harness
+# needs, and a shared file makes every change to one a change to both.
+
+target-version = "py311"
+line-length = 100
+
+[lint]
+select = [
+    "E", "W",      # pycodestyle
+    "F",           # pyflakes
+    "I",           # import order
+    "UP",          # pyupgrade
+    "B",           # bugbear
+    "S",           # bandit — the harness reads untrusted stdin and runs subprocesses
+    "PTH",         # pathlib over os.path
+    "RUF",
+]
+ignore = [
+    "E501",        # line length is handled by the formatter
+]
+
+[lint.per-file-ignores]
+# The attack driver exists to execute the guards and read their exit codes
+# (STACK.md §8 H-8). S603 asks whether subprocess input is trusted; here the
+# argv is built in-file from a literal interpreter path and a repo-relative
+# hook name, with no caller input reaching it. S607 does not appear: the
+# interpreter is absolute rather than a PATH lookup.
+"tests/harness/**" = ["S101", "S603", "PLR2004"]
+
+[format]
+quote-style = "double"

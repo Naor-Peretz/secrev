@@ -8,7 +8,28 @@
 
 set -eu
 INPUT=$(cat)
-path=$(printf '%s' "$INPUT" | jq -r '.tool_input.file_path // ""')
+
+ROOT="${CLAUDE_PROJECT_DIR:-.}"
+READER="$ROOT/.claude/hooks/lib/hook_input.py"
+
+# JSON is read by lib/hook_input.py, not jq (STACK.md §2). Every path that
+# cannot complete the check exits 2, never 0 (H-1).
+SYSPY=$(command -v python3 2>/dev/null) || {
+    echo "spec-guard: no python3 — cannot check (STACK.md §8 H-1)." >&2
+    exit 2
+}
+[ -f "$READER" ] || {
+    echo "spec-guard: $READER is missing — cannot check (H-1)." >&2
+    exit 2
+}
+
+read_field() {
+    printf '%s' "$INPUT" | "$SYSPY" "$READER" "$1" || {
+        echo "spec-guard: unreadable hook payload — refusing (H-1)." >&2
+        exit 2
+    }
+}
+path=$(read_field file_path)
 
 case "$path" in
   *REQUIREMENTS_security-review-skill.md) doc="the PRD — authoritative on intent (P1–P11, FRs, guardrails, decisions)" ;;
@@ -28,11 +49,5 @@ Before writing, confirm which of these this is:
 Adding a runtime dependency, changing an exit code, or weakening a determinism rule are all
 STACK.md amendments with a written reason, never local exceptions."
 
-jq -n --arg r "$reason" '{
-  hookSpecificOutput: {
-    hookEventName: "PreToolUse",
-    permissionDecision: "ask",
-    permissionDecisionReason: $r
-  }
-}'
+printf '%s' "$reason" | "$SYSPY" "$ROOT/.claude/hooks/lib/hook_ask.py"
 exit 0

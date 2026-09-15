@@ -86,6 +86,38 @@ def check_byte_identical(tmp: Path) -> bool:
     return ok
 
 
+def check_inventory_is_stable() -> bool:
+    """The inventory-level check, which needs no CLI.
+
+    This is the one that must run from the moment inventory.py exists. The
+    artifact checks below compare recon.json and hits.jsonl, which do not
+    exist until recon.py and sweep.py do — and waiting for them would mean
+    traversal order and NFC normalisation went unchecked for exactly as long
+    as they were being written.
+    """
+    sys.path.insert(0, str(ROOT / "src"))
+    try:
+        from secrev import inventory  # noqa: PLC0415 - the module may not exist yet
+    except ImportError as exc:
+        sys.stderr.write(f"  inventory.py exists but does not import: {exc}\n")
+        return False
+
+    first = inventory.walk(FIXTURES)
+    second = inventory.walk(FIXTURES)
+    if first != second:
+        sys.stderr.write("  two walks of the same tree disagree (STACK.md §5)\n")
+        return False
+
+    paths = [entry.path for entry in first]
+    if paths != sorted(paths):
+        sys.stderr.write(
+            "  inventory is not sorted on the POSIX path string — emitted in\n"
+            "  traversal order, which differs between filesystems (STACK.md §5)\n"
+        )
+        return False
+    return True
+
+
 def check_stable_ids(tmp: Path) -> bool:
     """A file appearing elsewhere in the tree must not renumber anything."""
     tree = tmp / "tree"
@@ -115,13 +147,51 @@ def check_stable_ids(tmp: Path) -> bool:
 
 
 def main() -> int:
-    if not FIXTURES.is_dir() or not (ROOT / "src" / "secrev").is_dir():
-        print("no src/secrev + tests/fixtures yet — nothing to compare")
+    # The trigger is inventory.py, not the src/secrev directory.
+    #
+    # "no src/secrev yet — nothing to compare" is a sentence that stays true
+    # long after it should stop being printed: the directory appears with the
+    # first file, and if that file is cli.py the message keeps skipping while
+    # traversal, normalisation and id derivation are being written. Those are
+    # the rules NFR-3 is made of, they live in inventory.py, and they are the
+    # ones that cannot be corrected afterwards — a determinism check written
+    # after recon.py and sweep.py is a retrofit onto code composed without it.
+    #
+    # Same shape as .claude/MILESTONE reading M1 through the whole of M0: a
+    # condition that was accurate when written and is not re-examined. Bound
+    # to the exact file so it cannot outlive its own truth.
+    inventory = ROOT / "src" / "secrev" / "inventory.py"
+    if not inventory.exists():
+        print("no src/secrev/inventory.py yet — the file that owns the NFR-3 rules")
+        return 0
+    if not FIXTURES.is_dir():
+        sys.stderr.write(
+            "inventory.py exists and tests/fixtures/ does not — cannot check (H-1).\n"
+            "The fixture tree is how NFR-3 stops being aspirational (STACK.md §9).\n"
+        )
+        return 2
+
+    if not check_inventory_is_stable():
+        return 1
+    print("inventory: two walks byte-identical, sorted on the POSIX path")
+
+    # The artifact comparison needs the CLI. Its absence is a real "nothing to
+    # check yet" and is named as such — but it is named, and it names the two
+    # files it is waiting for, so it cannot quietly outlive its own truth the
+    # way the src/secrev condition did.
+    pending = [
+        name for name in ("recon.py", "sweep.py") if not (ROOT / "src" / "secrev" / name).exists()
+    ]
+    if pending:
+        print(f"artifacts: not yet — waiting on {', '.join(pending)}")
         return 0
 
     with tempfile.TemporaryDirectory(prefix="secrev-determinism-") as raw:
         tmp = Path(raw)
-        return 0 if check_byte_identical(tmp) and check_stable_ids(tmp) else 1
+        if not (check_byte_identical(tmp) and check_stable_ids(tmp)):
+            return 1
+    print("artifacts: recon.json and hits.jsonl byte-identical, ids stable")
+    return 0
 
 
 if __name__ == "__main__":

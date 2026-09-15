@@ -126,17 +126,39 @@ contradicts that (H-7).
 
 ## Definition of done
 
-- [ ] A heredoc write to `src/secrev/cli.py` is refused by the Bash guard.
-- [ ] The Bash guard is an allowlist of read-only commands, with no list of blocked write verbs.
-- [ ] `.venv` exists with `ruff` and `pytest`; hooks resolve the interpreter from it.
-- [ ] No `|| true` remains on any quality check; a missing tool exits 2 with its name.
-- [ ] Guards cover `src/secrev/`, `scripts/`, and `patterns/`.
-- [ ] The scope guard exits 2 with a message when `MILESTONE` has no rules.
-- [ ] No hook invokes `jq`.
-- [ ] Path globs have no leading anchor.
-- [ ] No agent definition restates `STACK.md` content.
-- [ ] **Each guard has been deliberately attacked and observed to refuse** (H-8). A guard nobody
+- [x] A heredoc write to `src/secrev/cli.py` is refused by the Bash guard.
+- [x] The Bash guard is an allowlist of read-only commands, with no list of blocked write verbs.
+- [x] `.venv` exists with `ruff` and `pytest`; hooks resolve the interpreter from it.
+- [x] No `|| true` remains on any quality check; a missing tool exits 2 with its name.
+- [x] Guards cover `src/secrev/`, `scripts/`, and `patterns/`.
+- [x] The scope guard exits 2 with a message when `MILESTONE` has no rules.
+- [x] No hook invokes `jq`.
+- [x] Path globs have no leading anchor.
+- [x] No agent definition restates `STACK.md` content.
+- [x] **Each guard has been deliberately attacked and observed to refuse** (H-8). A guard nobody
       has tried to defeat is an assumption, not a control.
+
+Closed. Ledger and per-task receipts: `.claude/TASKS_M0.md`, `.claude/receipts.md`.
+
+Three items grew beyond what is written above, and the difference is worth keeping:
+
+- Item 1's allowlist needed a **third category**. Reading and writing are not the only two things
+  one does to a file: `sh scripts/check.sh` executes a script without writing it, and refusing it
+  made the gate unrunnable. The category is safe only alongside a ban on every shell operator
+  beside a protected path — with chaining permitted, an allowlisted first command carries any
+  write that follows it.
+- Item 3's `|| true` was not the only way a status was lost. `cmd | head` discards it just as
+  completely, and POSIX `sh` has no `PIPESTATUS`. Two instances, one of which would have announced
+  that NFR-3 held over a failing comparison.
+- Item 5's premise in §3 is wrong: the gate does **not** catch an `eval` in `scripts/` after the
+  fact. `self_check.py` walks `src/secrev` only. The hook is the sole control there.
+
+`.claude/` was added to the protected set — nothing guarded the harness itself, and a `sed -i` on
+a guard removed the control with nothing objecting. Protected against `Bash` only, so `Write` and
+`Edit` still reach it and repair stays visible.
+
+`STACK.md` §8 gained **H-9** from this milestone's own findings: a guard answers in the protocol's
+vocabulary, and reads the state it gates on rather than assuming it.
 
 ---
 

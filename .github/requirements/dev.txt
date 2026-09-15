@@ -1,0 +1,40 @@
+# Pinned development toolchain for CI.
+#
+# Why this file exists: CI was installing `ruff pytest mypy` unpinned, so every
+# run resolved whatever was newest. That means the rules the gate enforces could
+# change without anyone committing anything — a red build with no diff to
+# explain it, and a green build that proves less than it appears to. In a repo
+# whose STACK.md §2 calls every dependency a supply-chain surface, an unpinned
+# install in the one process that vouches for the code is the wrong default.
+#
+# Local development installs the same set, so "passes locally" and "passes in
+# CI" compare like with like:
+#
+#     python3 -m venv .venv
+#     .venv/bin/pip install -r .github/requirements/dev.txt
+#
+# Bumping: change a version here deliberately, run the full gate, commit the
+# change on its own. Dependabot opens the PR (.github/dependabot.yml).
+#
+# NOT hash-locked yet. `--require-hashes` is the next step and needs
+# `uv pip compile --generate-hashes` (or pip-compile) run once uv is available
+# on the machine that regenerates this. Version pinning already removes the
+# silent-drift problem; hashes additionally remove the tampered-artifact one.
+# Do not describe this file as hash-locked until it is.
+
+# Direct
+mypy==2.3.1
+pytest==9.1.1
+ruff==0.16.5
+
+# Transitive, pinned so the resolution is reproducible rather than merely
+# constrained. Generated from a working environment with `pip freeze`.
+ast_serialize==0.8.0
+iniconfig==2.3.0
+librt==0.15.0
+mypy_extensions==1.1.0
+packaging==26.3
+pathspec==1.1.1
+pluggy==1.6.0
+Pygments==2.21.0
+typing_extensions==4.16.0

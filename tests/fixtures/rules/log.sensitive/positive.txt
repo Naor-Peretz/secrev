@@ -1,0 +1,3 @@
+logger.info("auth token: %s", token)
+print(f"password={password}")
+console.log("api_key", apiKey)

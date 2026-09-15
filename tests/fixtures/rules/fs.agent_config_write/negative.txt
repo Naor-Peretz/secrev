@@ -1,0 +1,7 @@
+# Names that are adjacent to the list without being on it. Each of
+# these would match a rule written without word boundaries.
+config = Path.home() / ".claudia" / "settings.json"
+open(".gitignore", "w")
+open("claude.md", "w")
+LOG = Path(".cache/agents.log")
+doc = Path("docs/cursor-support.md")

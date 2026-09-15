@@ -1,0 +1,109 @@
+# Python seed patterns. BRIEF_M1.md §6.
+#
+# `languages: [python]` on every entry. §4 defines a language list as a false
+# positive reducer rather than a prerequisite — these constructs would match in
+# any text, and scoping them to Python is what stops `shell=True` in a prose
+# file about subprocess from entering the ledger as a code-layer candidate.
+#
+# See `_base.yaml` for why regexes are block scalars and why `owasp` is absent
+# from every pattern but the one the brief itself supplies a mapping for.
+#
+# Nothing here is a verdict. `exec.dynamic` matching does not mean the file is
+# unsafe; it means a reader has to answer where the argument came from.
+
+version: "2026.09.1"
+
+patterns:
+  - id: exec.shell_true
+    layer: [code]
+    languages: [python]
+    regex: |-
+      subprocess\.[a-zA-Z_]+\([^)]*shell\s*=\s*True
+    owasp: ASI-02
+    precision: high
+    default_severity_hint: high
+    question: >-
+      Where does the command string originate, and is any part of it
+      interpolated from input the caller does not control? With `shell=True`
+      the string is parsed by a shell, so a semicolon in a filename is a second
+      command.
+    references: ["CWE-78"]
+
+  - id: exec.dynamic
+    layer: [code]
+    languages: [python]
+    regex: |-
+      (?<![\w.])(?:eval|exec|compile)\s*\(
+    precision: medium
+    default_severity_hint: high
+    question: >-
+      Is any part of the argument externally influenced, whether directly or by
+      passing through a structure the caller can populate? Note that this is
+      also the construct STACK.md §2.1 forbids in this codebase, so a hit inside
+      `src/` is a self-application failure rather than a question.
+    references: ["CWE-95"]
+
+  # The negative lookahead is the reason STACK.md §2 records that the
+  # third-party `regex` package was considered and rejected: the safe-loader
+  # case needs lookahead, not the variable-length lookbehind an earlier draft
+  # claimed, and stdlib `re` does lookahead.
+  #
+  # It has to admit `Loader=` spelled several ways, because a rule that only
+  # recognises `yaml.SafeLoader` reports a false positive on the equally safe
+  # `SafeLoader` imported directly — and a rule that cries wolf on correct code
+  # is a rule people learn to skip.
+  - id: deser.unsafe
+    layer: [code]
+    languages: [python]
+    regex: |-
+      \bpickle\.loads?\s*\(|\bmarshal\.loads\s*\(|\byaml\.load\s*\((?![^)]*\bLoader\s*=\s*(?:yaml\.)?(?:C?SafeLoader|BaseLoader)\b)
+    precision: high
+    default_severity_hint: high
+    question: >-
+      Is the serialised data from an origin the process controls end to end?
+      Deserialisation of untrusted input is execution, not parsing — the format
+      carries constructor calls, so reaching the parser is already too late.
+    references: ["CWE-502"]
+
+  - id: tls.verify_off
+    layer: [code]
+    languages: [python]
+    regex: |-
+      verify\s*=\s*False|_create_unverified_context|CERT_NONE
+    precision: high
+    default_severity_hint: high
+    question: >-
+      Deliberate, or a debugging leftover that shipped? If deliberate, what
+      replaces the guarantee — certificate pinning, a private CA, a network
+      that is genuinely trusted? Disabling verification turns every hop into a
+      party to the conversation.
+    references: ["CWE-295"]
+
+  # Added by owner decision during M1 planning; §6 records why. DoD item 10
+  # requires flagging the region of a known path-validation issue, no original
+  # seed pattern touched path handling, and PRD FR-3.4 names the class as
+  # minimum code-layer coverage with no milestone owning it.
+  #
+  # `precision: low` is the honest value and not a defect (§4). This will match
+  # a great deal of ordinary path handling. That is the correct trade: it is
+  # the only rule standing between the catalog and a whole FR-3.4 class, a
+  # false positive costs one paragraph under P4, and a miss here is the defect
+  # the real-target DoD check exists to catch.
+  #
+  # It asks whether a path is being *built* — a question about the presence of
+  # a token, which regex answers. It is not the denylist-shape rule §1 cut to
+  # M4, which asks about the shape of control flow and which regex cannot
+  # answer at all.
+  - id: path.traversal
+    layer: [code]
+    languages: [python]
+    regex: |-
+      \bos\.path\.join\s*\(|\bos\.path\.(?:abspath|realpath|normpath|expanduser)\s*\(|\bPath\s*\([^)]*\)\s*/|\.\.[\\/]|\bshutil\.(?:copy\w*|move|rmtree)\s*\(|\bos\.(?:remove|unlink|rename|makedirs)\s*\(
+    precision: low
+    default_severity_hint: medium
+    question: >-
+      Where does the joined component come from, and is the result confined to
+      a base directory *after* normalisation rather than only checked before
+      it? A prefix check that runs before `..` is resolved answers a question
+      about a string that no longer exists by the time the path is opened.
+    references: ["CWE-22", "CWE-23"]

@@ -88,7 +88,9 @@ class Visitor(ast.NodeVisitor):
                     if kw.arg == "shell" and not (
                         isinstance(kw.value, ast.Constant) and kw.value.value is False
                     ):
-                        self._flag(node, f"{dotted}(shell=...) — STACK.md §2.1, argument lists only")
+                        self._flag(
+                            node, f"{dotted}(shell=...) — STACK.md §2.1, argument lists only"
+                        )
                 if node.args and isinstance(node.args[0], ast.Constant):
                     self._flag(
                         node,

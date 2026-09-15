@@ -1,0 +1,152 @@
+name: harness
+
+# The gate for `.claude/` — the layer that *writes* this project, not the
+# project. Separate workflow, separate job, separate log, and it shares no step
+# with `ci.yml`.
+#
+# It is separate because the two answer different questions. `ci.yml` answers
+# "is the software correct". This answers "does the tooling that produced the
+# software still refuse what it claims to refuse". A harness stage inside the
+# product build meant a contributor without Claude Code could have their build
+# fail on a layer they never run, and meant the dependency pointed from the
+# thing being built into the thing building it.
+#
+# It is a workflow rather than local-only because `.claude/` is committed and
+# shared: someone edits a hook without running it, and the next session
+# inherits a guard that no longer guards. A control nobody exercises is an
+# assumption (STACK.md §8 H-8).
+on:
+  push:
+    paths:
+      - '.claude/**'
+      - 'tests/harness/**'
+      - '.github/workflows/harness.yml'
+  pull_request:
+    paths:
+      - '.claude/**'
+      - 'tests/harness/**'
+      - '.github/workflows/harness.yml'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: harness-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Actions pinned to a commit SHA, not a tag, for the same reason as ci.yml: a
+# tag is a mutable remote code reference that can change with no diff here.
+# Dependabot moves them forward as reviewable pull requests.
+
+jobs:
+  harness:
+    # Both platforms. The guards are shell and the path globs are
+    # case-sensitive on ext4 and not on APFS — a denylist checking `.claude`
+    # that blocks `.CLAUDE` on one and not the other is a finding class in this
+    # domain, not just a portability note (STACK.md §4).
+    name: harness (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.11"
+
+      # The harness itself has no dependencies: it is stdlib throughout,
+      # deliberately, because a third-party import here would put a package on
+      # the critical path of every prompt in every session. That is also why
+      # this workflow has no dependency-audit or licence stage — see
+      # .claude/check.sh, where the absence is stated rather than left to be
+      # inferred.
+      #
+      # The project is installed anyway, because one guard runs it:
+      # determinism-guard.sh re-runs scripts/determinism_check.py, which
+      # invokes `python -m secrev`. Without `-e .` that fails to import and the
+      # guard exits 2 — which the assertions read as NFR-3 broken. The first CI
+      # run on this repository failed exactly that way on both platforms while
+      # every local run passed, because a local .venv always has the project.
+      - name: environment
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install -q --disable-pip-version-check -r .github/requirements/dev.txt
+          .venv/bin/pip install -q --disable-pip-version-check -e .
+
+      # Pinned and hash-verified, exactly as in ci.yml. Installing a secret
+      # scanner with `curl … | sh` would be `net.fetch_exec` — one of the eight
+      # seed patterns this project ships, and the finding secrev would raise
+      # about anyone else (AC-10). A platform with no pin exits 2 rather than
+      # skipping the stage.
+      - name: gitleaks (pinned, hash-verified)
+        run: |
+          set -eu
+          VERSION=8.30.1
+          case "$(uname -s)-$(uname -m)" in
+            Linux-x86_64)
+              ASSET=linux_x64
+              SHA=551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb ;;
+            Darwin-arm64)
+              ASSET=darwin_arm64
+              SHA=b40ab0ae55c505963e365f271a8d3846efbc170aa17f2607f13df610a9aeb6a5 ;;
+            *)
+              echo "::error::no pinned gitleaks build for $(uname -s)-$(uname -m)."
+              echo "::error::Add one with its checksum; do not skip the secrets stage."
+              exit 2 ;;
+          esac
+          URL="https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}/gitleaks_${VERSION}_${ASSET}.tar.gz"
+          curl -fsSL --retry 3 -o gitleaks.tgz "$URL"
+          printf '%s  gitleaks.tgz\n' "$SHA" | shasum -a 256 -c -
+          tar -xzf gitleaks.tgz gitleaks
+          rm -f gitleaks.tgz
+          mkdir -p "$HOME/.local/bin"
+          mv gitleaks "$HOME/.local/bin/gitleaks"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: harness gate
+        run: sh .claude/check.sh
+
+      # H-8, in the one place it can be automated: the guards are attacked and
+      # observed to refuse. A green suite proves the assertions pass; it does
+      # not prove they can fail. Removing a guard's refusal must turn this red,
+      # and if it does not, the suite is describing the harness rather than
+      # testing it.
+      - name: the assertions can fail
+        run: |
+          set -eu
+          GUARD=.claude/hooks/self-application-guard.sh
+          cp "$GUARD" /tmp/guard.bak
+          # `-i.bak` because BSD sed requires the suffix and GNU accepts it
+          # (STACK.md §4). The backup it leaves is removed: a stray .bak beside
+          # a guard is the kind of thing a later scan reports and a reader has
+          # to work out.
+          sed -i.bak 's/^exit 2$/exit 0/' "$GUARD"
+          rm -f "$GUARD.bak"
+          # Asserted, not assumed: if the expression matched nothing, the gate
+          # below would stay green and this step would read as "the suite
+          # cannot fail" when in fact nothing was defeated. That is the no-op
+          # defeat that nearly passed for a verification once already.
+          if diff -q /tmp/guard.bak "$GUARD" >/dev/null; then
+            echo "::error::the defeat changed nothing — this step verified nothing."
+            exit 1
+          fi
+
+          set +e
+          sh .claude/check.sh >/dev/null 2>&1
+          still_green=$?
+          set -e
+          cp /tmp/guard.bak "$GUARD"
+
+          if [ "$still_green" = 0 ]; then
+            echo "::error::a defeated guard left the harness gate green."
+            echo "::error::The suite is describing the harness, not testing it."
+            exit 1
+          fi
+          echo "defeating a guard turns the harness gate red, as it must"

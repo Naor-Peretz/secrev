@@ -4,79 +4,246 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repository state
 
-No source yet. Four specification documents plus this file are the project. `src/secrev/` does not
-exist, so every gate stage past `ruff` skips and says so.
+`src/secrev/` contains `inventory.py` and nothing else. **Every gate stage now runs** — `ruff
+format`, `ruff check`, `mypy --strict`, `pytest`, the guard assertions, self-application, and
+determinism. Only the artifact half of the determinism stage is pending, and it names what it is
+waiting for (`recon.py`, `sweep.py`) rather than saying "nothing to compare".
 
-**The repository has no commits.** Everything — including this harness — is untracked. A deleted
-file is unrecoverable and the gate cannot diff against anything.
+Work lives on `m0/harness-repair`; `main` holds only the baseline commit. Before TASK-000 the
+repository had no commits at all, so nothing could be reviewed as a diff or reverted.
 
-**There is no `.venv`.** Hooks and the gate fall back to system `python3`, which has no `ruff`,
-`mypy` or `pytest`; those stages skip rather than fail. Run `uv sync` before trusting a green run.
+`.venv` is stdlib `venv` — `STACK.md` §3 no longer makes `uv` the default, because `uv`'s
+advertised install pipes a fetched script into a shell, which is `net.fetch_exec`, one of the eight
+seed patterns this tool ships.
 
-### The current milestone is M0, not M1
+### The current milestone is M1
 
-`.claude/MILESTONE` says `M1`. It is wrong, and it matters: `scope-guard.sh` reads that file, so it
-is policing the M1 boundary while the milestone that precedes M1 has not been built. `BRIEF_M0.md`
-is harness repair, and every item in its Definition of Done is currently open — verified against
-the tree, not assumed:
+`.claude/MILESTONE` reads `M1`, and **M0 is closed** — every box in `BRIEF_M0.md`'s Definition of
+done is ticked, with per-task receipts in `.claude/receipts.md` and the ledger in
+`.claude/TASKS_M0.md`.
 
-| M0 item | State |
-|---|---|
-| Bash guard closing the write bypass | **Absent.** `settings.json` matches `Write\|Edit\|MultiEdit` only |
-| `.venv` with `ruff`/`pytest`, hooks resolving from it | Absent |
-| No `\|\| true` on a quality check | Violated in `async-check.sh` (ruff, pytest, self-check) and `determinism-guard.sh` |
-| Guards cover `src/`, `patterns/`, `scripts/` | `scripts/` uncovered; `self-application-guard.sh` matches `src/secrev/*.py` only |
-| Scope guard refuses when `MILESTONE` has no rules | Violated — `scope-guard.sh:17` exits 0 |
-| No hook invokes `jq` | Violated — six hooks do |
-| Path globs carry no leading anchor | Violated — `*/src/secrev/*` in three hooks |
-| No agent restates `STACK.md` | Violated — `documentation-architect.md` carries a full "Technology Stack" section |
+That marker is the harness's only notion of where the project is, and it has now been wrong in both
+directions: it read `M1` through the whole of M0, so `scope-guard.sh` policed a boundary the project
+had not reached; leaving it at `M0` after M0 closed would have refused every write to `src/` and
+`patterns/`, which is exactly what M1 is. **Move it when a milestone closes.** It holds a single
+token — `scope-guard.sh` compares it by exact string and `commands/commit.md` pipes it through `tr`
+to build a branch name — so a checklist does not go in it.
 
-Read this before trusting the hook table below. The guards run, but they hook `Write|Edit|MultiEdit`
-and nothing else, so **a write performed through `Bash` — heredoc, `tee`, `sed -i`, `>` — passes
-every one of them silently.** That is `BRIEF_M0.md` §1, the highest-severity open item, and it is
-live whenever the session is configured to prefer Bash for edits. When editing a protected path
-under such a configuration, use `Write`/`Edit` so the guards can see it.
+M0 delivered, beyond its own list: `.claude/` entered the protected set, `STACK.md` §8 gained
+**H-9**, and three of the brief's own premises turned out to be wrong — the gate never caught an
+`eval` in `scripts/`, `|| true` was not the only way a status was lost (`cmd | head` discards it
+just as completely, twice), and the read/write allowlist needed a third category for *executing* a
+script. `BRIEF_M0.md`'s closing note records all three.
+
+### M1's build order is not `BRIEF_M1.md` §2's order
+
+§2 lists the deliverable tree alphabetically. That is not a sequence, and following it puts
+`cli.py` first. The order is in `.claude/TASKS_M1.md`, and the reason is worth carrying:
+
+**`inventory.py` first, and its determinism test before it.** It is the only file that
+concentrates the decisions that cannot be changed afterwards — traversal order, NFC normalisation,
+exclusions, binary detection, symlinks. `recon.py` and `sweep.py` are both consumers of the walk:
+right, and they inherit it free; wrong, and both are rewrites. `ids.py` comes before `sweep.py` for
+the same reason — an identity derived from a traversal counter looks correct until something is
+inserted ahead of it. `cli.py` is last.
+
+A determinism check written after the generators exist is a retrofit onto code composed without
+it, and NFR-3 is the one requirement that does not survive being retrofitted: getting it wrong
+invalidates every verification recorded above it (D-4).
+
+The gate enforces the order mechanically. The determinism stage keys on `src/secrev/inventory.py`,
+not on the `src/secrev/` directory — a directory appears with the *first* file, so the
+directory-shaped condition would have kept printing "nothing to compare" for exactly as long as the
+NFR-3 rules were being written.
+
+**One assertion in `tests/test_determinism.py` is a test of a test.** `sorted()` was removed
+deliberately and most of that file stayed green: two walks of one tree agree whether or not the
+output is sorted, because `os.walk` is stable within a machine. Only the explicit
+`paths == sorted(paths)` caught it — and that assertion is worth nothing if the fixture tree's raw
+traversal order ever coincides with sorted order, so a separate assertion holds that apart. A
+50-file tree written in opposite orders was tried and **does not** catch it on ext4, whose
+directory index orders by a hash of the name; it is kept as a cross-filesystem canary and is
+labelled as not being the control.
+
+**The Bash bypass is closed.** `bash-guard.sh` is wired as a `PreToolUse` matcher on `Bash`, and a
+write to `src/`, `patterns/`, `scripts/` or `.claude/` through a shell is refused.
+
+What it permits beside a protected path: the read-only set (`cat`, `grep`, `head`, `tail`, `wc`,
+`ls`, `rg`, `git diff`, `git log`), and running an existing script — `sh <x.sh>`, `python3 <x.py>`
+with no flag after the interpreter. What it refuses: everything else, **and every shell operator**.
+No `;`, `&&`, `||`, `|`, newline, redirect, subshell or substitution, because each of those carries
+a write past the command that was actually checked. That costs read-only pipelines: `cat src/x.py |
+grep foo` is refused, and reading a protected file takes one command or the `Read` tool.
+
+`find` is deliberately absent from the read-only set — it carries `-delete` and `-exec`, and
+admitting it "minus those flags" would be a denylist over flags (P3).
+
+`.claude/` is protected against `Bash` only. A `Write` or `Edit` to a guard is untouched by this
+hook and passes in front of the ones that watch writes, so repairing the harness stays possible and
+stays visible while the silent-disable path closes.
 
 M0 exists because a harness that reports green while verifying nothing is worse than no harness:
-the green is taken as evidence. Fix it before writing M1 code.
+the green is taken as evidence.
+
 
 ## Development environment
 
 ```
 sh scripts/check.sh                    # the gate — exactly what CI runs, no second list
+sh scripts/check.sh --fast             # what pre-commit runs: no pytest, determinism or audit
+sh scripts/check.sh --sast             # the gate plus CodeQL (minutes; CI runs it every push)
 python3 scripts/self_check.py          # STACK.md §2.1 alone (AST-based, not grep)
 python3 scripts/determinism_check.py   # NFR-3 alone: two runs byte-identical + stable ids
+python3 scripts/license_check.py       # licence allowlist alone (STACK.md §2.2)
+python3 scripts/deps_audit.py          # known-vulnerability audit alone (needs the network)
 
-uv sync                                # env; plain `pip install -e .` in a venv must also work
+python3 -m venv .venv                  # env (STACK.md §3); needs the python3-venv package
+.venv/bin/pip install -e '.[dev]'      # uv is permitted, but is not the default
 pytest                                 # all tests
 pytest tests/test_sweep.py::test_name  # a single test
+
+python3 -m venv .venv-audit            # the supply-chain tooling, kept out of .venv (§2.2)
+.venv-audit/bin/pip install -r .github/requirements/audit.txt
 ```
 
-`uv sync` installs `pytest`, `ruff` and `mypy` (dev-only; recorded in `STACK.md` §2 with reasons).
-The gate runs `ruff format --check`, `ruff check`, `mypy --strict`, `pytest`, the
-self-application check, and the determinism check, in that order.
+`--sast` needs the CodeQL CLI, which nothing here installs either. Pinned and hash-verified against
+the checksum GitHub publishes beside the bundle, the same discipline as `gitleaks`:
+
+```
+V=2.26.4; B=codeql-bundle-linux64.tar.zst
+curl -fsSL -O "https://github.com/github/codeql-action/releases/download/codeql-bundle-v$V/$B"
+curl -fsSL -O "https://github.com/github/codeql-action/releases/download/codeql-bundle-v$V/$B.checksum.txt"
+sha256sum -c "$B.checksum.txt" && tar --zstd -xf "$B" -C ~/.local/share/
+```
+
+`check.sh` looks for `~/.local/share/codeql/codeql/codeql`, or `$CODEQL_BIN`. Point it at the real
+binary inside the extracted bundle, never at a symlink to it: the CLI resolves its query packs
+relative to its own location, so a lone symlinked executable reports `codeql/python-queries cannot
+be found` — which is "could not run", and the stage correctly exits 2 rather than calling it clean.
+
+`gitleaks` is an external binary and nothing here installs it. Pinned, hash-verified, the
+same way CI does it — `brew install gitleaks` is equivalent on macOS:
+
+```
+V=8.30.1; SHA=551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  # linux_x64
+curl -fsSL -o gl.tgz "https://github.com/gitleaks/gitleaks/releases/download/v$V/gitleaks_${V}_linux_x64.tar.gz"
+printf '%s  gl.tgz\n' "$SHA" | sha256sum -c - && tar -xzf gl.tgz gitleaks && mv gitleaks ~/.local/bin/
+```
+
+The dev set is `pytest`, `ruff` and `mypy`, all recorded in `STACK.md` §2 with reasons —
+`mypy` only since TASK-014, having been configured and run for some time while appearing
+nowhere in the binding document. `pip-audit`, `pip-licenses` and `gitleaks` are §2.2, and
+the first two live in `.venv-audit` rather than `.venv`: they carry 29 transitive packages
+including a network client stack, and the environment that vouches for the code should hold
+only packages someone chose.
+
+`uv` is permitted but is no longer the default (§3). Its advertised install pipes a fetched
+script into a shell, which is `net.fetch_exec` — one of the eight seed patterns this tool
+ships. The objection is to the method, not the tool.
+
+The gate runs, in order: `ruff format --check`, `ruff check`, `mypy --strict`, `pytest`, the
+self-application check, the secrets scan (`gitleaks dir`), the licence allowlist, the
+determinism check, and the dependency audit.
+
+### Two gates, and neither calls the other
+
+| | `scripts/check.sh` | `.claude/check.sh` |
+|---|---|---|
+| Question | Is the software correct? | Does the tooling still refuse what it claims to? |
+| Covers | `src/`, `tests/`, `scripts/`, `patterns/` | `.claude/`, `tests/harness/` |
+| Config | `pyproject.toml` | `.claude/ruff.toml` |
+| CI | `ci.yml` — every push | `harness.yml` — pushes touching those paths |
+| Run by | `.githooks/pre-commit`, `pre-push` | `/check`, CI |
+
+The guard assertions used to be stage 4 of the product gate, and the product gate used to write
+its success marker into `.claude/hooks/state/`. Both are gone. `.claude/` is the layer that
+*writes* this project; `src/` is the project. A stage asserting that a `PreToolUse` hook still
+refuses a heredoc is not an answer to "is the software correct", and a contributor without Claude
+Code should not have their build fail on a layer they never run.
+
+The marker is now `.gate-passed`, in the product's own space. **Reading across the boundary is
+fine — the harness reads it. Writing across it is not.** An assertion in `attack.py` fails if
+`scripts/check.sh` mentions `.claude` outside a comment, because nobody deletes a boundary
+deliberately; someone adds one convenient line.
+
+Two stages are absent from the harness gate and say so rather than being omitted: no dependency
+audit, no licence check, because the harness is stdlib throughout. A third-party import there
+would put a package on the critical path of every prompt in every session.
+`--sast` appends CodeQL. Every stage now has something to check.
+
+The last four are STACK.md §2.2 and came from comparing this gate against a mature
+JavaScript project's CI (format → lint → build → test → outdated → audit → licences →
+gitleaks → CodeQL). Two things did not come across. Its pre-push hook prints
+`⚠️ not installed - skipping` for gitleaks and CodeQL and still reaches `✅ All CI checks
+passed`, which is the H-1 collapse this harness exists to prevent — here a missing tool
+exits 2. And its blocking outdated-dependency check is deliberately absent: it turns a build
+red for a release nobody in this repository made, which is the drift
+`.github/requirements/dev.txt` was pinned to avoid. Dependabot answers that question as a PR.
 
 `self_check.py` is AST-based on purpose. `shell=True` is a structure question, and a grep here
 would be the exact mistake the catalog is designed not to make. The crude grep-shaped check inside
 `check.sh` is a separate backstop; both must pass and neither replaces the other.
 
-CI runs the same script on Linux **and** macOS, on 3.11 and 3.12, plus a job that compares the
-artifact hashes produced on the two operating systems against each other. NFR-3 says "across runs
-and machines"; a single-platform check cannot see the NFC/NFD divergence, so the cross-platform
-comparison is the one that actually tests it. A separate job installs with plain `pip install -e .`
-to keep STACK.md §3's "must also work without uv" from decaying quietly.
+### The gate runs in three places
 
-`git config core.hooksPath .githooks` is set, so `.githooks/pre-commit` runs the same gate before
-every commit. Bypass with `--no-verify` when you mean to.
+| Where | What runs | Why there |
+|---|---|---|
+| `.githooks/pre-commit` | `check.sh --fast` | Format, lint, types, guards, self-application, secrets, licences. Cheap enough that nobody learns to type `--no-verify` |
+| `.githooks/pre-push` | `check.sh` (full) | The last point before code leaves the machine. Adds pytest, determinism, and the dependency audit |
+| `.github/workflows/ci.yml` | `check.sh` (full) | On **every push to every branch**, every PR, and `workflow_dispatch` |
+
+`--fast` is a prefix of the same list, not a second list: nothing reaches a remote on its
+strength, because pre-push and CI both run the whole thing. `--fast` also does not write the
+`gate-passed` marker — a partial run must not read as a verified one.
+
+The secrets scan is in the fast half on purpose: `gitleaks dir` reads the working tree, so it
+catches a credential at the commit that would have introduced it rather than after it is
+history, where removal is a rewrite and the credential is burned anyway. The dependency audit
+is out of it for the opposite reason — it queries OSV, a push has a network by definition and
+a commit does not, and a stage that fails offline teaches people to bypass the hook.
+
+`git config core.hooksPath .githooks` is set. Both hooks honour `--no-verify`, which is not a
+bypass so much as a deferral: CI runs the identical gate and says so.
+
+### What CI covers beyond the gate
+
+| Job | Asserts |
+|---|---|
+| `gate` | The full gate on ubuntu + macos × 3.11 + 3.12 |
+| `install-paths` | Both documented pip routes work: `pip install -e .` and `pip install -e '.[dev]'` (STACK.md §3) |
+| `catalog` | A malformed catalog exits **2** *and* names the offending pattern id (BRIEF §4, §7) |
+| `cross-platform-determinism` → `compare-platforms` | The artifact hashes from Linux and macOS are identical |
+| `codeql.yml` | Dataflow analysis over the Python source, on every push and weekly. No `continue-on-error` |
+
+NFR-3 says byte-identical "across runs and machines". A single-platform check cannot see the
+NFC/NFD divergence, so the cross-platform comparison is the one that actually tests it.
+
+**Every action is pinned to a commit SHA**, never a tag. `@v4` resolves to whatever the maintainer
+last pointed it at — a remote code reference that can change with no diff here. Five actions are
+used at all (four in `ci.yml`, `codeql-action` twice in `codeql.yml`), and that is deliberate: each
+one is third-party code with access to the checkout. `gitleaks` is installed from a pinned,
+hash-verified release tarball rather than through `gitleaks/gitleaks-action`, for the same reason.
+Dependabot (`.github/dependabot.yml`) moves the pins forward as PRs someone reads.
+
+**The dev toolchain is pinned** in `.github/requirements/dev.txt`, and the supply-chain tooling
+in `.github/requirements/audit.txt`. Unpinned, every CI run resolved
+whatever ruff and mypy were newest, so the rules the gate enforces could change with no commit to
+explain it. Not hash-locked yet — `--require-hashes` is the next step, and the file says so rather
+than overstating what it provides.
+
+`uv` is deliberately absent from CI. §3 permits it but does not depend on it, so installing it to
+prove a path the document declined to require would add a supply-chain surface for nothing.
 
 ### What the `.claude/` harness enforces
 
-Every `PreToolUse` row below matches `Write|Edit|MultiEdit`. None of them sees a `Bash` write.
+`bash-guard.sh` covers `Bash`; every other `PreToolUse` row covers `Write|Edit|MultiEdit`. Between
+them, no tool that can write to a protected path is unwatched (H-3).
 
 | Hook | Event | Effect |
 |---|---|---|
-| `self-application-guard.sh` | PreToolUse Write/Edit | **Blocks** a write that would put `eval`, `exec`, `pickle`, `shell=True`, `yaml.load`, `Loader=`, or a network client into `src/secrev/` |
-| `scope-guard.sh` | PreToolUse Write/Edit | **Asks** when a write reaches past the milestone in `.claude/MILESTONE` — severity logic, dedup by location, `multiline`, AST, surfaces, ledger gating |
+| `bash-guard.sh` | PreToolUse Bash | **Refuses** a Bash command touching `src/`, `patterns/`, `scripts/` or `.claude/` unless it reads (allowlisted command) or runs an existing script (`sh <x.sh>`, `python3 <x.py>`, no flags). Every shell operator refuses — chaining carries a write past the command that was checked |
+| `self-application-guard.sh` | PreToolUse Write/Edit | **Blocks** a write that would put `eval`, `exec`, `pickle`, `shell=True`, `yaml.load`, `Loader=`, or a network client into Python under `src/` or `scripts/` |
+| `scope-guard.sh` | PreToolUse Write/Edit | **Asks** when a write reaches past the milestone in `.claude/MILESTONE`; **refuses** when that milestone has no rules (H-6) |
 | `spec-guard.sh` | PreToolUse Write/Edit | **Asks** before any edit to the PRD, `STACK.md`, or a brief, restating precedence |
 | `determinism-guard.sh` | PostToolUse | Re-runs the determinism check when `ids.py`, `inventory.py`, `sweep.py` or `recon.py` is touched |
 | `async-check.sh` | PostToolUse | Runs ruff + pytest + self-check in the background, debounced |
@@ -177,7 +344,9 @@ requirement of M1 — patterns will be revised many times, these rules will not,
 wrong invalidates everything above.
 
 - Collect paths, then `sorted()` on the POSIX string. Never emit in `os.walk` order.
-- NFC-normalise every path before use, comparison, or hashing (APFS stores NFD).
+- NFC-normalise every path before use, comparison, or hashing — because decomposed names exist
+  and travel, not because "macOS stores NFD". APFS *preserves* normalisation and is only
+  insensitive on lookup; HFS+ was the one that stored a decomposed form (`STACK.md` §5).
 - Decode UTF-8 with `errors="replace"`; normalise CRLF→LF *before* hashing; report line numbers
   against the original.
 - `window_sha256` covers window text only — no filenames, timestamps, or line numbers, so it fires

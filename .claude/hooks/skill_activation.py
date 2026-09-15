@@ -75,5 +75,5 @@ def main() -> int:
 if __name__ == "__main__":
     try:
         sys.exit(main())
-    except Exception:  # noqa: BLE001 - a hook must never break the turn
+    except Exception:
         sys.exit(0)

@@ -54,8 +54,12 @@ it. Find the value first. In order of likelihood:
   `set`/`dict` built from one, whose order reaches the output. Collect, then
   `sorted()` on the POSIX string.
 - **Unicode form.** A path used, compared, or hashed without
-  `unicodedata.normalize("NFC", ...)`. Invisible on Linux; APFS stores NFD, so
-  this fails only on macOS or only in the cross-platform CI job.
+  `unicodedata.normalize("NFC", ...)`. It can fail on either platform, and
+  which one is not obvious — do not assume "this is the macOS bug". APFS
+  preserves the normalisation it was given and is only insensitive on *lookup*,
+  so code that reopens a file by its NFC-normalised name works on APFS and
+  raises on ext4 when the name was stored NFD. That defect shipped in this
+  repository and failed on Linux. `STACK.md` §5 carries the correction.
 - **Line endings.** CRLF must become LF *before* hashing, while line numbers are
   reported against the original.
 - **Identity.** A candidate `id` from a traversal counter rather than

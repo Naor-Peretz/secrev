@@ -15,7 +15,7 @@ Byte-identical output across runs **and machines**. Not "stable in practice".
 | Rule | Why it is not optional |
 |---|---|
 | Collect paths, then `sorted()` on the POSIX string | `os.walk` order is filesystem order; it differs between two copies of the same tree |
-| NFC-normalise every path before use, comparison, or hashing | APFS stores NFD, Linux stores NFC. Without this the same target hashes differently on macOS and Linux and invalidates verifications for no reason (D-4) |
+| NFC-normalise every path before use, comparison, or hashing | Decomposed names exist and travel — authored on HFS+, or by a tool that emits NFD — and survive onto any filesystem. Without this the same content is two candidates and verifications expire for no reason (D-4). Not "APFS stores NFD": APFS preserves normalisation and is only insensitive on lookup (`STACK.md` §5) |
 | Decode UTF-8 with `errors="replace"`; record the mode | A locale must never decide how a target is read |
 | CRLF→LF **before** hashing; line numbers against the original | Otherwise a checkout setting changes every hash |
 | `window_sha256` covers window text only | No filename, no line number, no timestamp. The hash answers "did this content change", and must not fire when content merely moved |

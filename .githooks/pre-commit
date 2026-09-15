@@ -1,3 +1,14 @@
 #!/bin/sh
-# Same gate as CI, no second list. Bypass with `git commit --no-verify`.
-exec sh "$(git rev-parse --show-toplevel)/scripts/check.sh"
+# The fast prefix of the gate: format, lint, types, harness guards,
+# self-application, secrets, licences. Not pytest, not determinism, not the
+# dependency audit — the first two are slow and the third needs a network,
+# and all three run at push (.githooks/pre-push) and again in CI.
+#
+# The secrets scan is in this half deliberately. It reads the working tree, so
+# it catches a credential at the commit that would have introduced it, rather
+# than after it is history — at which point removing it is a rewrite and the
+# credential is burned regardless.
+#
+# The split exists so that committing stays cheap enough that nobody learns to
+# reach for --no-verify. Nothing reaches a remote on the strength of this hook.
+exec sh "$(git rev-parse --show-toplevel)/scripts/check.sh" --fast

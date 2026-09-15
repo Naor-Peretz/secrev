@@ -409,10 +409,15 @@ the others structurally cannot.
   conclusively assessed." They are never silently dropped.
 - **FR-4.5** Every `verified-ok` resolution carries a **verification record**: who/what verified it,
   when, the `catalog_version` in force, the reviewed `target_version`, a `window_sha256` of the
-  exact content window the judgment was made against, and a **semantic anchor** (`file` + enclosing
-  symbol or section, plus a normalised AST signature where the language allows). A verification
-  without a scope cannot be trusted later, and one anchored only to a line number is lost the
-  moment the content moves.
+  exact content window the judgment was made against, the `window_spec` that defines what that
+  window covered, and a **semantic anchor** (`file` + enclosing symbol or section, plus a
+  normalised AST signature where the language allows). A verification without a scope cannot be
+  trusted later, and one anchored only to a line number is lost the moment the content moves.
+
+  `window_spec` is recorded because `window_sha256` is meaningless without it. A hash of ±20 lines
+  and a hash of the enclosing block are hashes of different spans; comparing them across a change
+  in the definition reports "the content changed" for a window that was never the same window.
+  Carrying the spec makes the comparison refuse rather than mislead (`STACK.md` §5).
 - **FR-4.6** On re-review, each prior verification is re-evaluated against these triggers, and the
   trigger class determines the consequence:
 
@@ -420,6 +425,7 @@ the others structurally cannot.
   |---|---|
   | `window_sha256` differs — the reviewed content itself changed | **Invalidated** → back to `unresolved`, full re-review, no shortcut |
   | `catalog_version` increased and a new/changed pattern matches this location | **Invalidated** → the original judgment was made without this question being asked |
+  | `window_spec` differs — the definition of the window itself changed | **Invalidated** → the judgment was made against a different span, and the two `window_sha256` values are not comparable, so no cheaper answer is available |
   | Capability manifest changed (FR-1.4) | **Invalidated** for every verification whose rationale depended on a grant boundary |
   | Target released a new version, content window unchanged | **Expired** → cheap re-affirmation, batchable |
   | `ttl_days` elapsed (default 180), nothing else changed | **Expired** → cheap re-affirmation, batchable |
@@ -587,10 +593,12 @@ rewritten piecemeal.
   "resolution_note": null,
   "finding_id": null,
   "catalog_version": "2026.08.1",
+  "window_spec": "lines-20",       // what the window covered; see STACK.md §5 and FR-4.6
   "verification": {                // present only when status == "verified-ok"
     "verified_at": "2026-08-30T09:14:00Z",
     "target_version": "v0.9.14",
     "window_sha256": "9f2c…",
+    "window_spec": "lines-20",     // the two hashes above are comparable only at equal spec
     "anchor": {"file": "src/app/paths.py", "symbol": "validate_output_path"},
     "manifest_sha256": "4ab1…",
     "ttl_days": 180,

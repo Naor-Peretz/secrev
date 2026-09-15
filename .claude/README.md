@@ -5,7 +5,10 @@ the shipped tool, and nothing in `src/secrev/` may depend on it.
 
 ## Design notes worth knowing
 
-**No node.** The router that suggests skills is `hooks/skill_activation.py`, not
+**No node, and no `jq`.** Six hooks shelled out to `jq` until TASK-007; they read stdin JSON
+through `hooks/lib/hook_input.py` now, and the two that emitted an `ask` payload use
+`hooks/lib/hook_ask.py`. `STACK.md` §2 had recorded jq as removed, in the past tense, the whole
+time. The router that suggests skills is `hooks/skill_activation.py`, not
 a TypeScript hook run through `npx tsx`. The `skill-rules.json` format is
 unchanged from the TypeScript implementation it replaces, so rules are portable;
 the runtime is not. A package manager on the critical path of every prompt is a
@@ -44,6 +47,16 @@ and it should not be argued about as though it were.
   Both cover decisions the specification says must be raised, not resolved
   (BRIEF §8) — so they put the call in front of a human rather than guessing.
 
+## The gate is not part of this directory
+
+`scripts/check.sh` and the git hooks in `.githooks/` are project infrastructure, not harness. The
+distinction matters: the `.claude/` guards constrain what an *agent* may write, and are advisory or
+blocking at the keystroke; the gate constrains what *anyone* may commit or push, agent or human,
+and runs identically in CI. A guard that only an agent trips is not a control.
+
+`.githooks/pre-commit` runs `check.sh --fast`, `.githooks/pre-push` runs it in full, CI runs it in
+full again. Enabled by `git config core.hooksPath .githooks`, which is repo-local.
+
 ## Layout
 
 ```
@@ -54,7 +67,8 @@ and it should not be argued about as though it were.
 ├── agents/              # 5 subagents
 ├── disabled/            # agents kept but not scanned; see its README
 ├── commands/            # /check, /milestone, /commit, /pr
-├── hooks/               # 9 sh hooks + the Python skill router
+├── hooks/               # 11 sh hooks + the Python skill router
+│   └── lib/             # hook_input, hook_ask, paths — shared, policy-free
 └── skills/              # 9 skills + skill-rules.json
 ```
 
@@ -68,10 +82,12 @@ and state the session never learns.
   at write time, through a scope-guard prompt: it discovered which milestone it
   was in by being interrupted while leaving it.
 - `session-end.sh` (Stop) is silent unless a file under `src/`, `tests/`,
-  `patterns/` or `scripts/` changed after the last green gate. It reads the
-  success marker `scripts/check.sh` writes to `hooks/state/gate-passed` — the
-  one place the gate touches the harness. Advisory only: it is guarded, it never
-  affects the gate's exit status, and nothing reads it in CI.
+  `patterns/` or `scripts/` changed after the last green product gate. It reads
+  `.gate-passed`, which `scripts/check.sh` writes in the product's own space.
+  Reading across the boundary is fine; writing across it is not, and that marker
+  used to live in `hooks/state/` — which made the product gate reach into the
+  harness. Advisory only: guarded, never affects an exit status, nothing reads
+  it in CI.
 - `async-check-report.sh` (UserPromptSubmit) prints the background gate log once,
   when it is new. `async-check.sh` had been running ruff, pytest and the
   self-application check and writing the result to a log that nothing read.
@@ -82,6 +98,29 @@ keeping written down: `secrev-gate-passed` is a global name, so two clones of
 this repo on one machine share it. The gate goes green in one checkout and the
 Stop hook in the other reads that marker and stays quiet — a false all-clear,
 which is the failure mode this project exists to notice.
+
+## The harness has its own gate
+
+`sh .claude/check.sh` — format, lint, types, the guard assertions, and secret
+scanning, all over `.claude/` and `tests/harness/`. `.github/workflows/harness.yml`
+runs it on both platforms, on any push that touches those paths.
+
+It does **not** call `scripts/check.sh`, and `scripts/check.sh` does not call it.
+The two answer different questions: the product gate answers "is the software
+correct", and a stage asserting that a `PreToolUse` hook still refuses a heredoc
+is not an answer to that. It ran there until the gates were separated, which
+meant a contributor without Claude Code could have their build fail on a layer
+they never run.
+
+Its own `ruff.toml`, because a rule the product needs is not automatically a rule
+the harness needs and a shared config makes every change to one a change to both.
+Two stages are absent and say so rather than being omitted: there is no
+dependency audit and no licence check, because the harness is stdlib throughout
+— deliberately, since a third-party import here would put a package on the
+critical path of every prompt in every session.
+
+The workflow ends by defeating a guard and requiring the gate to go red. A green
+suite proves the assertions pass; it does not prove they can fail (H-8).
 
 ## Committing and pushing
 

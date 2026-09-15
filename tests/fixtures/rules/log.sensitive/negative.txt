@@ -1,0 +1,4 @@
+# A log call with none of the credential vocabulary.
+logger.info("request completed in %d ms", elapsed)
+# The vocabulary, but not inside a logging call: a key being read.
+value = config["api_key"]

@@ -1,0 +1,96 @@
+# Language-agnostic seed patterns. BRIEF_M1.md §6.
+#
+# These apply to any text: `languages` is omitted, which §4 defines as "applies
+# to all text". A pattern here must not assume a syntax.
+#
+# Every regex is a `|-` block scalar rather than a quoted string. YAML quoting
+# and regex escaping fight each other — a single-quoted scalar cannot hold an
+# apostrophe without doubling it, and a double-quoted one eats backslashes. The
+# block form passes the line through untouched, so what is written here is what
+# the engine compiles.
+#
+# `owasp` is absent from every pattern below, deliberately rather than by
+# oversight. §4 says to map to an OWASP Agentic Top 10 (2026) category "where
+# one applies" and to "omit rather than force a bad fit". Assigning codes from
+# memory would produce exactly the bad fit it warns against, and a wrong
+# category is worse than none: it speaks a vocabulary maintainers recognise
+# (PRD §2.4) while saying something untrue. Mapping these is a research task
+# against the published taxonomy, not a guess made here.
+#
+# Patterns are questions, not verdicts (FR-3.2). Nothing below concludes
+# anything; each one names a region and asks something a reader must answer.
+
+version: "2026.09.1"
+
+patterns:
+  - id: net.bind_all
+    layer: [code]
+    # The guards around the address are load-bearing: a bare `0\.0\.0\.0`
+    # matches inside `10.0.0.0/8`, which is a private network range and not a
+    # bind to every interface. Found by writing the negative fixture, which is
+    # what §9 requires one for.
+    regex: |-
+      (?<![\d.])0\.0\.0\.0(?![\d.])|--remote-debugging-port|--inspect(?:-brk)?\b
+    precision: medium
+    default_severity_hint: medium
+    question: >-
+      Who can reach this, and is there authentication in front of it? A debug
+      port is not a diagnostic convenience — it is an unauthenticated grant of
+      everything the process can reach, to anyone who can open a socket to it.
+    references: ["CWE-1327", "CWE-306"]
+
+  - id: net.fetch_exec
+    layer: [code]
+    regex: |-
+      (?:curl|wget)\b[^|\n]*\|\s*(?:sudo\s+)?(?:ba|z|da|k)?sh\b|urlretrieve\s*\(
+    precision: high
+    default_severity_hint: high
+    question: >-
+      What is the source, is the reference pinned to a digest rather than a
+      moving tag, and is integrity verified before the bytes are run? Fetching
+      and executing in one step means the thing reviewed and the thing run are
+      never the same artifact.
+    references: ["CWE-494", "CWE-829"]
+
+  - id: log.sensitive
+    layer: [code]
+    regex: |-
+      (?:log(?:ger|ging)?\.\w+|print|console\.\w+|echo)\s*[(\s][^)\n]*\b(?:token|password|passwd|secret|cookie|api[_-]?key|credential|authorization)\b
+    flags: [i]
+    precision: low
+    default_severity_hint: low
+    question: >-
+      Is the value being written, or only the name? A log line naming a
+      credential is harmless; one interpolating it has copied the credential
+      into a destination with different retention and different readers.
+    references: ["CWE-532"]
+
+  # §6: "the single most important pattern in the catalog for this domain, and
+  # the simplest to write — it is a path list. Give it the most fixture
+  # coverage."
+  #
+  # `flags: [i]` is not portability housekeeping. STACK.md §4: macOS is
+  # case-insensitive and Linux is not, so `.CLAUDE` and `.claude` are one
+  # directory on one platform and two on the other. A case-sensitive rule here
+  # would miss on exactly the platform where the write succeeds.
+  #
+  # The rule matches the path, not a write verb. Enumerating write verbs is a
+  # closed-list assumption that `tee`, a heredoc, `sed -i`, `>`, `cp`, `mv` and
+  # `python -c` each defeat — the same reasoning STACK.md §8 H-2 applies to the
+  # harness guards. Naming the region and asking whether it is a write is what
+  # a pattern is for (P4); deciding it is M4's job.
+  - id: fs.agent_config_write
+    layer: [code]
+    regex: |-
+      (?:^|[\s"'`(\[/\\=,])(?:\.claude|\.cursor|\.gemini|\.codex|\.aider|\.agents|\.continue|\.git/hooks|\.zshrc|\.bashrc|\.bash_profile|\.profile|LaunchAgents|autostart|\.config/systemd)\b
+    flags: [i]
+    precision: high
+    default_severity_hint: high
+    question: >-
+      Is this path reachable from input the caller does not control, and is the
+      comparison that guards it case-insensitive? Under P7 a write here is code
+      execution rather than I/O — the file is loaded by an agent, so writing it
+      is indistinguishable from running it. A denylist checking `.claude`
+      blocks `.CLAUDE` on Linux and fails to on macOS, and that assumption is
+      itself the finding.
+    references: ["CWE-732", "CWE-178"]

@@ -1,0 +1,78 @@
+name: codeql
+
+# Dataflow analysis over the Python source. The gate's fast half — ruff's
+# bandit rules and scripts/self_check.py — answers presence and structure
+# questions; this answers "does untrusted input reach this sink", which neither
+# of those can. It runs in minutes rather than milliseconds, which is why
+# `scripts/check.sh --sast` makes it opt-in locally and this workflow makes it
+# unconditional here.
+#
+# The weekly schedule is not redundant with the push trigger: CodeQL's queries
+# change, so the same commit can be clean in March and alerting in April.
+
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: "0 6 * * 1"   # Mondays, alongside the Dependabot run
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  actions: read
+  # No `security-events: write`. Nothing is uploaded to code scanning — see
+  # the note at the end of this file — so the permission would be unused.
+
+concurrency:
+  group: codeql-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: analyze (python)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      # Pinned to a commit SHA like every other action here (see ci.yml).
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - uses: github/codeql-action/init@6f5948dfacef28e207b48d0905cf90c03365536d # v3.37.9
+        with:
+          languages: python
+          # The suite and the exclusions live in the config, which the local
+          # gate reads too. No `queries:` here, or CI and --sast would differ.
+          config-file: .github/codeql/codeql-config.yml
+
+      # No autobuild step: Python needs no build, and a no-op step that looks
+      # like one invites the belief that something was compiled and checked.
+
+      - uses: github/codeql-action/analyze@6f5948dfacef28e207b48d0905cf90c03365536d # v3.37.9
+        with:
+          category: "/language:python"
+          upload: never
+          upload-database: false
+          output: sarif-results
+
+      # The verdict. Same script, same rule as `scripts/check.sh --sast`:
+      # exit 1 on any alert, exit 2 when the report is missing or holds no
+      # runs — "nothing was analysed" never reads as "nothing was found".
+      - name: judge the report
+        run: python3 scripts/codeql_check.py --sarif sarif-results/python.sarif
+
+# Deliberately no `continue-on-error`. The project this workflow was modelled
+# on carries one, so that the job stays green when code scanning is not enabled
+# for the repository — which means a SAST job that has never analysed anything
+# reports exactly like one that analysed everything and found nothing. That is
+# the H-1 failure in the stage most likely to be trusted without reading.
+#
+# This file used to say that when the job fails with "code scanning is not
+# enabled", the two honest answers are to enable it or to delete this file. The
+# first CI run on this repository hit exactly that: it is private, and code
+# scanning on a private repository is a paid feature. There is a third honest
+# answer, and it is the one taken: analyse, do not upload, and let the job's
+# own exit status carry the verdict. What was objected to was a green that
+# verified nothing. This green still requires an analysis that produced a
+# report with no alerts in it. The cost is GitHub's alert UI — findings are
+# read in the job log, not the Security tab.
