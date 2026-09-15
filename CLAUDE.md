@@ -222,7 +222,7 @@ would be the exact mistake the catalog is designed not to make. The crude grep-s
 |---|---|---|
 | `.githooks/pre-commit` | `check.sh --fast` | Format, lint, types, guards, self-application, secrets, licences. Cheap enough that nobody learns to type `--no-verify` |
 | `.githooks/pre-push` | `check.sh` (full) | The last point before code leaves the machine. Adds pytest, determinism, and the dependency audit |
-| `.github/workflows/ci.yml` | `check.sh` (full) | On **every push to every branch**, every PR, and `workflow_dispatch` |
+| `.github/workflows/ci.yml` | `check.sh` (full) | On **every push to every branch** except `dependabot/**` (built through its PR instead, not twice), every PR, and `workflow_dispatch` |
 
 `--fast` is a prefix of the same list, not a second list: nothing reaches a remote on its
 strength, because pre-push and CI both run the whole thing. `--fast` also does not write the

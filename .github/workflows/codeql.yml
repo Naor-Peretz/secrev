@@ -12,6 +12,9 @@ name: codeql
 
 on:
   push:
+    # A Dependabot branch always has a PR, and `pull_request` runs it there.
+    # Without this, every Dependabot update ran each workflow twice.
+    branches-ignore: ["dependabot/**"]
   pull_request:
   schedule:
     - cron: "0 6 * * 1"   # Mondays, alongside the Dependabot run

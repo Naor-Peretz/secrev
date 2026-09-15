@@ -27,6 +27,21 @@ updates:
     commit-message:
       prefix: "ci"
     labels: ["dependencies", "ci"]
+    # Grouped only where actions must move together; everything else stays one
+    # PR per action, because a major bump is a decision someone should read.
+    #   codeql-action — `init` and `analyze` refuse to run at different
+    #     versions ("Loaded a configuration file for version '4.38.0', but
+    #     running version '3.37.9'"). Ungrouped, Dependabot opened one PR for
+    #     each, and each was red on its own and unmergeable alone.
+    #   artifacts — `upload-artifact` and `download-artifact` are the two ends
+    #     of the cross-platform digest comparison.
+    # Grouping also keeps this ecosystem under the PR limit: with five actions
+    # PRs open, the upload-artifact bump was silently not opened at all.
+    groups:
+      codeql-action:
+        patterns: ["github/codeql-action*"]
+      artifacts:
+        patterns: ["actions/upload-artifact", "actions/download-artifact"]
 
   - package-ecosystem: pip
     directory: "/.github/requirements"
@@ -39,7 +54,8 @@ updates:
     labels: ["dependencies"]
     # A major bump to the linter or type checker changes what the gate enforces.
     # That is a decision, so it arrives as its own PR rather than grouped with
-    # routine patches.
+    # routine patches. The group takes minor updates too, despite its name —
+    # renaming it would close and reopen whatever PR is open under it.
     groups:
       dev-tooling-patch:
         patterns: ["*"]

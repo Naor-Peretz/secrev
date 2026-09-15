@@ -3,8 +3,14 @@ name: ci
 # Every push, every branch. A branch that is not built is a branch whose state
 # nobody knows; the local pre-push hook runs the identical gate, so this is the
 # second opinion rather than the first.
+#
+# Dependabot branches are the one exclusion from `push`, and they are still
+# built: a Dependabot branch always has a PR, and `pull_request` runs it there.
+# Without the exclusion every update ran this whole matrix twice — macOS
+# minutes included, which a private repository pays for at ten times Linux.
 on:
   push:
+    branches-ignore: ["dependabot/**"]
   pull_request:
   workflow_dispatch: {}
 

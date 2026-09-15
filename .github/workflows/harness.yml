@@ -17,6 +17,8 @@ name: harness
 # assumption (STACK.md §8 H-8).
 on:
   push:
+    # A Dependabot branch always has a PR, and `pull_request` runs it there.
+    branches-ignore: ["dependabot/**"]
     paths:
       - '.claude/**'
       - 'tests/harness/**'
