@@ -10,23 +10,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 including the artifact half of the determinism stage, which compares real `recon.json` and
 `hits.jsonl` output.
 
-**Nothing of M2 exists yet** — no `surfaces.py`, no `.claude/TASKS_M2.md`. `BRIEF_M2.md` §2 was
-derived from the PRD rather than from building anything, and says it should be reviewed before
-anyone builds against it. The next step is `/milestone`, not code.
+**M2 is in progress** on `m2/surfaces`; the first part is PR #12. The plan was reviewed and the
+owner's decisions are recorded in `.claude/TASKS_M2.md`, which is the ledger — read it before
+touching M2 code. Done: `ledger.py`, `kinds.py`, `surfaces/_surfaces.yaml` with the first kind
+(`surface.skill_activation`), and `surfaces.py` with its golden (TASK-M2-001…005). Not done: the
+remaining kinds, `secrev surfaces` in `cli.py`, `coverage_gaps`, surfaces in the determinism check.
 
-M0 and M1 reached `main` as PR #1, merged from `m0/harness-repair` — a name that stopped describing
-the branch when M0 closed, so M2 starts on a fresh one. The remote is `github.com/Naor-Peretz/secrev`,
-**private**. CI first ran on 2026-09-15 and found four things no local run could: `harness.yml`
-never installed the project, so the determinism guard could not import it; a test assumed a
-case-sensitive filesystem and failed on APFS; and CodeQL could neither upload (code scanning on a
-private repository is paid) nor pass `security-and-quality` over fixtures that are bad code on
-purpose. All four are fixed, and every workflow was green on the head that was merged.
+The remote is `github.com/Naor-Peretz/secrev`, **private**. CI history lives in
+`.claude/receipts.md`, not here.
 
-TASK-M1-010, the macOS box in M2's Definition of done, now has evidence and is **still not
-ticked**. Linux and macOS produced byte-identical `recon.json` and `hits.jsonl` — but the fixture
-tree's only non-ASCII name is committed in NFC, so a decomposed name arriving from outside has never
-been exercised on either platform. The dependable evidence is a test that creates the NFD spelling
-at runtime and asserts it derives the same candidate id as the NFC one.
+TASK-M1-010, the macOS box in M2's Definition of done, is **not ticked** pending the owner (Q6 in
+`TASKS_M2.md`). Its evidence exists: Linux and macOS produced byte-identical `recon.json` and
+`hits.jsonl`, and `tests/test_sweep.py` creates an NFD name at runtime and passed on macOS.
 
 `.venv` is stdlib `venv` — `STACK.md` §3 no longer makes `uv` the default, because `uv`'s
 advertised install pipes a fetched script into a shell, which is `net.fetch_exec`, one of the nine
@@ -77,10 +72,49 @@ A determinism check written after the generators exist is a retrofit onto code c
 it, and NFR-3 is the one requirement that does not survive being retrofitted: getting it wrong
 invalidates every verification recorded above it (D-4).
 
-**The same holds for M2.** `surfaces.py` is a third consumer of the walk and a third generator of
-ids in `hits.jsonl`, so its golden test comes before it. It also has to be added to `is_nfr3_path`
-in `.claude/hooks/lib/paths.sh`, which names `ids.py`, `inventory.py`, `sweep.py` and `recon.py`
-exactly — until then `determinism-guard.sh` stays silent on edits to it.
+**The same held for M2.** `surfaces.py` is a third consumer of the walk and a third generator of
+ids in `hits.jsonl`, so its golden test came first, and it joined `is_nfr3_path` in
+`.claude/hooks/lib/paths.sh` before it existed. That function names files exactly — `ids.py`,
+`inventory.py`, `sweep.py`, `recon.py`, `surfaces.py`, `ledger.py` — so a new generator of
+deterministic output is silent under `determinism-guard.sh` until it is added.
+
+### The M2 shape, which takes several files to see
+
+- **`ledger.py` is the record every source shares** — `Hit`, `to_jsonl`, `redact`, `excerpt`,
+  `window`. Sources import it and never each other: `surfaces.py` imports neither `sweep` nor
+  `catalog` (Q2). A source that can see another's module is one refactor from seeing its results.
+- **What a surface is lives in data** (NFR-6): `surfaces/_surfaces.yaml`, one kind per entry,
+  detection included — `files` globs and a `declaration` regex. `kinds.py` loads it as strictly
+  as `catalog.py` loads patterns. `surfaces.py` holds no knowledge of any kind.
+- **The `surface.` namespace is closed from both sides**: `kinds.py` requires it, `catalog.py`
+  refuses it, so a `rule_id` in `hits.jsonl` names one question.
+- **One meaning of a glob**: `inventory.glob_to_regex`, used by both sources.
+- **Two window names**: `lines-20` on pattern records, `decl-20` on surface records — the same
+  span, anchored on the declaration, named so the two are never compared (STACK.md §5, C-2).
+- **`catalog_version` on a surface record carries the kinds file's `version`** — a default
+  pending the owner (Q4), not a decision.
+- **Line-oriented, no `ast`, in M2** (Q3). A declaration spanning lines is a coverage gap.
+
+### Working against the guards
+
+What costs time every session, and how it goes instead:
+
+- **Staging protected paths.** `bash-guard.sh` refuses `git add` naming `src/`, `patterns/`,
+  `surfaces/`, `scripts/` or `.claude/`. The owner stages those with `! git add …`; then commit
+  with no pathspec. Never route around it (`git add -A`, `commit -a`, assembling the path).
+- **Commit messages and PR bodies.** A command naming a protected path *and* containing a newline
+  is refused. Word the message without the path tokens, and pass PR bodies with `--body-file`.
+- **Branch names.** `m2/surfaces` itself matches the protected token, so `git push -u origin
+  m2/surfaces` is refused. Use `git push -u origin HEAD` and `gh pr create` without `--head`.
+  (An open finding in `TASKS_M2.md`: the guard should match only a path segment.)
+- **Goldens are regenerated, never repaired**: generate into the scratchpad, diff against the
+  committed file, explain every changed line, then copy.
+- **Test values that must look secret must not be credential-shaped.** `gitleaks` exempts only
+  `tests/fixtures/`, and `.gitleaks.toml` is not widened to make a test pass.
+- **Fixture directories are never named `src`, `patterns`, `surfaces` or `scripts`** — the guards
+  would treat them as protected.
+- **GitHub comments and PR bodies** posted for the owner end with
+  `🤖 Posted by Claude Code on behalf of @Naor-Peretz`.
 
 The gate enforces the order mechanically. The determinism stage keys on `src/secrev/inventory.py`,
 not on the `src/secrev/` directory — a directory appears with the *first* file, so the
@@ -277,7 +311,7 @@ them, no tool that can write to a protected path is unwatched (H-3).
 | `self-application-guard.sh` | PreToolUse Write/Edit | **Blocks** a write that would put `eval`, `exec`, `pickle`, `shell=True`, `yaml.load`, `Loader=`, or a network client into Python under `src/` or `scripts/` |
 | `scope-guard.sh` | PreToolUse Write/Edit | **Asks** when a write reaches past the milestone in `.claude/MILESTONE`; **refuses** when that milestone has no rules (H-6) |
 | `spec-guard.sh` | PreToolUse Write/Edit | **Asks** before any edit to the PRD, `STACK.md`, or a brief, restating precedence |
-| `determinism-guard.sh` | PostToolUse | Re-runs the determinism check when `ids.py`, `inventory.py`, `sweep.py` or `recon.py` is touched |
+| `determinism-guard.sh` | PostToolUse | Re-runs the determinism check when a file named by `is_nfr3_path` is touched |
 | `async-check.sh` | PostToolUse | Runs ruff + pytest + self-check in the background, debounced |
 | `plan-review.sh` | PostToolUse ExitPlanMode | Routes every plan through the `plan-reviewer` agent before code |
 | `skill-activation.sh` | UserPromptSubmit | Surfaces the project skills that apply to the prompt |
@@ -356,7 +390,7 @@ rendering while any hit is `unresolved` (P4, AC-2).
 ```
 secrev recon     <target>    # → recon.json  (M1, implemented)
 secrev sweep     <target>    # → hits.jsonl  (M1, implemented)
-secrev surfaces  <target>    # → hits.jsonl  (M2, current)
+secrev surfaces  <target>    # → hits.jsonl  (M2, not yet a subcommand — TASK-M2-007)
 secrev structure <target>    # → hits.jsonl  (M4)
 secrev verify    <workspace> # gate          (M7)
 secrev report    <workspace> # → report.md   (M9)
@@ -386,7 +420,10 @@ wrong invalidates everything above.
   against the original.
 - `window_sha256` covers window text only — no filenames, timestamps, or line numbers, so it fires
   on content change and not on movement.
-- Candidate `id` derives from `(relative_path, line, rule_id, ordinal)`, never a traversal counter.
+- Candidate `id` derives from `(relative_path, rule_id, window_sha256, ordinal)` (`ids.py`,
+  `STACK.md` §5) — never a traversal counter, and not `line`, so an edit above a candidate does not
+  re-identify it. The ordinal counts byte-identical windows, which is why record order must be
+  total before ids are assigned.
 - No timestamps or absolute paths in deterministic outputs; `run.json` alone is exempt.
 - Skip `.git/`, and any directory named `node_modules`, `.venv`, `.venv-audit`, `venv`,
   `__pycache__`, `dist`, `build`, `.mypy_cache`, `.ruff_cache`, `.pytest_cache`, `.tox`, `.nox`,
