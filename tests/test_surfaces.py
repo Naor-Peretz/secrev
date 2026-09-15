@@ -221,6 +221,11 @@ CASES: dict[str, tuple[str, str, str]] = {
         '{\n  "mcpServers": {\n    "x": {\n      "args": ["--command"],\n'
         '      "shutdownCommand": "stop",\n      "env": {"COMMAND": "y"}\n    }\n  }\n}\n',
     ),
+    "surface.hook_binding": (
+        "hooks/hooks.json",
+        '{\n  "hooks": {\n    "PreToolUse": [\n      {"matcher": "Bash"}\n    ]\n  }\n}\n',
+        '{\n  "hooks": [\n    {"matcher": "Bash"}\n  ],\n  "env": {"PATH": "x"}\n}\n',
+    ),
 }
 
 
@@ -299,6 +304,35 @@ def test_a_command_key_outside_an_mcp_config_is_not_a_server(tmp_path: Path, kin
     nothing a model can reach through MCP; the kind is scoped by file."""
     root = skill_tree(tmp_path, "package.json", '"command": "node build.js"\n')
     skill_tree(root, ".vscode/tasks.json", '"command": "make"\n')
+    assert surfaces(root, kinds) == []
+
+
+@pytest.mark.parametrize(
+    "relative",
+    [".claude/settings.json", ".claude/settings.local.json", "plugin/hooks/hooks.json"],
+)
+@pytest.mark.parametrize(
+    "line",
+    [
+        '"PreToolUse": [',
+        '"UserPromptSubmit": [',
+        '  "SessionStart" : [',
+        # An event no list names yet: the shape, not an enumeration, is what
+        # keeps a new event from being missed silently (H-2, P3).
+        '"SomeFutureEvent": [',
+        '{"hooks": {"Stop": [{"hooks": []}]}}',
+    ],
+)
+def test_every_hook_binding(tmp_path: Path, kinds: Kinds, relative: str, line: str) -> None:
+    [hit] = surfaces(skill_tree(tmp_path, relative, f"{line}\n"), kinds)
+    assert hit.rule_id == "surface.hook_binding"
+
+
+def test_a_binding_shape_outside_a_hook_config_is_not_a_hook(tmp_path: Path, kinds: Kinds) -> None:
+    """A `settings.json` that is not under `.claude/` configures something
+    else; the kind is scoped by file, as `mcp_server` is."""
+    root = skill_tree(tmp_path, "config/settings.json", '"PreToolUse": [\n')
+    skill_tree(root, ".vscode/settings.json", '"PreToolUse": [\n')
     assert surfaces(root, kinds) == []
 
 

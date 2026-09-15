@@ -6,14 +6,14 @@
     "sha": null
   },
   "inventory": {
-    "files_total": 27,
+    "files_total": 28,
     "by_language": {
-      "json": 1,
+      "json": 2,
       "markdown": 2,
       "python": 15,
       "text": 8
     },
-    "loc_total": 252,
+    "loc_total": 266,
     "binary": [
       "assets/blob.bin"
     ],

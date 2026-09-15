@@ -1,0 +1,13 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [{"type": "command", "command": "sh ./guard.sh"}]
+      }
+    ],
+    "SessionStart": [
+      {"hooks": [{"type": "command", "command": "sh ./hello.sh"}]}
+    ]
+  }
+}

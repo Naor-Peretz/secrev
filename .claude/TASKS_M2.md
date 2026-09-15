@@ -182,7 +182,13 @@ was decided in the third round above; Q9 was fixed in `CLAUDE.md` on 2026-09-15.
             would miss every hosted server — the gap C-3 was decided to close. A key merely
             containing the word (`shutdownCommand`, `--command`, `COMMAND`) is not entered, nor a
             `"command"` key in `package.json` or `tasks.json`. Fixture `mcp/.mcp.json`.
-      - [ ] `surface.hook_binding`
+      - [x] `surface.hook_binding` (kinds `2026.09.5`): an event name keyed to a list in Claude
+            Code's two settings files and a plugin's `hooks/hooks.json`. Matched by shape — a
+            capitalised key whose value is a list — not by a list of event names, which would miss
+            every later event silently (H-2, P3); a hypothetical `SomeFutureEvent` is asserted to
+            enter. Precision `medium`, since the shape cannot confirm an event. Fixture
+            `plugin/hooks/hooks.json`, because a fixture under the agent config directory cannot
+            be staged; those trees are built at runtime in the tests.
       - [ ] `surface.cli_command`
       - [ ] `surface.public_export`
 
@@ -195,7 +201,9 @@ was decided in the third round above; Q9 was fixed in `CLAUDE.md` on 2026-09-15.
       handlers, the CLI parser, multi-line `__all__`, non-Python surfaces, and any declaration
       split across lines for any kind — a decorator or a key wrapped onto a second line is missed
       by a line-oriented kind (Q3) — and the reverse, several declarations on one line (minified
-      JSON holding several MCP servers) entering as one record. The owner accepted the
+      JSON holding several MCP servers) entering as one record. Hooks declared outside
+      Claude Code's settings files and plugin `hooks/hooks.json` — in agent or skill frontmatter,
+      and in other clients' hook configs — are not enumerated. The owner accepted the
       line-oriented limits on this condition:
       each one has to be named here rather than left implicit.
 
