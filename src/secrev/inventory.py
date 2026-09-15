@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
 import unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -117,6 +118,53 @@ def language_of(path: str) -> str | None:
     """
     suffix = path[path.rfind(".") :].lower() if "." in path.rsplit("/", 1)[-1] else ""
     return LANGUAGE_BY_SUFFIX.get(suffix)
+
+
+def glob_to_regex(glob: str) -> re.Pattern[str]:
+    """Glob semantics for relative POSIX paths, fixed here because nothing else
+    fixes them.
+
+    Here rather than in a candidate source because two sources need the
+    identical answer: `paths_exclude` in the catalog and `files` in the surface
+    kinds. A second copy would be a second meaning of `**`, and a kind and a
+    pattern reading the same glob differently is a coverage claim with nothing
+    behind it — the same reason `language_of` lives here.
+
+    Neither stdlib option is right. `fnmatch` lets `*` cross `/`, so
+    `**/test_*.py` would not match a top-level `test_x.py` while `tests/*`
+    would match `tests/a/b.py`. `PurePath.match` does not treat `**` as
+    recursive at all, and `PurePath.full_match` arrived in 3.13 while
+    `STACK.md` §1 pins 3.11. So the translation is explicit:
+
+        `**/`  any number of leading directory segments, including none
+        `**`   anything, crossing `/`
+        `*`    anything within one segment
+        `?`    one character within one segment
+
+    which is the semantics a reader of `tests/**` and `**/test_*.py` expects.
+    The choice is visible in every golden file, so it is written down rather
+    than inherited from whichever helper was reached for.
+    """
+    out: list[str] = []
+    index = 0
+    while index < len(glob):
+        char = glob[index]
+        if glob.startswith("**/", index):
+            out.append("(?:[^/]+/)*")
+            index += 3
+        elif glob.startswith("**", index):
+            out.append(".*")
+            index += 2
+        elif char == "*":
+            out.append("[^/]*")
+            index += 1
+        elif char == "?":
+            out.append("[^/]")
+            index += 1
+        else:
+            out.append(re.escape(char))
+            index += 1
+    return re.compile(f"^{''.join(out)}$")
 
 
 @dataclass(frozen=True, order=True)

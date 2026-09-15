@@ -15,8 +15,9 @@ from pathlib import Path
 import pytest
 
 from secrev.catalog import Catalog, load
+from secrev.inventory import glob_to_regex
 from secrev.ledger import WINDOW_SPEC, excerpt, redact, to_jsonl
-from secrev.sweep import _glob_to_regex, applies, sweep
+from secrev.sweep import applies, sweep
 
 ROOT = Path(__file__).resolve().parent.parent
 FIXTURES = ROOT / "tests" / "fixtures"
@@ -330,4 +331,4 @@ def test_glob_semantics_are_the_ones_a_reader_expects(glob: str, path: str, expe
     """Neither `fnmatch` nor `PurePath.match` gives these answers on 3.11, so
     the translation is explicit and pinned here. The choice is visible in every
     golden file."""
-    assert bool(_glob_to_regex(glob).match(path)) is expected
+    assert bool(glob_to_regex(glob).match(path)) is expected

@@ -41,54 +41,12 @@ order their matches take before ids are assigned.
 
 from __future__ import annotations
 
-import re
 from pathlib import Path
 
 from secrev.catalog import Catalog, Pattern
 from secrev.ids import Match, assign
-from secrev.inventory import FileEntry, language_of, walk
+from secrev.inventory import FileEntry, glob_to_regex, language_of, walk
 from secrev.ledger import WINDOW_SPEC, Hit, excerpt, window
-
-
-def _glob_to_regex(glob: str) -> re.Pattern[str]:
-    """`paths_exclude` glob semantics, fixed here because nothing else fixes
-    them.
-
-    Neither stdlib option is right. `fnmatch` lets `*` cross `/`, so
-    `**/test_*.py` would not match a top-level `test_x.py` while `tests/*`
-    would match `tests/a/b.py`. `PurePath.match` does not treat `**` as
-    recursive at all, and `PurePath.full_match` arrived in 3.13 while
-    `STACK.md` §1 pins 3.11. So the translation is explicit:
-
-        `**/`  any number of leading directory segments, including none
-        `**`   anything, crossing `/`
-        `*`    anything within one segment
-        `?`    one character within one segment
-
-    which is the semantics a reader of `tests/**` and `**/test_*.py` expects.
-    The choice is visible in every golden file, so it is written down rather
-    than inherited from whichever helper was reached for.
-    """
-    out: list[str] = []
-    index = 0
-    while index < len(glob):
-        char = glob[index]
-        if glob.startswith("**/", index):
-            out.append("(?:[^/]+/)*")
-            index += 3
-        elif glob.startswith("**", index):
-            out.append(".*")
-            index += 2
-        elif char == "*":
-            out.append("[^/]*")
-            index += 1
-        elif char == "?":
-            out.append("[^/]")
-            index += 1
-        else:
-            out.append(re.escape(char))
-            index += 1
-    return re.compile(f"^{''.join(out)}$")
 
 
 def applies(pattern: Pattern, relative_path: str) -> bool:
@@ -100,7 +58,7 @@ def applies(pattern: Pattern, relative_path: str) -> bool:
     into "does not apply" without that being the honest answer.
     """
     for glob in pattern.paths_exclude:
-        if _glob_to_regex(glob).match(relative_path):
+        if glob_to_regex(glob).match(relative_path):
             return False
     if not pattern.languages:
         return True

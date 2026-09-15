@@ -77,7 +77,23 @@ manifest-declared per `STACK.md` §7, or the Python decorator), C-4 (`BRIEF_M2.m
       *Accept:* 104 guard assertions; removing both additions fails exactly the two refusal
       assertions and leaves the three permit/negative ones passing (H-8), then restored.
 
-- [ ] **TASK-M2-002 — Surface-kind data and its validator.** A data file outside `patterns/` (C-1),
+- [x] **TASK-M2-002c — `surfaces/_surfaces.yaml` and `kinds.py`.** Strict loader mirroring
+      `catalog.py`: `safe_load`, unknown fields refused, `multiline` refused by name, one-element
+      `layer`, flags subset, `files` globs and `declaration` compiled at load, sorted by id,
+      duplicates refused, every message naming the kind. `SurfaceKindError` is a `ValueError`, so
+      `cli.py` already reports it as exit 2. The namespace is enforced on both sides: kind ids must
+      be `surface.<name>`, and the catalog now refuses a pattern id in `surface`.
+      `glob_to_regex` moved from `sweep.py` to `inventory.py`, beside `language_of`, because two
+      sources now need the one meaning of `**` — a second copy would let a kind and a pattern read
+      one glob differently. First kind shipped: `surface.skill_activation`, not `mcp_tool`, because
+      C-3 (manifest-declared vs decorator) is still open and the activation description has no open
+      question. **Q4 default, not decided:** the kinds file carries its own `version`; whether that
+      is what `catalog_version` means on a surface record is still the owner's call.
+      *Accept:* 178 tests (was 155); `tests/golden/hits.jsonl` byte-identical after the glob move;
+      mypy over 10 files.
+
+- [ ] **TASK-M2-002 — Surface-kind data and its validator.** *(Superseded by 002a–002c above;
+      kept so the numbering in the plan still resolves.)* A data file outside `patterns/` (C-1),
       strict validation, exit 2 naming the kind. Kinds carry `id` (`surface.<kind>`), `layer`,
       `precision`, `question`. The loader is in the scoped tree; the data file's protection is the
       open `STACK.md` §8 question above.
