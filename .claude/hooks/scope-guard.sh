@@ -62,7 +62,7 @@ MILESTONE=$(printf '%s' "$MILESTONE" | tr -d ' \t\n\r')
 refuse_no_rules() {
     {
       echo "BLOCKED — milestone ${MILESTONE:-<empty>} has no rules permitting this write, and it"
-      echo "touches ${path##*/}, which is inside the scoped tree (src/, patterns/, scripts/)."
+      echo "touches ${path##*/}, which is inside the scoped tree (src/, patterns/, surfaces/, scripts/)."
       echo
       echo "STACK.md §8 H-6: a guard with no rules for the current state refuses. Not knowing"
       echo "what is permitted is not the same as concluding that everything is."
@@ -76,9 +76,10 @@ case "$MILESTONE" in
   M1) ;;
 
   # M2 is the surface source (BRIEF_M2.md). src/ is its remit — surfaces.py,
-  # the cli subcommand, their tests. patterns/ is not: M2 adds a *source*, not
-  # rules, and catalog packs are M5. Refusing it here is the same reasoning as
-  # M0's, one milestone on: a milestone that can write anything has no scope.
+  # the cli subcommand, their tests — and so is surfaces/, the kind data the
+  # source reads (TASKS_M2.md C-1, NFR-6). patterns/ is not: M2 adds a *source*,
+  # not rules, and catalog packs are M5. Refusing it here is the same reasoning
+  # as M0's, one milestone on: a milestone that can write anything has no scope.
   #
   # This branch exists because closing M1 moved the marker to M2, and until it
   # was written H-6 correctly refused every write to the scoped tree. The

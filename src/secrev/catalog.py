@@ -45,14 +45,16 @@ from typing import Any, NoReturn
 
 import yaml
 
+# The ledger's vocabulary is shared with every other candidate source, so it is
+# defined once in `ledger.py` and validated against here rather than copied.
+from secrev.ledger import LAYERS, PRECISIONS
+
 # §4: a fixed subset, never arbitrary passthrough. `s` and `m` are absent
 # deliberately rather than by omission — either would let a line-oriented rule
 # reason across lines, which §4 says makes it a structural rule by definition.
 ALLOWED_FLAGS = frozenset({"i"})
 _FLAG_BITS = {"i": re.IGNORECASE}
 
-LAYERS = frozenset({"code", "instruction", "manifest"})
-PRECISIONS = frozenset({"high", "medium", "low"})
 SEVERITY_HINTS = frozenset({"high", "medium", "low", "observation", "informational"})
 
 # `namespace.name`. The hierarchy has to hold at 200 patterns and cannot be
@@ -166,6 +168,11 @@ def _pattern(raw: Any, index: int) -> Pattern:
     pattern_id = _require_str(entry["id"], "id", None)
     if not _ID_RE.match(pattern_id):
         _fail(f"`{pattern_id}` is not `namespace.name` — the hierarchy has to hold at 200 patterns")
+    if pattern_id.split(".", 1)[0] == "surface":
+        # The namespace belongs to the surface kinds (kinds.py). A pattern here
+        # would share a `rule_id` with surface records in the one ledger: two
+        # different questions under one name.
+        _fail(f"`{pattern_id}` is in the `surface` namespace, which is reserved for surface kinds")
 
     unknown = sorted(set(entry) - _KNOWN)
     if unknown:

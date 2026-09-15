@@ -255,6 +255,15 @@ unachievable without fixing the following explicitly:
   migration. What changes is that the tool detects it, rather than it depending on someone reading
   this paragraph in six months.
 
+  **M2 adds `decl-20`** for surface candidates: the same ±20 lines, anchored on the line that
+  declares the entry point. PRD FR-4.1 says surface candidates are "traced rather than windowed" —
+  a surface is resolved by an account of what the entry point reaches, not by reading a span — so
+  the span is not what anyone judges. It still has to exist, because the id derives from
+  `window_sha256` and an entry point whose declaration changes must become a new candidate. The
+  distinct name is what keeps that honest: two specs are never comparable, so a surface window
+  cannot be mistaken for a pattern window that happens to cover the same lines (`TASKS_M2.md`,
+  C-2).
+
 - **Stable IDs** — candidate `id` is derived from
   **`(relative_path, rule_id, window_sha256, ordinal)`**, not from a counter over traversal, and
   the `ordinal` ranges over *byte-identical windows only* — never over every match of the rule in
@@ -343,9 +352,13 @@ It is in scope for AC-10, and the rules below are binding on it.
 - **H-3 — Guards cover every tool that can write, not every tool that usually writes.**
   `Write|Edit|MultiEdit` alone leaves `Bash` as an open path. Under P7 a write is an execution
   primitive regardless of which tool performed it.
-- **H-4 — Protected paths are `src/`, `patterns/`, `scripts/`, and `.claude/`.** `patterns/`
-  especially: it is the tool's input, and a rule added without review is a check that silently
-  disappears. `.claude/` is protected against **`Bash` only** — writes through `Write`/`Edit` stay
+- **H-4 — Protected paths are `src/`, `patterns/`, `surfaces/`, `scripts/`, and `.claude/`.**
+  `patterns/` and `surfaces/` especially: they are the tool's input. The catalog decides which
+  questions are asked; the surface kinds decide which entry points enter the ledger at all (P11,
+  NFR-6), so a kind edited without review narrows the review's scope with nothing reporting it. A
+  rule or kind added without review is a check that silently disappears. `surfaces/` joined in M2
+  (`TASKS_M2.md`, C-1), in the same change that created it — protecting an input after it exists
+  leaves a window in which it is not. `.claude/` is protected against **`Bash` only** — writes through `Write`/`Edit` stay
   permitted there, so repairing the harness remains possible and remains visible, while the path
   that disables a guard without anything objecting closes. Nothing guarded the harness itself: a
   `sed -i` on `bash-guard.sh` removed the control, and no component was defective on its own. That

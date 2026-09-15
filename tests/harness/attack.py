@@ -235,6 +235,25 @@ def test_determinism_guard_silent_elsewhere() -> None:
     assert rc == PASS_THROUGH and not out.strip(), "cli.py owns no NFR-3 rule"
 
 
+def test_determinism_guard_speaks_on_surfaces_before_it_exists() -> None:
+    """TASK-M2-001. `surfaces.py` derives ids into the same ledger as `sweep.py`,
+    so it owns an NFR-3 rule from its first line. The guard has to be watching
+    before that line is written: a check that starts after the first write has
+    already missed the one that decided the ids.
+    """
+    rc, out, _ = run_hook(
+        "determinism-guard.sh", write_payload(str(REPO / "src" / "secrev" / "surfaces.py"), "")
+    )
+    assert rc == PASS_THROUGH, (
+        f"got rc={rc}. rc=2 means the determinism check it re-ran failed — read the "
+        f"determinism stage of the gate, not this assertion."
+    )
+    assert "surfaces.py" in out and "NFR-3" in out, (
+        "touching surfaces.py must restate the determinism rules — is_nfr3_path "
+        "in .claude/hooks/lib/paths.sh does not name it"
+    )
+
+
 # ----------------------------------------------------------------- plan-review
 
 
@@ -327,6 +346,24 @@ def test_bash_refuses_sed_in_place() -> None:
 
 def test_bash_refuses_tee() -> None:
     assert bash("echo x | tee src/secrev/cli.py") == BLOCK
+
+
+def test_bash_refuses_writing_the_surface_kinds() -> None:
+    """H-4 as amended in M2. The kinds decide which entry points enter the
+    ledger at all, so an unreviewed edit narrows the review with nothing
+    reporting it — the same reason `patterns/` is protected."""
+    assert bash("echo x | tee surfaces/_surfaces.yaml") == BLOCK
+
+
+def test_bash_permits_reading_the_surface_kinds() -> None:
+    assert bash("cat surfaces/_surfaces.yaml") == PASS_THROUGH
+
+
+def test_bash_does_not_protect_a_file_merely_named_surfaces() -> None:
+    """The negative. `surfaces` is protected as a directory, not as a word:
+    `src/secrev/surfaces.py` must not read as the data directory, and neither
+    must an unrelated `surfaces.txt`."""
+    assert bash("echo x > build/surfaces.txt") == PASS_THROUGH
 
 
 def test_bash_refuses_python_dash_c() -> None:
@@ -927,6 +964,22 @@ def test_relative_path_reaches_determinism_guard() -> None:
     assert rc == PASS_THROUGH and "NFR-3" in out
 
 
+def test_determinism_guard_speaks_on_the_shared_ledger_module() -> None:
+    """TASKS_M2 Q2. `ledger.py` holds the record, its serialisation, the window
+    and redaction for every source, so it decides bytes in every ledger. It
+    owns NFR-3 rules as surely as `sweep.py` did when they lived there."""
+    rc, out, _ = run_hook("determinism-guard.sh", write_payload("src/secrev/ledger.py", ""))
+    assert rc == PASS_THROUGH and "ledger.py" in out and "NFR-3" in out, (
+        "touching ledger.py must restate the determinism rules — is_nfr3_path "
+        "in .claude/hooks/lib/paths.sh does not name it"
+    )
+
+
+def test_relative_path_reaches_determinism_guard_for_surfaces() -> None:
+    rc, out, _ = run_hook("determinism-guard.sh", write_payload("src/secrev/surfaces.py", ""))
+    assert rc == PASS_THROUGH and "surfaces.py" in out and "NFR-3" in out
+
+
 def test_every_anchored_glob_has_a_relative_sibling() -> None:
     """H-5, as corrected: `*/src/secrev/*.py` is fine *paired with*
     `src/secrev/*.py`, and wrong alone.
@@ -1035,6 +1088,19 @@ def test_scope_guard_covers_scripts() -> None:
 def test_scope_guard_covers_patterns() -> None:
     rc, out = scope_at("M1", "patterns/_base.yaml", "multiline: true\n")
     assert rc == PASS_THROUGH and asks(out), "patterns/ is the tool's input"
+
+
+def test_scope_guard_covers_surfaces() -> None:
+    """surfaces/ is in the scoped tree: a milestone with no business there
+    refuses it, as M0 refuses patterns/."""
+    rc, _ = scope_at("M0", "surfaces/_surfaces.yaml", 'version: "2026.09.1"\n')
+    assert rc == BLOCK, f"surfaces/ is outside M0's remit, got rc={rc}"
+
+
+def test_m2_permits_the_surface_kinds() -> None:
+    """...and the milestone that owns the surface source may write its data."""
+    rc, out = scope_at("M2", "surfaces/_surfaces.yaml", 'version: "2026.09.1"\n')
+    assert rc == PASS_THROUGH and not asks(out), "surfaces/ is M2's remit"
 
 
 def test_protected_paths_have_one_definition() -> None:

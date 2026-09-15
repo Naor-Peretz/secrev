@@ -8,7 +8,7 @@
 #   is_self_application_path — Python under src/ and scripts/. What §2.1 forbids
 #   is a construct in code the tool ships or runs.
 #
-#   is_scoped_path — anything under src/, patterns/ and scripts/. Milestone
+#   is_scoped_path — anything under src/, patterns/, surfaces/ and scripts/. Milestone
 #   scope is about what is being built, whatever the file format.
 #
 # patterns/ is in the second and absent from the first, and that is the whole
@@ -44,19 +44,28 @@ is_self_application_path() {
 is_scoped_path() {
     case "$1" in
       src/secrev/*|*/src/secrev/*|patterns/*|*/patterns/*|scripts/*|*/scripts/*) return 0 ;;
+      # The surface kinds (M2, TASKS_M2.md C-1): data like the catalog, and
+      # scoped like it — self-application does not apply, milestone scope does.
+      surfaces/*|*/surfaces/*) return 0 ;;
       *) return 1 ;;
     esac
 }
 
-# The four files that own an NFR-3 rule. Here rather than inline in
+# The files that own an NFR-3 rule. Here rather than inline in
 # determinism-guard.sh for the same reason as the two predicates above: one
 # definition, so correcting the glob form is one edit and not a hunt (H-7).
+#
+# surfaces.py is here before it exists (TASK-M2-001). It is a third consumer of
+# the walk and a third generator of ids in hits.jsonl, and a guard that starts
+# watching after the first write has already missed the write that matters.
 is_nfr3_path() {
     case "$1" in
       src/secrev/ids.py|*/src/secrev/ids.py) return 0 ;;
       src/secrev/inventory.py|*/src/secrev/inventory.py) return 0 ;;
       src/secrev/sweep.py|*/src/secrev/sweep.py) return 0 ;;
       src/secrev/recon.py|*/src/secrev/recon.py) return 0 ;;
+      src/secrev/surfaces.py|*/src/secrev/surfaces.py) return 0 ;;
+      src/secrev/ledger.py|*/src/secrev/ledger.py) return 0 ;;
       *) return 1 ;;
     esac
 }
