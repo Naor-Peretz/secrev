@@ -35,8 +35,9 @@ from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
 from secrev.catalog import Catalog, CatalogError, load
+from secrev.ledger import WINDOW_SPEC, to_jsonl
 from secrev.recon import Recon, recon, slug, to_json
-from secrev.sweep import WINDOW_SPEC, sweep, to_jsonl
+from secrev.sweep import sweep
 
 EXIT_OK = 0
 EXIT_GATE = 1

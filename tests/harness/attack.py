@@ -946,6 +946,17 @@ def test_relative_path_reaches_determinism_guard() -> None:
     assert rc == PASS_THROUGH and "NFR-3" in out
 
 
+def test_determinism_guard_speaks_on_the_shared_ledger_module() -> None:
+    """TASKS_M2 Q2. `ledger.py` holds the record, its serialisation, the window
+    and redaction for every source, so it decides bytes in every ledger. It
+    owns NFR-3 rules as surely as `sweep.py` did when they lived there."""
+    rc, out, _ = run_hook("determinism-guard.sh", write_payload("src/secrev/ledger.py", ""))
+    assert rc == PASS_THROUGH and "ledger.py" in out and "NFR-3" in out, (
+        "touching ledger.py must restate the determinism rules — is_nfr3_path "
+        "in .claude/hooks/lib/paths.sh does not name it"
+    )
+
+
 def test_relative_path_reaches_determinism_guard_for_surfaces() -> None:
     rc, out, _ = run_hook("determinism-guard.sh", write_payload("src/secrev/surfaces.py", ""))
     assert rc == PASS_THROUGH and "surfaces.py" in out and "NFR-3" in out

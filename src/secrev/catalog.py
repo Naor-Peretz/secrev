@@ -45,14 +45,16 @@ from typing import Any, NoReturn
 
 import yaml
 
+# The ledger's vocabulary is shared with every other candidate source, so it is
+# defined once in `ledger.py` and validated against here rather than copied.
+from secrev.ledger import LAYERS, PRECISIONS
+
 # §4: a fixed subset, never arbitrary passthrough. `s` and `m` are absent
 # deliberately rather than by omission — either would let a line-oriented rule
 # reason across lines, which §4 says makes it a structural rule by definition.
 ALLOWED_FLAGS = frozenset({"i"})
 _FLAG_BITS = {"i": re.IGNORECASE}
 
-LAYERS = frozenset({"code", "instruction", "manifest"})
-PRECISIONS = frozenset({"high", "medium", "low"})
 SEVERITY_HINTS = frozenset({"high", "medium", "low", "observation", "informational"})
 
 # `namespace.name`. The hierarchy has to hold at 200 patterns and cannot be

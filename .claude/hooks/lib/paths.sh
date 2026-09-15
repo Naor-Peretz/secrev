@@ -62,6 +62,7 @@ is_nfr3_path() {
       src/secrev/sweep.py|*/src/secrev/sweep.py) return 0 ;;
       src/secrev/recon.py|*/src/secrev/recon.py) return 0 ;;
       src/secrev/surfaces.py|*/src/secrev/surfaces.py) return 0 ;;
+      src/secrev/ledger.py|*/src/secrev/ledger.py) return 0 ;;
       *) return 1 ;;
     esac
 }

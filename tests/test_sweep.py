@@ -15,7 +15,8 @@ from pathlib import Path
 import pytest
 
 from secrev.catalog import Catalog, load
-from secrev.sweep import WINDOW_SPEC, _glob_to_regex, applies, excerpt, redact, sweep, to_jsonl
+from secrev.ledger import WINDOW_SPEC, excerpt, redact, to_jsonl
+from secrev.sweep import _glob_to_regex, applies, sweep
 
 ROOT = Path(__file__).resolve().parent.parent
 FIXTURES = ROOT / "tests" / "fixtures"

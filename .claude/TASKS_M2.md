@@ -30,6 +30,22 @@ Taken before any code because each one decides bytes in the ledger or the order 
   what the span is anchored on and claims no judgment was made against it). **A `STACK.md` §5
   amendment**, which names the window specs.
 
+Second round, taken at TASK-M2-002 because the schema is a contract:
+
+- **Detection is data too (NFR-6).** A kind declares `files` (globs) and `declaration` (a
+  line-oriented regex), not only its name and question. Metadata-only data would still need code
+  for every new kind, which is the thing NFR-6 forbids.
+- **Q2 — a neutral `ledger.py`.** The record (`Hit`), `to_jsonl`, the window, redaction and the
+  vocabulary both sources share (`LAYERS`, `PRECISIONS`) move out of `sweep.py` and `catalog.py`,
+  so neither source imports the other. `ledger.py` owns serialisation and identity-bearing bytes,
+  so it joins `is_nfr3_path`; the move is proven by `tests/golden/hits.jsonl` staying byte-identical.
+- **C-1 location — `surfaces/_surfaces.yaml`**, beside `patterns/`, loaded the way the catalog is.
+- **Protected now, not at close.** The file is tool input exactly as `patterns/` is. The `STACK.md`
+  §8 H-4 amendment, `paths.sh` and `bash_guard.py` land in the same task, with a defeat test.
+
+TASK-M2-002 is therefore three commits: **002a** the `ledger.py` move, **002b** the protection,
+**002c** the kinds file and its loader.
+
 Still open, decided before the step that needs them: Q6 (tick TASK-M1-010), C-3 (MCP tools:
 manifest-declared per `STACK.md` §7, or the Python decorator), C-4 (`BRIEF_M2.md:10` says "§1 and
 §7 bind"; there is no §7), C-5 (stale "no git remote" in `BRIEF_M2.md` §4 and `TASKS_M1.md`), Q7
@@ -42,6 +58,14 @@ manifest-declared per `STACK.md` §7, or the Python decorator), C-4 (`BRIEF_M2.m
       `attack.py` assertion that `determinism-guard.sh` speaks on it (absolute and relative paths,
       as for `ids.py`). Until this lands the guard is silent on the one new file that derives ids.
       *Accept:* harness gate green; deleting the new line turns it red (H-8), then restored.
+
+- [x] **TASK-M2-002a — `ledger.py`, the record every source shares (Q2).** `Hit`, `to_jsonl`,
+      `window`, `redact`, `excerpt`, `WINDOW_SPEC` moved out of `sweep.py`; `LAYERS` and
+      `PRECISIONS` out of `catalog.py`. A pure move, so neither source imports the other.
+      `ledger.py` joins `is_nfr3_path`, with an `attack.py` assertion.
+      *Accept:* `tests/golden/hits.jsonl` byte-identical (the golden test passes unchanged),
+      determinism stage green, 99 guard assertions; removing the new `paths.sh` line fails
+      exactly the new assertion (H-8), then restored.
 
 - [ ] **TASK-M2-002 — Surface-kind data and its validator.** A data file outside `patterns/` (C-1),
       strict validation, exit 2 naming the kind. Kinds carry `id` (`surface.<kind>`), `layer`,
