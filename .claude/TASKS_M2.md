@@ -170,6 +170,11 @@ was decided in the third round above; Q9 was fixed in `CLAUDE.md` on 2026-09-15.
             Layer `instruction`, precision `medium`, because the decorator is matched by name
             and not by import. A client's `session.list_tools()` is not entered. Fixture
             `mcp/lowlevel.py`.
+      - [x] `surface.mcp_tool` corrected (kinds `2026.09.3`), owner decision 2026-09-15:
+            precision `high` → `medium`, and the question no longer says "any connected client",
+            which is true of MCP only. The kind matches the decorator by name and cannot see the
+            import, so another framework's `@x.tool` enters; it is still a model-callable tool,
+            so it stays in, and the record no longer overstates what is known about it.
       - [ ] `surface.mcp_server`
       - [ ] `surface.hook_binding`
       - [ ] `surface.cli_command`

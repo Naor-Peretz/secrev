@@ -16,7 +16,7 @@
 # `version` changes on any add or semantic change to a kind, for the reason the
 # catalog's does: a verification is only valid for the question it was made
 # against.
-version: "2026.09.2"
+version: "2026.09.3"
 kinds:
   # A tool declared in server code (TASKS_M2.md C-3): every client connected to
   # the server can call it, with arguments a model chose. The decorator forms
@@ -26,15 +26,21 @@ kinds:
   # is a call site, not an entry point, and is not matched. `list_tools` is
   # not a tool; it is `surface.mcp_tool_listing`. A server with no Python in
   # the tree is `surface.mcp_server`.
+  #
+  # Medium, not high: the decorator is matched by name, and the import that
+  # would say it is MCP's is on another line, which a line-oriented kind
+  # cannot see (Q3). Another agent framework's `@x.tool` enters too. That is
+  # still a tool a model can call, so the question is worded to hold for it.
   - id: surface.mcp_tool
     layer: [code]
-    precision: high
+    precision: medium
     files: ["**/*.py"]
     declaration: '^\s*@[A-Za-z_][\w.]*\.(?:tool|call_tool)\b|^\s*[A-Za-z_][\w.]*\.add_tool\s*\('
     question: >
-      What does this tool do with the arguments a model supplies, and what can
-      it reach with them — files, processes, the network, credentials? Any
-      connected client can call it. Trace each argument to its sinks.
+      What does this tool do with the arguments it is given, and what can it
+      reach with them — files, processes, the network, credentials? Any client
+      or model that can call it chooses those arguments. Trace each argument to
+      its sinks.
 
   # What a low-level server tells a model about its tools. `@server.list_tools()`
   # returns each tool's name, description and input schema, and that text
