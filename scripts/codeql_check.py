@@ -110,6 +110,8 @@ def main() -> int:
                     str(database),
                     "--language=python",
                     f"--source-root={ROOT}",
+                    # The same config CI uses: default suite, fixtures excluded.
+                    f"--codescanning-config={ROOT / '.github' / 'codeql' / 'codeql-config.yml'}",
                     "--overwrite",
                 ],
             )

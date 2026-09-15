@@ -41,7 +41,9 @@ jobs:
       - uses: github/codeql-action/init@6f5948dfacef28e207b48d0905cf90c03365536d # v3.37.9
         with:
           languages: python
-          queries: security-and-quality
+          # The suite and the exclusions live in the config, which the local
+          # gate reads too. No `queries:` here, or CI and --sast would differ.
+          config-file: .github/codeql/codeql-config.yml
 
       # No autobuild step: Python needs no build, and a no-op step that looks
       # like one invites the belief that something was compiled and checked.

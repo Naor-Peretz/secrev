@@ -1,0 +1,17 @@
+# CodeQL configuration, shared by CI (.github/workflows/codeql.yml) and the
+# local gate (`scripts/check.sh --sast` → scripts/codeql_check.py). One file,
+# so the two cannot drift into asking different questions.
+#
+# No `queries:` key, so both run CodeQL's default suite: the security queries.
+# `security-and-quality` was tried first and, on its first run, raised six
+# results with no security query among them — a `NoReturn` CodeQL does not
+# follow, a test asserting that a keyword is rejected, and deliberately
+# questionable fixtures. Quality is ruff's and mypy's job here; a zero-alert
+# gate on quality queries pushes code into shapes that satisfy the tool.
+name: secrev
+
+# Scanner inputs, not source. They hold `eval`, `pickle`, `shell=True` and
+# worse on purpose, so that every pattern has a positive fixture (STACK.md §9).
+# Analysing them as though they were this project's code is a category error.
+paths-ignore:
+  - tests/fixtures
