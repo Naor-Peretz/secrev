@@ -254,8 +254,13 @@ was decided in the third round above; Q9 was fixed in `CLAUDE.md` on 2026-09-15.
       line-oriented limits on this condition:
       each one has to be named here rather than left implicit.
 
-- [ ] **TASK-M2-009 — Determinism across runs and platforms includes surfaces.** Only after
+- [x] **TASK-M2-009 — Determinism across runs and platforms includes surfaces.** Only after
       TASK-M2-007. `scripts/determinism_check.py` and `ci.yml`'s cross-platform digest.
+      *Done locally:* both determinism checks run `surfaces`, and the two-run check fails when
+      either block is missing, so a surface source that produced nothing cannot pass as
+      compared (H-1). `ci.yml` runs `surfaces` before hashing. The cross-platform half is
+      proven only when CI runs it on GitHub, which waits for the owner's push (compute
+      minutes); until then "Linux and macOS agree" on both blocks is unverified.
       *Accept:* the digest carries both blocks; Linux and macOS agree.
 
 - [ ] **TASK-M2-010 — Self-application.** `secrev sweep src/secrev/`, `--sast`, `secrev surfaces .`

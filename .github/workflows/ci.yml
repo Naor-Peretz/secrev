@@ -295,6 +295,13 @@ jobs:
             if [ -f src/secrev/sweep.py ]; then
               .venv/bin/python -m secrev sweep tests/fixtures --workspace "$RUNNER_TEMP/ws"
             fi
+            # Both blocks of the one ledger (TASK-M2-009). Only after the
+            # two-block merge landed (TASK-M2-007): before it, surfaces would
+            # have overwritten the pattern block and the digest would have
+            # stopped comparing it while staying green.
+            if [ -f src/secrev/surfaces.py ]; then
+              .venv/bin/python -m secrev surfaces tests/fixtures --workspace "$RUNNER_TEMP/ws"
+            fi
             # shasum is present on both runners; sha256sum is GNU-only (STACK.md §4).
             find "$RUNNER_TEMP/ws" \( -name recon.json -o -name hits.jsonl \) -print \
               | sort \

@@ -1,10 +1,14 @@
 """NFR-3 enforced rather than trusted.
 
-Two checks, both from BRIEF_M1.md §7:
+Two checks, both from BRIEF_M1.md §7 and, since TASK-M2-009, over both
+blocks of the ledger (BRIEF_M2.md §4):
 
   1. Two runs over the same fixture tree produce byte-identical recon.json
-     and hits.jsonl.
-  2. Adding an unrelated file to the tree renumbers no existing candidate id.
+     and hits.jsonl — the pattern block and the surface block alike. A ledger
+     missing either block fails: a block that was never produced was never
+     compared, and saying "identical" about it would be H-1.
+  2. Adding an unrelated file to the tree renumbers no existing candidate id,
+     pattern or surface.
 
 Both write to a throwaway workspace outside the tree (STACK.md §6, G-4) and
 never touch the fixtures. Exits 0 when there is nothing to check yet, so it is
@@ -54,25 +58,39 @@ def _collect(workspace: Path) -> dict[str, bytes]:
     return found
 
 
+def _records(blob: bytes) -> list[dict[str, str]]:
+    """Ledger records, split on newline alone — never `splitlines`, which
+    also breaks on U+0085, U+2028 and U+2029 that the ledger writes unescaped
+    inside a record (the TASK-M2-007 review)."""
+    text = blob.decode("utf-8", errors="replace")
+    return [json.loads(line) for line in text.split("\n") if line.strip()]
+
+
 def _ids(blob: bytes) -> set[str]:
-    ids = set()
-    for line in blob.decode("utf-8", errors="replace").splitlines():
-        if line.strip():
-            ids.add(json.loads(line)["id"])
-    return ids
+    return {record["id"] for record in _records(blob)}
 
 
 def check_byte_identical(tmp: Path) -> bool:
     runs = []
     for index in (1, 2):
         workspace = tmp / f"run{index}"
-        for subcommand in ("recon", "sweep"):
+        for subcommand in ("recon", "sweep", "surfaces"):
             if not _run(subcommand, FIXTURES, workspace):
                 return False
         runs.append(_collect(workspace))
 
     if not runs[0]:
         sys.stderr.write("  no recon.json or hits.jsonl produced — nothing compared\n")
+        return False
+
+    missing = {"pattern", "surface"} - {
+        record["source"] for record in _records(runs[0].get("hits.jsonl", b""))
+    }
+    if missing:
+        sys.stderr.write(
+            f"  hits.jsonl has no {' or '.join(sorted(missing))} records — that block "
+            "was never compared (H-1)\n"
+        )
         return False
 
     ok = True
@@ -124,16 +142,18 @@ def check_stable_ids(tmp: Path) -> bool:
     shutil.copytree(FIXTURES, tree, symlinks=True)
 
     before_ws = tmp / "before"
-    if not _run("sweep", tree, before_ws):
-        return False
+    for subcommand in ("sweep", "surfaces"):
+        if not _run(subcommand, tree, before_ws):
+            return False
     before = _collect(before_ws).get("hits.jsonl")
     if before is None:
         return True
 
     (tree / "zz_unrelated_addition.txt").write_text("nothing to match here\n", encoding="utf-8")
     after_ws = tmp / "after"
-    if not _run("sweep", tree, after_ws):
-        return False
+    for subcommand in ("sweep", "surfaces"):
+        if not _run(subcommand, tree, after_ws):
+            return False
     after = _collect(after_ws).get("hits.jsonl", b"")
 
     lost = _ids(before) - _ids(after)
@@ -180,7 +200,9 @@ def main() -> int:
     # files it is waiting for, so it cannot quietly outlive its own truth the
     # way the src/secrev condition did.
     pending = [
-        name for name in ("recon.py", "sweep.py") if not (ROOT / "src" / "secrev" / name).exists()
+        name
+        for name in ("recon.py", "sweep.py", "surfaces.py")
+        if not (ROOT / "src" / "secrev" / name).exists()
     ]
     if pending:
         print(f"artifacts: not yet — waiting on {', '.join(pending)}")
@@ -190,7 +212,7 @@ def main() -> int:
         tmp = Path(raw)
         if not (check_byte_identical(tmp) and check_stable_ids(tmp)):
             return 1
-    print("artifacts: recon.json and hits.jsonl byte-identical, ids stable")
+    print("artifacts: recon.json and both hits.jsonl blocks byte-identical, ids stable")
     return 0
 
 
