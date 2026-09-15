@@ -17,6 +17,7 @@ Deliberate shapes, each covering one rule in `STACK.md` §5:
 | `skills/quiet/SKILL.md` | AC-9a: an entry point **no pattern matches**. The surface source must still enter it (P11); `tests/test_surfaces.py` asserts both halves, so a pattern that later matches it by coincidence turns the test red rather than passing it |
 | `mcp/server.py` | `surface.mcp_tool`: one decorated tool, which is a surface, beside a `call_tool(` call site, which is not |
 | `mcp/lowlevel.py` | A low-level server: `list_tools` is `surface.mcp_tool_listing` and `call_tool` is `surface.mcp_tool`; a client's `session.list_tools()` is neither |
+| `mcp/.mcp.json` | `surface.mcp_server`: a local server's `command` and a remote server's `url` are two records; an `--command-…` argument and a `COMMAND_…` env key are not declarations |
 
 Never name a directory here `surfaces`, `patterns`, `src` or `scripts`: those are
 protected names (`STACK.md` §8 H-4), and the Bash guard and scope guard match

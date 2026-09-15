@@ -175,7 +175,13 @@ was decided in the third round above; Q9 was fixed in `CLAUDE.md` on 2026-09-15.
             which is true of MCP only. The kind matches the decorator by name and cannot see the
             import, so another framework's `@x.tool` enters; it is still a model-callable tool,
             so it stays in, and the record no longer overstates what is known about it.
-      - [ ] `surface.mcp_server`
+      - [x] `surface.mcp_server` (kinds `2026.09.4`), the second half of C-3: a local server's
+            `command` and a remote server's `url`, in `.mcp.json`, `mcp.json` (Cursor, VS Code)
+            and `claude_desktop_config.json`. The remote `url` is included although C-3 named
+            only "the command that starts it": a remote server has no command, and leaving it out
+            would miss every hosted server — the gap C-3 was decided to close. A key merely
+            containing the word (`shutdownCommand`, `--command`, `COMMAND`) is not entered, nor a
+            `"command"` key in `package.json` or `tasks.json`. Fixture `mcp/.mcp.json`.
       - [ ] `surface.hook_binding`
       - [ ] `surface.cli_command`
       - [ ] `surface.public_export`
@@ -188,7 +194,9 @@ was decided in the third round above; Q9 was fixed in `CLAUDE.md` on 2026-09-15.
 - [ ] **TASK-M2-008 — `coverage_gaps`.** Names what is still unreachable: HTTP routes, IPC
       handlers, the CLI parser, multi-line `__all__`, non-Python surfaces, and any declaration
       split across lines for any kind — a decorator or a key wrapped onto a second line is missed
-      by a line-oriented kind (Q3). The owner accepted the line-oriented limits on this condition:
+      by a line-oriented kind (Q3) — and the reverse, several declarations on one line (minified
+      JSON holding several MCP servers) entering as one record. The owner accepted the
+      line-oriented limits on this condition:
       each one has to be named here rather than left implicit.
 
 - [ ] **TASK-M2-009 — Determinism across runs and platforms includes surfaces.** Only after

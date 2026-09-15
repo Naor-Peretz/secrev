@@ -16,7 +16,7 @@
 # `version` changes on any add or semantic change to a kind, for the reason the
 # catalog's does: a verification is only valid for the question it was made
 # against.
-version: "2026.09.3"
+version: "2026.09.4"
 kinds:
   # A tool declared in server code (TASKS_M2.md C-3): every client connected to
   # the server can call it, with arguments a model chose. The decorator forms
@@ -62,6 +62,27 @@ kinds:
       a model to do? Look for instructions addressed to the model, a description
       broader than what the tool does, and one that differs from the code behind
       it. Where does the text come from, and is any of it built from input?
+
+  # A server declared in a client's MCP configuration (TASKS_M2.md C-3): the
+  # `command` that starts a local server, or the `url` of a remote one. This
+  # is the half `surface.mcp_tool` cannot see — a server with no Python in the
+  # tree — and a local one runs with the user's privileges as soon as the
+  # client starts. The files are where clients read servers from: Claude
+  # Code's `.mcp.json`, the `mcp.json` Cursor and VS Code use, and Claude
+  # Desktop's config. A key that merely contains the word (`shutdownCommand`,
+  # an `--command` argument, an `env` entry) is not a declaration. One record
+  # per line: minified JSON holding several servers on one line is one record
+  # (a line-oriented limit, Q3).
+  - id: surface.mcp_server
+    layer: [manifest]
+    precision: high
+    files: ["**/.mcp.json", "**/mcp.json", "**/claude_desktop_config.json"]
+    declaration: '"(?:command|url)"\s*:'
+    question: >
+      What starts, or is connected to, when a client loads this configuration:
+      which command, with which arguments and environment, or which remote
+      endpoint? Who controls that code or that endpoint, and what tools does it
+      expose to a model? Trace it to what it can reach.
 
   # The description decides when a skill is loaded into an agent's context at
   # all, which makes it the skill's activation surface (FR-1.3, and the manifest

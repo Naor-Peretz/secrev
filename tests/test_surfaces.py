@@ -215,6 +215,12 @@ CASES: dict[str, tuple[str, str, str]] = {
         "@server.list_tools()\nasync def listing():\n    return []\n",
         "async def discover(session):\n    return await session.list_tools()\n",
     ),
+    "surface.mcp_server": (
+        ".mcp.json",
+        '{\n  "mcpServers": {\n    "x": {\n      "command": "python"\n    }\n  }\n}\n',
+        '{\n  "mcpServers": {\n    "x": {\n      "args": ["--command"],\n'
+        '      "shutdownCommand": "stop",\n      "env": {"COMMAND": "y"}\n    }\n  }\n}\n',
+    ),
 }
 
 
@@ -266,6 +272,34 @@ def test_what_is_not_an_mcp_tool(tmp_path: Path, kinds: Kinds, line: str) -> Non
     by the model, not called by it (`surface.mcp_tool_listing`)."""
     hits = surfaces(skill_tree(tmp_path, "server.py", f"{line}\n"), kinds)
     assert "surface.mcp_tool" not in {hit.rule_id for hit in hits}
+
+
+@pytest.mark.parametrize(
+    "relative",
+    [
+        ".mcp.json",
+        "plugin/.mcp.json",
+        ".cursor/mcp.json",
+        ".vscode/mcp.json",
+        "claude_desktop_config.json",
+    ],
+)
+@pytest.mark.parametrize("line", ['"command": "npx"', '"url": "https://example.invalid/mcp"'])
+def test_every_mcp_server_declaration(
+    tmp_path: Path, kinds: Kinds, relative: str, line: str
+) -> None:
+    """A local server (`command`) and a remote one (`url`), in every file a
+    client reads servers from."""
+    [hit] = surfaces(skill_tree(tmp_path, relative, f"{line}\n"), kinds)
+    assert hit.rule_id == "surface.mcp_server"
+
+
+def test_a_command_key_outside_an_mcp_config_is_not_a_server(tmp_path: Path, kinds: Kinds) -> None:
+    """`package.json` and `tasks.json` carry `"command":` keys that start
+    nothing a model can reach through MCP; the kind is scoped by file."""
+    root = skill_tree(tmp_path, "package.json", '"command": "node build.js"\n')
+    skill_tree(root, ".vscode/tasks.json", '"command": "make"\n')
+    assert surfaces(root, kinds) == []
 
 
 def test_surface_and_pattern_rule_ids_are_disjoint(kinds: Kinds, catalog: Catalog) -> None:
