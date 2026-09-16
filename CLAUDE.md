@@ -130,8 +130,14 @@ traversal order ever coincides with sorted order, so a separate assertion holds 
 directory index orders by a hash of the name; it is kept as a cross-filesystem canary and is
 labelled as not being the control.
 
-**The Bash bypass is closed.** `bash-guard.sh` is wired as a `PreToolUse` matcher on `Bash`, and a
-write to `src/`, `patterns/`, `surfaces/`, `scripts/` or `.claude/` through a shell is refused.
+**The Bash bypass is narrowed, not closed.** `bash-guard.sh` is wired as a `PreToolUse` matcher on
+`Bash`, and a write to `src/`, `patterns/`, `surfaces/`, `scripts/` or `.claude/` through a shell is
+refused. It is a guardrail against mistakes: the trigger is a test over path spellings, so a glob, a
+variable or a `cd` defeats it, and the file says so in its own KNOWN LIMIT. It also over-matches in
+the other direction — a bare word equal to a protected name, such as the subcommand `secrev
+surfaces` or a branch called `m2/surfaces`, is refused as though it were a path, and the refusal
+message names the token so a reader can tell. Enforcement of the harness's own files belongs to
+layers that do not read shell text (STACK.md §8 H-2).
 
 What it permits beside a protected path: the read-only set (`cat`, `grep`, `head`, `tail`, `wc`,
 `ls`, `rg`, `git diff`, `git log`), and running an existing script — `sh <x.sh>`, `python3 <x.py>`

@@ -281,6 +281,37 @@ def bash(command: str) -> int:
     return rc
 
 
+def test_the_refusal_names_the_token_that_matched() -> None:
+    """The trigger is a test over spellings, so a bare word equal to a
+    protected name is refused like a path — the subcommand `secrev surfaces`
+    and the branch `m2/surfaces` both are. Naming the token lets a reader tell
+    that case from a real write. Narrowing the rule instead would admit
+    `rm -rf src`, which the assertion below holds."""
+    rc, _, err = run_hook(
+        "bash-guard.sh",
+        {"tool_name": "Bash", "tool_input": {"command": "python3 -m secrev surfaces /tmp/x"}},
+    )
+    assert rc == BLOCK
+    assert "surfaces" in err
+    assert "false positive" in err
+
+
+def test_a_bare_protected_directory_is_still_refused() -> None:
+    """What the trailing `$` in the trigger buys, and why requiring a `/`
+    would be a regression rather than a fix."""
+    assert bash("rm -rf src") == BLOCK
+    assert bash("mv surfaces old") == BLOCK
+
+
+def test_the_guard_still_records_what_it_cannot_do() -> None:
+    """The KNOWN LIMIT section is the honest half of a spelling test: a glob,
+    a variable or a `cd` defeats it. STACK.md §8 H-2 now says the same
+    outwards. Deleting the section would leave the claim looking stronger than
+    the mechanism, which is the H-1 shape applied to documentation."""
+    source = (HOOKS / "bash_guard.py").read_text(encoding="utf-8")
+    assert "KNOWN LIMIT" in source
+
+
 def test_bash_refuses_heredoc_write() -> None:
     """The brief's own verification: 'Attempt to modify src/secrev/cli.py via
     heredoc. It must be refused.'

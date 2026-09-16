@@ -349,6 +349,14 @@ It is in scope for AC-10, and the rules below are binding on it.
   enumerate write verbs: `tee`, heredocs, `sed -i`, `>`, `>>`, `cp`, `mv`, `install`, `python -c`,
   and `dd` are not a closeable list. Adding another verb to a block list is the signal that the
   polarity is wrong.
+
+  **What this guard is, stated so nothing is built on it.** A guardrail against mistakes, not a
+  control. Its trigger asks whether a command *mentions* a protected path, which is a test over
+  spellings, and spellings do not close: a glob, a variable, a `cd`, or `find -delete` defeats it
+  (`bash_guard.py`'s own KNOWN LIMIT lists more). Against an agent that is not trying to evade it,
+  friction plus a visible refusal is worth having. Enforcement of the harness's own files belongs
+  to layers that do not read shell text — tool-permission rules, a CI check on protected paths,
+  and file ownership — recorded in `.claude/TASKS_M2.md` under "Carried beyond M2".
 - **H-3 — Guards cover every tool that can write, not every tool that usually writes.**
   `Write|Edit|MultiEdit` alone leaves `Bash` as an open path. Under P7 a write is an execution
   primitive regardless of which tool performed it.

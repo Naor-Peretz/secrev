@@ -38,13 +38,20 @@
       "Bash(gh run list:*)",
       "Bash(gh run view:*)",
       "Bash(ls:*)",
-      "Bash(find:*)",
       "Bash(wc:*)",
       "Bash(head:*)",
       "Bash(diff:*)",
       "Bash(sha256sum:*)",
       "Bash(shasum:*)",
       "Bash(sh .claude/hooks/*)"
+    ],
+    "ask": [
+      "Write(.claude/hooks/**)",
+      "Edit(.claude/hooks/**)",
+      "MultiEdit(.claude/hooks/**)",
+      "Write(.claude/settings.json)",
+      "Edit(.claude/settings.json)",
+      "MultiEdit(.claude/settings.json)"
     ],
     "deny": [
       "Read(**/.env)",

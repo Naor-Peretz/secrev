@@ -60,6 +60,10 @@ nothing protected and still ran the full pre-push gate. The same will refuse `gh
 and `git log origin/m2/...` spelled out. Options for the owner: narrow the guard so a protected name
 must be followed by `/` (a directory) rather than also accepting end-of-token, or accept it and
 avoid spelling the branch. Not changed yet — a guard edit gets its own H-8 defeat test.
+**Second instance, at TASK-M2-010:** the guard also refuses the tool's own subcommand —
+`python -m secrev surfaces <target> ...` from a shell is read as touching the protected directory,
+so self-application of the surface source could only be run by the owner with `!`. The same
+narrowing (a protected name must be followed by `/`) would fix both.
 
 **Fixed by owner decision (2026-09-15), from the TASK-M2-007 review.** Now one
 `inventory.split_lines` (CRLF, CR and LF only) serves `sweep.py`, `surfaces.py` and `recon.py`'s
@@ -71,6 +75,46 @@ editor counting `\n` shows, and `STACK.md` §5 says line numbers are reported ag
 original. Not fixed: it is M1 code and changes candidates' `line` and window, so a verification
 made against a shifted window would be invalidated. The same defect in `cli.merge_ledger` was fixed
 in TASK-M2-007, where it could lock the workspace ledger.
+
+## Carried beyond M2 — enforcement that does not read shell text
+
+Raised by two reviews of the guard's over-match (2026-09-16) and accepted by the owner. The Bash
+guard is a guardrail against mistakes: its trigger is a test over path spellings, so `cd src && …`,
+`rm -rf sur*aces`, `d=surf; rm -rf "${d}aces"`, `find . -delete` and `python -c` all evade it, while
+a bare word equal to a protected name is refused although it is not a path. Both directions are now
+stated in `STACK.md` §8 H-2 and `CLAUDE.md`, and the refusal names the token. **Nothing that matters
+may rest on it.** Rejected: structural shell parsing (needs per-program knowledge and is evaded the
+same ways), renaming the product's subcommand, and requiring a trailing `/` (admits `rm -rf src`).
+
+- [ ] **HARNESS-CI — a check on protected paths, after the code leaves the machine.** A CI job that
+      fails when a commit touches `.claude/hooks/**`, `.claude/settings.json`, `patterns/**` or
+      `surfaces/**` without an explicit approval line in the commit message, plus `CODEOWNERS` and
+      branch protection on those paths. Cannot be defeated by a glob, a variable or `chattr`,
+      because it runs where the agent does not. This is the one the review called most important:
+      if the agent can edit the file that defines the hook, every other control collapses.
+      *Accept:* a commit touching a guard without the line fails CI and names the path; with it,
+      passes; the job is defeat-tested in both directions before it is trusted.
+
+- [ ] **HARNESS-FS — file ownership on the harness itself (step 3, planned now so the close does
+      not lose it).** Machine-local, not repository-enforced, and therefore a complement to
+      HARNESS-CI rather than a substitute.
+      *Scope:* `.claude/hooks/*.sh`, `.claude/hooks/lib/*.sh`, `.claude/hooks/*.py`,
+      `.claude/settings.json`.
+      *Mechanism, in the order preferred:* (1) root ownership — `sudo chown root:root`, mode 644 —
+      so the agent's user cannot write them at all and no `sudo` is available to it; (2)
+      `sudo chattr +i` on ext4 in addition, which also refuses a write by root until cleared.
+      `chmod a-w` alone is not enough: the owning user can undo it, and the agent is that user.
+      *Repair workflow, documented in `CLAUDE.md` when this lands:* the owner unlocks
+      (`sudo chattr -i <file>` / `chown`), the change goes through `Write`/`Edit` where the guards
+      see it, both gates run, the owner locks again.
+      *Known costs, stated before adopting:* a `git checkout`, `merge`, `pull` or `stash` that
+      touches a locked file fails, so the owner unlocks before those; a fresh clone has none of it,
+      which is why HARNESS-CI carries the repository-side guarantee.
+      *Verification:* `lsattr .claude/hooks/*.py` and `ls -l`, by hand. Deliberately **not** an
+      assertion in `.claude/check.sh`: the property is about one machine, and a check that cannot
+      run on a CI runner would have to either fail there (wrong) or pass silently (H-1).
+      *Decision still open:* whether the friction is worth it on this machine, or whether
+      HARNESS-CI alone is enough.
 
 **Carried to M4, not a surface (owner, 2026-09-15).** The result of an outbound call —
 `res = session.call_tool(...)` — is untrusted input arriving, but the reviewed code chose to make
