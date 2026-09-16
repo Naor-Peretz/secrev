@@ -100,6 +100,33 @@ case "$MILESTONE" in
     esac
     ;;
 
+  # M3 is the threat-model layer (BRIEF_M3.md): the core, two overlays and the
+  # classifier, as prose in threat-models/ at the repository root. That path is
+  # outside the scoped tree, so this guard never sees M3's actual deliverables
+  # — which is the point. What it does see is a write to src/, patterns/,
+  # surfaces/ or scripts/, and under M3 every one of those is out of remit:
+  # structure.py is M4, the instruction and manifest packs are M5, SKILL.md and
+  # the phase gate are M6, and M3 adds no surface kinds.
+  #
+  # Refused here with its own message rather than by falling through to
+  # refuse_no_rules, which says "this milestone needs its own rules added
+  # here". Once M3 has rules that sentence is false, and a guard that refuses
+  # for a reason it no longer holds teaches a reader to stop believing the
+  # message (H-9: answer in the protocol, and say the true thing).
+  M3)
+    {
+      echo "BLOCKED — M3 is the threat-model layer, and it writes prose."
+      echo "$path is in the scoped tree (src/, patterns/, surfaces/, scripts/),"
+      echo "and M3's deliverables are threat-models/*.md (BRIEF_M3.md §1, §2)."
+      echo
+      echo "structure.py is M4; the instruction and manifest packs are M5;"
+      echo "SKILL.md and the Phase 2 gate are M6. If a pattern or a kind is"
+      echo "genuinely wrong, that is a correction to its own milestone and"
+      echo "belongs in its own commit, not inside M3's work."
+    } >&2
+    exit 2
+    ;;
+
   # M0 is harness repair (BRIEF_M0.md). Its own §2 edits scripts/check.sh, so
   # scripts/ is inside its remit; src/ and patterns/ are the tool and its
   # catalog, which M0 has no business touching. H-6 asks a guard to know what

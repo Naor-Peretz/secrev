@@ -751,8 +751,8 @@ def test_documentation_architect_still_points_at_stack_md() -> None:
 # ------------------------------------------------------------ current milestone
 
 
-def test_milestone_marker_is_m2() -> None:
-    """M1 is closed, so the marker moves again.
+def test_milestone_marker_is_m3() -> None:
+    """M2 is closed, so the marker moves again.
 
     It read M1 while BRIEF_M0.md sat unbuilt beside it, and TASK-011 pulled it
     back; leaving it at M0 after M0 closed would have refused every write to
@@ -760,14 +760,14 @@ def test_milestone_marker_is_m2() -> None:
     harness's only notion of where the project is and it is wrong in both
     directions if nobody moves it.
 
-    Moving it to M2 has a consequence worth stating rather than discovering:
-    scope-guard.sh has no M2 rules, so H-6 now refuses every write to src/ and
-    patterns/. That is the guard working, not breaking — it is saying the
-    project claims to be in a milestone nobody has scoped. The remedy is to
-    write BRIEF_M2.md and give the guard its rules, never to move the marker
-    back to buy write access.
+    The M2 move was made before scope-guard.sh had M2 rules, so H-6 correctly
+    refused every write to the scoped tree until BRIEF_M2.md existed — the
+    guard saying the project claimed a milestone nobody had scoped. This move
+    was made the other way round: the M3 branch and its assertions landed
+    first, and only then the marker. Either order is survivable; only one of
+    them is survivable without a window in which nothing can be written.
     """
-    assert (REPO / ".claude" / "MILESTONE").read_text(encoding="utf-8").strip() == "M2"
+    assert (REPO / ".claude" / "MILESTONE").read_text(encoding="utf-8").strip() == "M3"
 
 
 def _unticked(brief: str) -> list[str]:
@@ -884,6 +884,30 @@ def scope_at(
         path = str(Path(tmp) / relative) if absolute else relative
         rc, out, _ = run_hook("scope-guard.sh", write_payload(path, body), project_dir=Path(tmp))
     return rc, out
+
+
+def test_m3_refuses_the_scoped_tree_for_its_own_reason() -> None:
+    """M3 is the threat-model layer and writes prose into `threat-models/`,
+    which is outside the scoped tree — so every write the guard *does* see
+    under M3 is out of remit. The message has to be M3's own: falling through
+    to `refuse_no_rules` would say "this milestone needs its own rules added
+    here", which is false once they exist, and a refusal that gives a reason it
+    no longer holds teaches a reader to stop believing the message."""
+    for relative in ("src/secrev/structure.py", "patterns/_instruction.yaml"):
+        # run_hook rather than scope_at: a refusal is written to stderr, and
+        # scope_at hands back stdout, which carries `ask` payloads. The message
+        # is the substance of this assertion, so the test has to read the
+        # stream the message is on.
+        with milestone_tree("M3") as tmp:
+            path = str(Path(tmp) / relative)
+            rc, _, err = run_hook(
+                "scope-guard.sh", write_payload(path, "x = 1\n"), project_dir=Path(tmp)
+            )
+        assert rc == BLOCK, f"M3 must refuse {relative}, got rc={rc}"
+        assert "threat-model" in err, f"M3's refusal must name its own remit: {err}"
+        assert "no rules permitting this write" not in err, (
+            f"M3 has rules; it must not refuse as though it had none: {err}"
+        )
 
 
 def test_scope_guard_refuses_on_unknown_milestone() -> None:
