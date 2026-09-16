@@ -87,9 +87,10 @@ may rest on it.** Rejected: structural shell parsing (needs per-program knowledg
 same ways), renaming the product's subcommand, and requiring a trailing `/` (admits `rm -rf src`).
 
 - [ ] **HARNESS-CI — a check on protected paths, after the code leaves the machine.** A CI job that
-      fails when a commit touches `.claude/hooks/**`, `.claude/settings.json`, `patterns/**` or
-      `surfaces/**` without an explicit approval line in the commit message, plus `CODEOWNERS` and
-      branch protection on those paths. Cannot be defeated by a glob, a variable or `chattr`,
+      fails when a commit touches `.claude/hooks/**`, `.claude/settings.json`, `patterns/**`,
+      `surfaces/**` or `threat-models/**` (added by TASKS_M3.md D-1: the overlays are checks, and a
+      local guard is not a guarantee once the code has left the machine) without an explicit
+      approval line in the commit message, plus `CODEOWNERS` and branch protection on those paths. Cannot be defeated by a glob, a variable or `chattr`,
       because it runs where the agent does not. This is the one the review called most important:
       if the agent can edit the file that defines the hook, every other control collapses.
       *Accept:* a commit touching a guard without the line fails CI and names the path; with it,

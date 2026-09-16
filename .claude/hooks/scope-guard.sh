@@ -73,7 +73,28 @@ refuse_no_rules() {
 }
 
 case "$MILESTONE" in
-  M1) ;;
+  # M1 is the pattern sweep. Its remit is src/, patterns/ and their tests, and
+  # the bare `;;` it had said so by permitting everything scoped — which was
+  # true while src/, patterns/ and scripts/ were the whole scoped tree, and
+  # stopped being true the moment surfaces/ and threat-models/ joined it. Same
+  # omission as M2's, found in the same assertion (TASKS_M3.md D-1): a branch
+  # written before a directory existed answers "permit" for it by silence.
+  M1)
+    case "$path" in
+      *threat-models/*)
+        {
+          echo "BLOCKED — M1 is the pattern sweep; the threat models are M3."
+          echo "$path is in threat-models/, whose overlays decide which questions"
+          echo "every later review of an archetype asks (BRIEF_M3.md §1)."
+          echo
+          echo "A closed milestone editing them is how a question disappears with"
+          echo "nothing reporting it."
+        } >&2
+        exit 2
+        ;;
+      *) ;;
+    esac
+    ;;
 
   # M2 is the surface source (BRIEF_M2.md). src/ is its remit — surfaces.py,
   # the cli subcommand, their tests — and so is surfaces/, the kind data the
@@ -96,7 +117,57 @@ case "$MILESTONE" in
         } >&2
         exit 2
         ;;
+      # Added when threat-models/ entered the scoped tree (TASKS_M3.md D-1).
+      # An assertion written for M3 found this branch letting M2 write an
+      # overlay: it refused patterns/ by name and passed everything else, so
+      # scoping a new directory did not police it. The catalog's reasoning
+      # applies unchanged — a milestone that can write anything has no scope —
+      # and the questions M3 writes are checks exactly as a pattern is.
+      *threat-models/*)
+        {
+          echo "BLOCKED — M2 is the surface source; the threat models are M3."
+          echo "$path is in threat-models/, whose overlays decide which questions"
+          echo "every later review of an archetype asks (BRIEF_M3.md §1)."
+          echo
+          echo "A closed milestone editing them is how a question disappears with"
+          echo "nothing reporting it. If an overlay is genuinely wrong, that is an"
+          echo "M3 correction and belongs in its own commit."
+        } >&2
+        exit 2
+        ;;
       *) ;;
+    esac
+    ;;
+
+  # M3 is the threat-model layer (BRIEF_M3.md): the core, two overlays and the
+  # classifier, as prose in threat-models/ at the repository root. That path is
+  # outside the scoped tree, so this guard never sees M3's actual deliverables
+  # — which is the point. What it does see is a write to src/, patterns/,
+  # surfaces/ or scripts/, and under M3 every one of those is out of remit:
+  # structure.py is M4, the instruction and manifest packs are M5, SKILL.md and
+  # the phase gate are M6, and M3 adds no surface kinds.
+  #
+  # Refused here with its own message rather than by falling through to
+  # refuse_no_rules, which says "this milestone needs its own rules added
+  # here". Once M3 has rules that sentence is false, and a guard that refuses
+  # for a reason it no longer holds teaches a reader to stop believing the
+  # message (H-9: answer in the protocol, and say the true thing).
+  M3)
+    case "$path" in
+      *threat-models/*) exit 0 ;;
+      *)
+        {
+          echo "BLOCKED — M3 is the threat-model layer, and it writes prose."
+          echo "$path is in the scoped tree, and M3's deliverables are"
+          echo "threat-models/*.md (BRIEF_M3.md §1, §2)."
+          echo
+          echo "structure.py is M4; the instruction and manifest packs are M5;"
+          echo "SKILL.md and the Phase 2 gate are M6. If a pattern or a kind is"
+          echo "genuinely wrong, that is a correction to its own milestone and"
+          echo "belongs in its own commit, not inside M3's work."
+        } >&2
+        exit 2
+        ;;
     esac
     ;;
 

@@ -16,17 +16,42 @@ name: harness
 # inherits a guard that no longer guards. A control nobody exercises is an
 # assumption (STACK.md §8 H-8).
 on:
+  # The tool's *inputs* are here beside the harness, and the reason is the same
+  # one H-4 gives for protecting them: the catalog, the surface kinds and the
+  # threat models are checks, and a check removed without review disappears from
+  # every later run with nothing reporting it. `tests/golden/**` joins them
+  # because a golden edited without review is a comparison that stops comparing.
+  #
+  # **This is not the approval gate.** It decides which pushes *run* the guard
+  # suite; it cannot refuse a change and it has no notion of review. The gate
+  # that can — HARNESS-CI, with CODEOWNERS and branch protection — is an
+  # unticked task in `.claude/TASKS_M2.md`, and this line does not close it.
+  # Said here because a paths filter that looks like enforcement is worse than
+  # none: it invites the assumption that someone is watching.
   push:
     # A Dependabot branch always has a PR, and `pull_request` runs it there.
     branches-ignore: ["dependabot/**"]
+    # Listed twice rather than shared through a YAML anchor: GitHub's workflow
+    # parser does not expand anchors, while PyYAML does — so `test_workflows.py`
+    # would have parsed an anchored file happily and CI would have read a
+    # `paths:` of nothing. Green here, broken there, which is the divergence
+    # this repository pins actions by SHA to avoid.
     paths:
       - '.claude/**'
       - 'tests/harness/**'
+      - 'tests/golden/**'
+      - 'patterns/**'
+      - 'surfaces/**'
+      - 'threat-models/**'
       - '.github/workflows/harness.yml'
   pull_request:
     paths:
       - '.claude/**'
       - 'tests/harness/**'
+      - 'tests/golden/**'
+      - 'patterns/**'
+      - 'surfaces/**'
+      - 'threat-models/**'
       - '.github/workflows/harness.yml'
   workflow_dispatch: {}
 
