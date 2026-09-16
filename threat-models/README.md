@@ -17,9 +17,15 @@ overlay (`SKILL-01…`, `MCP-01…`). Ids are **append-only**: a question that i
 and keeps its id, because the id is what a later milestone cites.
 
 They exist because protection is only half the guarantee. It gates an unreviewed edit; an approved
-edit that drops a question is just as silent. `tests/` therefore holds the committed set of ids,
-and removing one turns a test red until the golden is updated deliberately — the discipline the
-artifact goldens already use.
+edit that drops a question is just as silent. **`STACK.md` §8 H-4 is the binding statement of that
+rule** — read it there rather than here, because two copies of a rule agree until the day one is
+edited, and this file is orientation, not authority (H-7).
+
+In practice: `tests/golden/question_ids.json` holds the committed set, and
+`tests/test_threat_models.py` compares it against what it finds in this directory in both
+directions. The pin is data rather than Python so that adding an archetype stays a content change
+(AC-4, NFR-6), and the golden is itself protected, because a pin editable without review is
+protection one step away from what it protects.
 
 They are also what makes later milestones possible rather than retrofitted: M9's report can state
 which questions were asked and answered, and a finding can cite the question it came from.

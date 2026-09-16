@@ -73,7 +73,21 @@ REFUSE = 2
 # `surfaces` joined in M2 (TASKS_M2.md C-1): the surface kinds are tool input
 # exactly as the catalog is, and they decide which entry points enter the
 # ledger at all. Protected in the change that created the directory.
-PROTECTED = ("src", "patterns", "surfaces", "scripts", "threat-models", r"\.claude")
+# `tests/golden` joined in M3 and is the only two-segment entry, deliberately.
+# The question-id pin lives there as data rather than in Python, because AC-4
+# requires a new archetype to cost no script change — and a pin editable without
+# review is protection one step away from what it protects. Two segments because
+# a bare `golden` would protect any directory of that name anywhere, and the
+# over-match this file already carries for one-word names is not worth widening
+# when the real path is known.
+PROTECTED = ("src", "patterns", "surfaces", "scripts", "threat-models", "tests/golden", r"\.claude")
+
+# The set as a reader sees it, derived rather than restated. The refusal message
+# below used to spell the list out and had already drifted — it omitted
+# `threat-models/` from the moment that directory was protected, so the guard
+# refused a path its own explanation said was not covered. H-7's argument, in
+# the smallest possible form: one definition, and the prose reads from it.
+PROTECTED_DISPLAY = ", ".join(name.replace("\\", "") + "/" for name in PROTECTED)
 # The boundary is "not a path-name character" rather than "/ or start", so a
 # path inside a quoted argument still counts: shlex strips the quotes and
 # leaves `open('scripts/check.sh'` as one token. This widens the trigger; it
@@ -246,8 +260,7 @@ def main() -> int:
         f"`{token}` matches a protected name" if token else "this command touches a protected path"
     )
     sys.stderr.write(
-        f"BLOCKED — {named} (src/, patterns/, surfaces/, scripts/, .claude/) and "
-        f"{reason}.\n\n"
+        f"BLOCKED — {named} ({PROTECTED_DISPLAY}) and {reason}.\n\n"
         "If that token is a command word or a branch name rather than a path, this is a "
         "false positive of a test over spellings: have the user run it, or spell the "
         "path another way.\n\n"

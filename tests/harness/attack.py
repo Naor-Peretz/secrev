@@ -899,6 +899,30 @@ def test_bash_permits_reading_a_threat_model() -> None:
     assert bash("cat threat-models/_agentic-core.md") == PASS_THROUGH
 
 
+def test_bash_refuses_writing_the_question_id_golden() -> None:
+    """H-4 as amended in M3. The mandatory-question ids are pinned in data
+    rather than in Python, because AC-4 requires a new archetype to cost no
+    script change — and a pin that can be edited without review is protection
+    one step away from the thing it protects. The overlay and its pin are then
+    both gated, which is the only arrangement in which the pin means anything.
+    """
+    assert bash("echo x | tee tests/golden/question_ids.json") == BLOCK
+
+
+def test_bash_permits_reading_the_question_id_golden() -> None:
+    assert bash("cat tests/golden/question_ids.json") == PASS_THROUGH
+
+
+def test_bash_does_not_protect_a_path_merely_containing_golden() -> None:
+    """The negative, and the reason this entry is two segments while every
+    other one is a single word. A bare `golden` would protect any directory of
+    that name anywhere — the over-match `surfaces` already carries — and the
+    real path is known, so there is no reason to buy it. `tests/golden.txt` is
+    not the directory, and a `golden/` somewhere else is somebody else's."""
+    assert bash("echo x > tests/golden.txt") == PASS_THROUGH
+    assert bash("echo x > build/golden/notes.txt") == PASS_THROUGH
+
+
 def test_m3_permits_its_own_deliverables() -> None:
     """A milestone that cannot write its own remit teaches people to click
     through the guard, which is the cost side of H-2 that never shows up as a

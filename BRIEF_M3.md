@@ -51,11 +51,19 @@ does not exist, that is a finding about the catalog, recorded in the ledger, not
 
 ```
 threat-models/
+├── README.md           # orientation, and the id convention (added 2026-09-16, see below)
 ├── _classifier.md      # how to pick archetypes (FR-1.5)
 ├── _agentic-core.md    # always loaded for an agentic target (PRD §8.1)
 ├── skill.md            # overlay (PRD §8.2)
 └── mcp-server.md       # overlay (PRD §8.2)
 ```
+
+`README.md` was not in this list when the brief was written, and it existed from the protection
+commit onward — both overlays cite it, which made an undeclared file into a rule source. Added here
+rather than escalated: this is a brief that had stopped describing its own directory, which is the
+correction `BRIEF_M2.md` C-4 and C-5 made for the same reason, not a conflict between binding
+documents. Its normative half now points at `STACK.md` §8 H-4 instead of restating it (H-7), so the
+duplication that made the question worth asking is gone.
 
 `_agentic-core.md` carries the eight mandatory sections of PRD §8.1 and nothing archetype-specific.
 Each overlay carries the six sections of §8.2, **in that order**: applies-when signals, additional
@@ -93,22 +101,31 @@ questions rather than verdicts.
 
 ## 4. Definition of done
 
-- [ ] `threat-models/_agentic-core.md` exists and carries all eight §8.1 sections, each with content
+- [x] `threat-models/_agentic-core.md` exists and carries all eight §8.1 sections, each with content
       specific enough that two reviewers reading it would look at the same places.
-- [ ] `skill.md` and `mcp-server.md` each carry the six §8.2 sections in order, including
+- [x] `skill.md` and `mcp-server.md` each carry the six §8.2 sections in order, including
       known-good implementations.
-- [ ] `mcp-server.md` names **tool return values** as a dangerous sink, and `skill.md` names the
+- [x] `mcp-server.md` names **tool return values** as a dangerous sink, and `skill.md` names the
       **activation description's breadth** (PRD §8.2 item 3 requires both by name).
-- [ ] `_classifier.md` sorts, by hand, the three artifacts this repository already knows about: a
+- [x] `_classifier.md` sorts, by hand, the three artifacts this repository already knows about: a
       skill with a `SKILL.md`, an MCP server declared in `.mcp.json`, and one that is both. Multiple
       archetypes are the norm (FR-1.5).
 - [ ] **AC-4 demonstrated, not asserted:** adding one overlay file requires no script change and no
       edit to `_agentic-core.md`. Proven by writing the second overlay after the first and showing
       the core untouched in the diff.
-- [ ] Every mandatory question in an overlay is answerable from artifacts this tool already
+      *Open deliberately.* Everything the tree can show is in place — `mcp-server.md` written
+      without touching the core, and the question-id pin moved out of Python into
+      `tests/golden/question_ids.json` so that adding an archetype edits no script (owner decision
+      on C-1). What is missing is the diff itself, and this box asks for a property of a commit.
+      Ticking it from a working tree is the substitution "proven by doing it once" exists to forbid.
+- [x] Every mandatory question in an overlay is answerable from artifacts this tool already
       produces (`recon.json`, `hits.jsonl`), or is explicitly marked as needing a phase that does
       not exist yet. A question with no path to an answer is a wish.
-- [ ] The codebase still passes `STACK.md` §2.1 self-application, and both gates stay green.
+      *Verified against the sources, not just in form:* every cited `rule_id` and every cited
+      `recon.json` field was checked to exist. Where none does, the question says which phase is
+      missing — FR-1.2's closure (M5), FR-1.4's capability manifest (no milestone owns it, raised),
+      the instruction pack (M5), the structural source (M4).
+- [x] The codebase still passes `STACK.md` §2.1 self-application, and both gates stay green.
 
 ---
 

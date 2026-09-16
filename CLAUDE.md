@@ -4,36 +4,45 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repository state
 
-`src/secrev/` holds the whole M1 pipeline — `inventory`, `ids`, `catalog`, `sweep`, `recon`,
-`cli` — and `secrev recon` and `secrev sweep` run. `patterns/` ships nine patterns in two packs
-(`_base.yaml`, `python.yaml`). Both gates are green and every stage has something to check,
-including the artifact half of the determinism stage, which compares real `recon.json` and
-`hits.jsonl` output.
+`src/secrev/` holds the M1 and M2 pipeline — `inventory`, `ids`, `catalog`, `sweep`, `recon`,
+`ledger`, `kinds`, `surfaces`, `cli` — and `secrev recon`, `secrev sweep` and `secrev surfaces`
+run. `patterns/` ships nine patterns in two packs (`_base.yaml`, `python.yaml`); `surfaces/` ships
+seven kinds in `_surfaces.yaml`. Both gates are green and every stage has something to check,
+including the artifact half of the determinism stage, which compares real `recon.json` and **both
+blocks** of `hits.jsonl`.
 
-**M2 is in progress** on `m2/surfaces`; the first part is PR #12. The plan was reviewed and the
-owner's decisions are recorded in `.claude/TASKS_M2.md`, which is the ledger — read it before
-touching M2 code. Done: `ledger.py`, `kinds.py`, `surfaces/_surfaces.yaml` with the first kind
-(`surface.skill_activation`), and `surfaces.py` with its golden (TASK-M2-001…005). Not done: the
-remaining kinds, `secrev surfaces` in `cli.py`, `coverage_gaps`, surfaces in the determinism check.
+**M3 is in progress** on `m3/overlays`; M2 is closed and merged as PR #13. The owner's decisions
+are recorded in `.claude/TASKS_M3.md`, which is the ledger — read it before touching M3. Done:
+`threat-models/_agentic-core.md` (PRD §8.1's eight sections, questions `CORE-01`…`CORE-27`) and
+`threat-models/skill.md` (§8.2's six sections, `SKILL-01`…`SKILL-10`). Not done: `mcp-server.md`,
+`_classifier.md`, and closing.
+
+M3 writes **prose**, so NFR-3 has no claim on it and the goldens do not cover it. What replaces
+that safety net is `tests/test_threat_models.py`: the question ids are a committed golden, so a
+question deleted or renumbered turns a test red. Protection alone would not do it — H-4 gates an
+*unreviewed* edit, and an approved edit dropping a question is just as silent.
 
 The remote is `github.com/Naor-Peretz/secrev`, **private**. CI history lives in
 `.claude/receipts.md`, not here.
 
-TASK-M1-010, the macOS box in M2's Definition of done, is **not ticked** pending the owner (Q6 in
-`TASKS_M2.md`). Its evidence exists: Linux and macOS produced byte-identical `recon.json` and
-`hits.jsonl`, and `tests/test_sweep.py` creates an NFD name at runtime and passed on macOS.
+TASK-M1-010, the macOS box carried into M2's Definition of done, **is met**. CI run 35079766314 ran
+both sources on the macOS runner, and the compare job took its `diff` branch and printed "Linux and
+macOS agree." That was read out of the log rather than inferred from a green tick, because the job
+exits 0 on its placeholder path by design — a green conclusion alone would have proven nothing
+(H-1).
 
 `.venv` is stdlib `venv` — `STACK.md` §3 no longer makes `uv` the default, because `uv`'s
 advertised install pipes a fetched script into a shell, which is `net.fetch_exec`, one of the nine
 patterns this tool ships.
 
-### The current milestone is M2
+### The current milestone is M3
 
-`.claude/MILESTONE` reads `M2`, and **M0 and M1 are closed** — every box in the Definition of done
-of `BRIEF_M0.md` and `BRIEF_M1.md` is ticked, with per-task receipts in `.claude/receipts.md` and
-the ledgers in `.claude/TASKS_M0.md` and `.claude/TASKS_M1.md`. One obligation was carried rather
-than done, by owner decision: TASK-M1-010's macOS run, which now lives as a box in `BRIEF_M2.md` §4
-because a carried obligation that lives only in a commit message stops being one.
+`.claude/MILESTONE` reads `M3`, and **M0, M1 and M2 are closed** — every box in the Definition of
+done of `BRIEF_M0.md`, `BRIEF_M1.md` and `BRIEF_M2.md` is ticked, with per-task receipts in
+`.claude/receipts.md` and the ledgers in `.claude/TASKS_M0.md`, `.claude/TASKS_M1.md` and
+`.claude/TASKS_M2.md`. One obligation was carried across a milestone boundary rather than done, by
+owner decision — TASK-M1-010's macOS run, which lived as a box in `BRIEF_M2.md` §4 because a
+carried obligation that lives only in a commit message stops being one, and which M2's push closed.
 
 That marker is the harness's only notion of where the project is, and it has been wrong in both
 directions: it read `M1` through the whole of M0, so `scope-guard.sh` policed a boundary the project
@@ -45,8 +54,12 @@ to build a branch name — so a checklist does not go in it.
 Moving it forward write-locks the scoped tree until the next brief exists. `scope-guard.sh` ends in
 `*) refuse_no_rules`, so between M1 closing and `BRIEF_M2.md` being written every write to `src/`
 was refused (H-6). **The remedy is to write the next brief and give the guard its rules — never to
-move the marker back to buy write access.** Under M2 the guard permits `src/` and refuses
-`patterns/`: M2 adds a candidate source, not rules. An assertion in `attack.py` refuses any unticked
+move the marker back to buy write access.** Under M3 the guard permits `threat-models/` and refuses
+everything else in the scoped tree: M3 writes prose, and `structure.py` is M4, the instruction and
+manifest packs M5, `SKILL.md` and the Phase 2 gate M6. It refuses with M3's own reason rather than
+falling through to `refuse_no_rules`, whose message ("this milestone needs its own rules added
+here") is false once they exist — a refusal giving a reason it no longer holds teaches a reader to
+stop believing the message (H-9). An assertion in `attack.py` refuses any unticked
 Definition-of-done box in a brief below the marker, so the marker cannot pass an unfinished
 milestone.
 
@@ -365,7 +378,8 @@ the last checkpoint before work becomes history.
 | `STACK.md` | Binding stack/environment decisions — *mechanism*. Applies to every milestone. §8 binds the harness itself (H-1…H-9). |
 | `BRIEF_M0.md` | Harness repair. Closed. |
 | `BRIEF_M1.md` | The pattern sweep — the first milestone that produced `src/secrev/`. Closed. |
-| `BRIEF_M2.md` | The surface source. **Current.** §1 and §4 bind; §2 is PRD-derived and unreviewed. |
+| `BRIEF_M2.md` | The surface source. Closed. |
+| `BRIEF_M3.md` | The threat-model layer. **Current.** §1 and §4 bind; §2 is written against M2's real output, not from the PRD alone. |
 
 Resolution order: **a brief loses to `STACK.md`; `STACK.md` loses to the PRD on intent and wins on
 mechanism.** Where a brief and the PRD conflict, raise it rather than silently resolving — a
@@ -473,11 +487,15 @@ stays there.
   `python -c`, `dd` is not a closeable list. Reaching for another verb to block means the polarity
   is wrong — which is P3 applied to our own tooling, and this project's founding finding was a
   denylist bypass.
-- **H-4** Protected paths are `src/`, `patterns/`, `surfaces/`, `scripts/` and `.claude/` —
-  `patterns/` and `surfaces/` especially, since they are the tool's input and an unreviewed rule
-  or surface kind is a check that silently disappears (a kind decides which entry points enter the
-  ledger at all). `surfaces/` joined in M2, in the change that created it. `.claude/` is protected
-  against `Bash` only.
+- **H-4** Protected paths are `src/`, `patterns/`, `surfaces/`, `scripts/`, `threat-models/`,
+  `tests/golden/` and `.claude/` — `patterns/` and `surfaces/` especially, since they are the
+  tool's input and an unreviewed rule or surface kind is a check that silently disappears (a kind
+  decides which entry points enter the ledger at all). `surfaces/` joined in M2 and
+  `threat-models/` in M3, each in the change that created it. `tests/golden/` joined in M3: the
+  question-id pin had to be data rather than Python for AC-4 to stay true, and a pin editable
+  without review is protection one step from what it protects. The artifact goldens inherit it,
+  which is right — a golden edited without review is a comparison that stops comparing. `.claude/`
+  is protected against `Bash` only.
 - **H-5** Path globs carry no leading anchor: `src/secrev/*.py|*/src/secrev/*.py`, not
   `*/src/secrev/*.py` alone, which relies on the client always sending absolute paths. The earlier
   form `*src/secrev/*.py` over-matched — `scripts/` caught `transcripts/`.
@@ -534,11 +552,20 @@ unnoticed.
 
 ## Scope discipline
 
-`BRIEF_M2.md` §1 lists what must *not* be built yet and why each would be got wrong early:
-structural analysis (M4), `closure.py` and the instruction and manifest catalog packs (M5), the
-ledger gate (M7), report rendering (M9), threat models and `SKILL.md` (M3/M6). M2 adds a source,
-not rules — no new catalog packs. HTTP routes and IPC handlers are named in FR-1.3 but are out of
-M2: record them as a coverage gap in `recon.json` rather than approximating them. Denylist detection and
+`BRIEF_M3.md` §1 lists what must *not* be built yet, each with the reason it would be got wrong
+early: `structure.py` and `_structure.yaml` (M4 — the overlays name sinks that want AST reasoning,
+and writing the analysis beside the questions shapes the rules around what is easy to detect, which
+is P11 in the small); `closure.py` and the `_instruction.yaml` / `_manifest.yaml` packs (M5);
+`SKILL.md`, phase ordering and the Phase 2 gate (M6 — writing the enforcement before the thing
+enforced is a procedure written against a guess); the `subagent.md`, `hook.md` and
+`agent-config.md` overlays (M8 — AC-4 says adding an archetype is cheap, and proving that with
+three more overlays inside the same milestone proves nothing about the seam).
+
+**M3 writes prose: no new patterns and no new surface kinds.** An overlay wanting a pattern that
+does not exist is a finding about the catalog, recorded as a coverage gap — not a pack added here.
+
+HTTP routes and IPC handlers are named in FR-1.3 and are enumerated by no source: they are recorded
+as coverage gaps in `recon.json` rather than approximated. Denylist detection and
 permission-set-after-creation were deliberately cut from the seed patterns — they are questions
 about structure and order of operations, and forcing them into regex produces a check that appears
 to work while missing most real instances.
