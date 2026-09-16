@@ -130,6 +130,23 @@ def mentions_protected(token: str) -> bool:
     return bool(PROTECTED_RE.search(token))
 
 
+def first_protected(tokens: list[str]) -> str | None:
+    """The token that tripped the trigger, for the refusal message.
+
+    Named in the message because the trigger is a test over spellings: a bare
+    word equal to a protected name matches as surely as a path does, and two
+    such words exist in this project's own vocabulary — the subcommand
+    `secrev surfaces` and a branch called `m2/surfaces`. A reader who is told
+    which token matched can tell that case from a real write without opening
+    this file. Narrowing the rule to require a trailing `/` would end the false
+    positives and admit `rm -rf src`, so the message is what improves.
+    """
+    for token in tokens:
+        if PROTECTED_RE.search(token):
+            return token
+    return None
+
+
 def tokenize(command: str) -> list[str] | None:
     """Shell-ish tokens, or None when the command cannot be read."""
     lexer = shlex.shlex(command, posix=True, punctuation_chars=True)
@@ -224,9 +241,16 @@ def main() -> int:
     code, reason = evaluate(command)
     if code == PERMIT:
         return PERMIT
+    token = first_protected(tokenize(command) or [])
+    named = (
+        f"`{token}` matches a protected name" if token else "this command touches a protected path"
+    )
     sys.stderr.write(
-        "BLOCKED — this command touches src/, patterns/, surfaces/ or scripts/ and "
+        f"BLOCKED — {named} (src/, patterns/, surfaces/, scripts/, .claude/) and "
         f"{reason}.\n\n"
+        "If that token is a command word or a branch name rather than a path, this is a "
+        "false positive of a test over spellings: have the user run it, or spell the "
+        "path another way.\n\n"
         "Guards hook Write|Edit|MultiEdit, so a write through Bash is invisible "
         "to them (BRIEF_M0.md §1). Use the Write or Edit tool for this change so "
         "the self-application and scope guards can see it.\n"

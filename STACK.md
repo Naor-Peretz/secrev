@@ -326,7 +326,13 @@ report rather than implying uniform coverage.
 |---|---|---|
 | Pattern | Any text; language packs reduce false positives, they are not a prerequisite | All languages |
 | Structural | Requires a parser | **Python only** |
-| Surface | Requires entry-point conventions per ecosystem | Python, plus manifest-declared surfaces (MCP tools, skill activation, hook bindings) |
+| Surface | Requires entry-point conventions per ecosystem | Python, plus manifest-declared surfaces (MCP **servers**, skill activation, hook bindings) |
+
+  **Corrected in M2 (TASKS_M2.md C-3).** This row said "MCP tools" among the manifest-declared
+  surfaces. A manifest declares the *server* — the command that starts it, or the URL it lives at —
+  and the tools are declared in the server's own code, by decorator. Taking only one of the two
+  would have missed either every code-defined tool or every server with no Python in the tree, so
+  M2 ships both kinds and this row names the half a manifest actually carries.
 
 - **`structure.py` must sit behind a `Parser` interface**, with `ast` as the first implementation.
   Adding tree-sitter later must not require touching rule logic. Do not adopt tree-sitter in v1 —
@@ -349,6 +355,14 @@ It is in scope for AC-10, and the rules below are binding on it.
   enumerate write verbs: `tee`, heredocs, `sed -i`, `>`, `>>`, `cp`, `mv`, `install`, `python -c`,
   and `dd` are not a closeable list. Adding another verb to a block list is the signal that the
   polarity is wrong.
+
+  **What this guard is, stated so nothing is built on it.** A guardrail against mistakes, not a
+  control. Its trigger asks whether a command *mentions* a protected path, which is a test over
+  spellings, and spellings do not close: a glob, a variable, a `cd`, or `find -delete` defeats it
+  (`bash_guard.py`'s own KNOWN LIMIT lists more). Against an agent that is not trying to evade it,
+  friction plus a visible refusal is worth having. Enforcement of the harness's own files belongs
+  to layers that do not read shell text — tool-permission rules, a CI check on protected paths,
+  and file ownership — recorded in `.claude/TASKS_M2.md` under "Carried beyond M2".
 - **H-3 — Guards cover every tool that can write, not every tool that usually writes.**
   `Write|Edit|MultiEdit` alone leaves `Bash` as an open path. Under P7 a write is an execution
   primitive regardless of which tool performed it.

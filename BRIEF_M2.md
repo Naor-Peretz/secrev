@@ -7,7 +7,9 @@ FR-3.9–3.11, D-11), `BRIEF_M1.md` (the ledger and id rules this source writes 
 
 **Provenance, stated because it affects how much weight this carries.** Written at the moment M1
 closed, to give `scope-guard.sh` rules for the milestone the marker now names and to hold the
-obligation M1 carried forward. §1 and §7 are the parts that bind; the deliverables in §2 are
+obligation M1 carried forward. §1 and §4 are the parts that bind — this said "§7", a section this
+brief does not have, carried over from `BRIEF_M1.md`'s layout where the Definition of done is §7
+(TASKS_M2.md C-4); the deliverables in §2 are
 derived from the PRD rather than from any implementation experience, and should be reviewed before
 anyone builds against them.
 
@@ -62,7 +64,9 @@ manifest-declared surfaces:
 - MCP tool definitions
 - Skill activation conditions, and the breadth of their descriptions
 - Hook event bindings
-- CLI commands (declared entry points, then the parser beneath them)
+- CLI commands (declared entry points; **not** the parser beneath them — §1 defers AST analysis to
+  M4, and this line asked for it in the same document, which the owner resolved in favour of §1:
+  no `ast` in M2, and the parser is a recorded coverage gap. TASKS_M2.md Q3)
 - Exported functions of a package's public surface
 
 HTTP routes and IPC handlers are named in FR-1.3 and are **not** required here: both need
@@ -88,23 +92,34 @@ matched here" is not a resolution (FR-3.11).
 
 ## 4. Definition of done
 
-- [ ] `secrev surfaces <path>` emits `hits.jsonl` records with `source: surface`.
-- [ ] A reachable entry point that **no pattern matches** produces a candidate anyway — the
+- [x] `secrev surfaces <path>` emits `hits.jsonl` records with `source: surface`.
+- [x] A reachable entry point that **no pattern matches** produces a candidate anyway — the
       assertion that P11 actually holds, and the shape AC-9a describes.
-- [ ] Two consecutive runs produce byte-identical output; golden test with byte comparison.
-- [ ] Candidate ids are stable when an unrelated file is added.
-- [ ] `recon.json`'s `coverage_gaps` stops saying surface enumeration is unimplemented, and says
+- [x] Two consecutive runs produce byte-identical output; golden test with byte comparison.
+- [x] Candidate ids are stable when an unrelated file is added.
+- [x] `recon.json`'s `coverage_gaps` stops saying surface enumeration is unimplemented, and says
       what is still unreachable instead (HTTP routes, IPC handlers).
-- [ ] The codebase still passes `STACK.md` §2.1 self-application.
-- [ ] **Carried from M1 — TASK-M1-010: the cross-platform determinism job passes on a real macOS
-      runner, having compared a non-empty digest.** Everything testable without macOS was done in
+- [x] The codebase still passes `STACK.md` §2.1 self-application.
+- [x] **Carried from M1 — TASK-M1-010: the cross-platform determinism job passes on a real macOS
+      runner, having compared a non-empty digest.** *Met 2026-09-16 at `d8b72a4`, run
+      35079766314:* the macOS runner produced 35 pattern candidates and 10 surface candidates into
+      one workspace, hashed that `hits.jsonl` and `recon.json`, and `linux vs macos` printed
+      "Linux and macOS agree." having taken the comparison branch — no `NOTHING-COMPARED`
+      placeholder. Both ledger blocks were in what was compared, which is the condition the owner
+      set in Q6 and the first run for which it was true. Everything testable without macOS was done in
       M1: the generate step replayed locally, the comparison step defeat-tested in all three
       states including a divergence failing, NFD/NFC equivalence asserted at artifact level, and
       symlink-escape and case-folding containment. What remains is two claims about a filesystem —
       whether APFS returns NFD for a name written NFC, and whether its case folding collapses two
-      inventory entries into one — and it is blocked on there being no git remote at all, so CI
-      has never run on this repository. **It is a box here because a carried obligation that lives
+      inventory entries into one. **It is a box here because a carried obligation that lives
       only in a commit message stops being an obligation.**
+
+      **The "blocked on there being no git remote" clause is gone (TASKS_M2.md C-5).** The remote
+      exists, CI has run, and on 2026-09-15 the job passed on a real macOS runner having compared
+      a non-empty digest — the condition as written. The owner's decision (Q6, 2026-09-16) is to
+      leave the box open anyway, on a stricter reading: that digest covered the pattern block
+      only, because the surface block joined the comparison in TASK-M2-009 and has not been
+      pushed. The box closes when CI compares **both** blocks across platforms.
 
       **Narrowed since, by reading the platform documentation instead of only planning to observe
       it.** APFS *preserves* filename normalisation and is merely insensitive on lookup; HFS+ was

@@ -15,8 +15,8 @@ module they constrain:
   - the window is named `decl-20`: the same ±20 lines as `lines-20`, anchored
     on the declaration, under a name that says so (TASKS_M2.md C-2), so a
     surface window is never compared with a pattern window;
-  - `catalog_version` carries the kinds file's `version` — the Q4 default,
-    pending the owner's decision, and asserted so a change to it is visible.
+  - `catalog_version` carries the kinds file's `version` — the owner's Q4
+    decision, asserted here so a change to it is visible rather than silent.
 
 The ordering assertion is the H-8 control. Files arrive sorted from
 `inventory.walk`, so a two-run comparison would not catch a surface source that
@@ -190,6 +190,242 @@ def test_order_within_a_file_is_by_line_then_kind(tmp_path: Path) -> None:
         (2, "surface.alpha"),
         (3, "surface.beta"),
     ]
+
+
+# --- every kind: one declaration it enters, one near miss it does not ------
+
+# One row per shipped kind: the file it is written in, a declaration the kind
+# must enter, and a near miss it must not. The near miss earns its place, as a
+# pattern's negative fixture does (STACK.md §9): a kind that matches call sites
+# as well as declarations turns entry points back into a grep, and a large
+# surface count is the symptom (BRIEF_M2.md §5).
+CASES: dict[str, tuple[str, str, str]] = {
+    "surface.skill_activation": (
+        "SKILL.md",
+        "---\ndescription: Does a thing\n---\n",
+        "---\nname: x\n  description: nested, not the skill's own key\n---\n",
+    ),
+    "surface.mcp_tool": (
+        "server.py",
+        "@mcp.tool()\ndef lookup(name):\n    return name\n",
+        "async def relay(session):\n    return await session.call_tool('lookup', {})\n",
+    ),
+    "surface.mcp_tool_listing": (
+        "server.py",
+        "@server.list_tools()\nasync def listing():\n    return []\n",
+        "async def discover(session):\n    return await session.list_tools()\n",
+    ),
+    "surface.mcp_server": (
+        ".mcp.json",
+        '{\n  "mcpServers": {\n    "x": {\n      "command": "python"\n    }\n  }\n}\n',
+        '{\n  "mcpServers": {\n    "x": {\n      "args": ["--command"],\n'
+        '      "shutdownCommand": "stop",\n      "env": {"COMMAND": "y"}\n    }\n  }\n}\n',
+    ),
+    "surface.hook_binding": (
+        "hooks/hooks.json",
+        '{\n  "hooks": {\n    "PreToolUse": [\n      {"matcher": "Bash"}\n    ]\n  }\n}\n',
+        '{\n  "hooks": [\n    {"matcher": "Bash"}\n  ],\n  "env": {"PATH": "x"}\n}\n',
+    ),
+    "surface.cli_command": (
+        "pyproject.toml",
+        '[project.scripts]\nnotes = "notes.cli:main"\n',
+        '[build-system]\nbuild-backend = "setuptools.build_meta"\n'
+        '[project]\nrequires-python = ">=3.11"\nhomepage = "https://example.invalid"\n',
+    ),
+    "surface.public_export": (
+        "__init__.py",
+        '__all__ = ["render"]\n',
+        "def names():\n    return list(__all__)\n",
+    ),
+}
+
+
+def test_every_shipped_kind_has_a_case(kinds: Kinds) -> None:
+    """Both directions, like the pattern fixture pairing: a kind with no row
+    has no negative, and a row naming no kind is what a rename leaves behind."""
+    assert set(CASES) == {kind.id for kind in kinds.kinds}
+
+
+@pytest.mark.parametrize("kind_id", sorted(CASES))
+def test_a_kind_enters_its_declaration(tmp_path: Path, kinds: Kinds, kind_id: str) -> None:
+    relative, positive, _ = CASES[kind_id]
+    hits = surfaces(skill_tree(tmp_path, relative, positive), kinds)
+    assert [hit.rule_id for hit in hits] == [kind_id]
+
+
+@pytest.mark.parametrize("kind_id", sorted(CASES))
+def test_a_kind_ignores_its_near_miss(tmp_path: Path, kinds: Kinds, kind_id: str) -> None:
+    relative, _, negative = CASES[kind_id]
+    assert surfaces(skill_tree(tmp_path, relative, negative), kinds) == []
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "@mcp.tool()",
+        "@mcp.tool",
+        "    @app.mcp.tool(name='x')",
+        "@server.call_tool()",
+        "mcp.add_tool(lookup)",
+    ],
+)
+def test_every_mcp_tool_declaration_form(tmp_path: Path, kinds: Kinds, line: str) -> None:
+    [hit] = surfaces(skill_tree(tmp_path, "server.py", f"{line}\n"), kinds)
+    assert hit.rule_id == "surface.mcp_tool"
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "@server.list_tools()",
+        "result = await session.call_tool('x', {})",
+        "@mcp.tools_registry()",
+        "# @mcp.tool() in a comment is still a comment",
+    ],
+)
+def test_what_is_not_an_mcp_tool(tmp_path: Path, kinds: Kinds, line: str) -> None:
+    """`list_tools` is a surface, but of another kind: what it returns is read
+    by the model, not called by it (`surface.mcp_tool_listing`)."""
+    hits = surfaces(skill_tree(tmp_path, "server.py", f"{line}\n"), kinds)
+    assert "surface.mcp_tool" not in {hit.rule_id for hit in hits}
+
+
+@pytest.mark.parametrize(
+    "relative",
+    [
+        ".mcp.json",
+        "plugin/.mcp.json",
+        ".cursor/mcp.json",
+        ".vscode/mcp.json",
+        "claude_desktop_config.json",
+    ],
+)
+@pytest.mark.parametrize("line", ['"command": "npx"', '"url": "https://example.invalid/mcp"'])
+def test_every_mcp_server_declaration(
+    tmp_path: Path, kinds: Kinds, relative: str, line: str
+) -> None:
+    """A local server (`command`) and a remote one (`url`), in every file a
+    client reads servers from."""
+    [hit] = surfaces(skill_tree(tmp_path, relative, f"{line}\n"), kinds)
+    assert hit.rule_id == "surface.mcp_server"
+
+
+def test_a_command_key_outside_an_mcp_config_is_not_a_server(tmp_path: Path, kinds: Kinds) -> None:
+    """`package.json` and `tasks.json` carry `"command":` keys that start
+    nothing a model can reach through MCP; the kind is scoped by file."""
+    root = skill_tree(tmp_path, "package.json", '"command": "node build.js"\n')
+    skill_tree(root, ".vscode/tasks.json", '"command": "make"\n')
+    assert surfaces(root, kinds) == []
+
+
+@pytest.mark.parametrize(
+    "relative",
+    [".claude/settings.json", ".claude/settings.local.json", "plugin/hooks/hooks.json"],
+)
+@pytest.mark.parametrize(
+    "line",
+    [
+        '"PreToolUse": [',
+        '"UserPromptSubmit": [',
+        '  "SessionStart" : [',
+        # An event no list names yet: the shape, not an enumeration, is what
+        # keeps a new event from being missed silently (H-2, P3).
+        '"SomeFutureEvent": [',
+        '{"hooks": {"Stop": [{"hooks": []}]}}',
+    ],
+)
+def test_every_hook_binding(tmp_path: Path, kinds: Kinds, relative: str, line: str) -> None:
+    [hit] = surfaces(skill_tree(tmp_path, relative, f"{line}\n"), kinds)
+    assert hit.rule_id == "surface.hook_binding"
+
+
+def test_a_binding_shape_outside_a_hook_config_is_not_a_hook(tmp_path: Path, kinds: Kinds) -> None:
+    """A `settings.json` that is not under `.claude/` configures something
+    else; the kind is scoped by file, as `mcp_server` is."""
+    root = skill_tree(tmp_path, "config/settings.json", '"PreToolUse": [\n')
+    skill_tree(root, ".vscode/settings.json", '"PreToolUse": [\n')
+    assert surfaces(root, kinds) == []
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        'notes = "notes.cli:main"',
+        '"my-tool" = "my_tool.__main__:run"',
+        "legacy = 'pkg.cli:main'",
+        '  plugin = "pkg.plugins:register"',
+    ],
+)
+def test_every_cli_command_declaration(tmp_path: Path, kinds: Kinds, line: str) -> None:
+    [hit] = surfaces(skill_tree(tmp_path, "pyproject.toml", f"{line}\n"), kinds)
+    assert hit.rule_id == "surface.cli_command"
+
+
+def test_a_script_shape_outside_pyproject_is_not_a_command(tmp_path: Path, kinds: Kinds) -> None:
+    """Scoped by file: the same shape in another TOML file declares nothing
+    a package installs."""
+    assert surfaces(skill_tree(tmp_path, "config.toml", 'notes = "notes.cli:main"\n'), kinds) == []
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        '__all__ = ["render"]',
+        "__all__ = (",
+        '__all__: list[str] = ["render"]',
+        '__all__ += ["parse"]',
+        '__all__.extend(["parse"])',
+        '__all__.append("parse")',
+        '    __all__ = ["inside_an_if_block"]',
+    ],
+)
+def test_every_public_export_declaration(tmp_path: Path, kinds: Kinds, line: str) -> None:
+    [hit] = surfaces(skill_tree(tmp_path, "pkg/__init__.py", f"{line}\n"), kinds)
+    assert hit.rule_id == "surface.public_export"
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "names = list(__all__)",
+        "exported = module.__all__",
+        "if __all__ == expected:",
+        "self.__all__ = []",
+        '# __all__ = ["commented_out"]',
+    ],
+)
+def test_what_is_not_a_public_export(tmp_path: Path, kinds: Kinds, line: str) -> None:
+    assert surfaces(skill_tree(tmp_path, "pkg/__init__.py", f"{line}\n"), kinds) == []
+
+
+@pytest.mark.parametrize(
+    ("relative", "text", "kind_id"),
+    [
+        (".Claude/settings.json", '"PreToolUse": [\n', "surface.hook_binding"),
+        (".CLAUDE/SETTINGS.JSON", '"PreToolUse": [\n', "surface.hook_binding"),
+        ("skills/x/skill.md", "description: x\n", "surface.skill_activation"),
+        (".MCP.json", '"command": "python"\n', "surface.mcp_server"),
+        ("Server.PY", "@mcp.tool()\n", "surface.mcp_tool"),
+    ],
+)
+def test_a_kind_finds_its_file_whatever_the_case(
+    tmp_path: Path, kinds: Kinds, relative: str, text: str, kind_id: str
+) -> None:
+    """A case-insensitive filesystem hands the agent `.Claude/settings.json`
+    when it asks for `.claude/settings.json`, so the kind must not miss it
+    (CLAUDE.md: case sensitivity is a finding class). The record keeps the
+    name as it is on disk, because the id derives from it."""
+    [hit] = surfaces(skill_tree(tmp_path, relative, text), kinds)
+    assert hit.rule_id == kind_id
+    assert hit.file == relative
+
+
+def test_a_declaration_stays_case_sensitive(tmp_path: Path, kinds: Kinds) -> None:
+    """Only the path ignores case. `"Command"` is not a key an MCP client
+    reads, and `DESCRIPTION:` is not a skill's frontmatter key."""
+    root = skill_tree(tmp_path, ".mcp.json", '"Command": "python"\n')
+    skill_tree(root, "SKILL.md", "DESCRIPTION: x\n")
+    assert surfaces(root, kinds) == []
 
 
 def test_surface_and_pattern_rule_ids_are_disjoint(kinds: Kinds, catalog: Catalog) -> None:

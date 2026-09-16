@@ -167,6 +167,31 @@ def glob_to_regex(glob: str) -> re.Pattern[str]:
     return re.compile(f"^{''.join(out)}$")
 
 
+def split_lines(text: str) -> list[str]:
+    """`text` split into lines the way an editor counts them: at CRLF, CR and
+    LF, and nowhere else. The terminators are discarded.
+
+    One definition for every consumer of the walk, here beside `language_of`
+    and `glob_to_regex` for their reason: a pattern's line, a surface's line
+    and `recon.json`'s line count must agree, and a second copy would drift.
+
+    Not `str.splitlines`, which also breaks on vertical tab and form feed
+    (U+000B, U+000C), U+001C to U+001E, U+0085, U+2028 and U+2029. A form
+    feed — `^L`, which Python source does contain — would shift every later
+    line number and window against what an editor shows, and `STACK.md` §5
+    says line numbers are reported against the original. Found in the
+    TASK-M2-007 review; fixed by owner decision.
+
+    Discarding the terminators keeps the other half of §5: a window joined
+    with LF is the same bytes whatever the file used, so a checkout with
+    `autocrlf` on does not re-identify every candidate.
+    """
+    parts = text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+    if parts[-1] == "":
+        parts.pop()
+    return parts
+
+
 @dataclass(frozen=True, order=True)
 class FileEntry:
     """One inventoried path. Frozen so equality is the whole record.

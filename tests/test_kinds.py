@@ -17,6 +17,7 @@ import pytest
 
 from secrev.catalog import CatalogError
 from secrev.catalog import load_file as load_catalog
+from secrev.inventory import glob_to_regex
 from secrev.kinds import SurfaceKindError, load_file
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -48,6 +49,24 @@ def test_valid_kinds_load(tmp_path: Path) -> None:
     assert kind.layer == "manifest"
     assert kind.precision == "high"
     assert kind.files == ("**/SKILL.md",)
+
+
+def test_kind_files_ignore_case(tmp_path: Path) -> None:
+    [kind] = load_file(write(tmp_path, VALID)).kinds
+    assert kind.applies("skills/x/SKILL.md")
+    assert kind.applies("skills/x/skill.md")
+    assert kind.applies("Skills/X/Skill.MD")
+    # Unicode folding comes with IGNORECASE: the long s matches `s`. Pinned so
+    # the behaviour is a decision, not a surprise; it only adds candidates.
+    assert kind.applies("skills/x/\N{LATIN SMALL LETTER LONG S}kill.md")
+
+
+def test_the_shared_glob_stays_case_sensitive() -> None:
+    """Only a kind ignores case. `glob_to_regex` also serves the catalog's
+    `paths_exclude`, where ignoring case would exclude more files from review
+    — failing open. This holds the boundary where `kinds.py` draws it."""
+    assert glob_to_regex("tests/**").match("TESTS/x.py") is None
+    assert glob_to_regex("tests/**").match("tests/x.py") is not None
 
 
 def test_the_shipped_kinds_load() -> None:

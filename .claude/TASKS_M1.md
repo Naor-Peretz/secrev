@@ -130,9 +130,14 @@ wrong invalidates every verification recorded above it (D-4).
       where the timestamps and the tool version go, being the one artifact NFR-3 exempts.
       *Accept:* `secrev sweep <fixtures> > out` produces parseable JSONL with nothing else in it.
 
-- [ ] **TASK-M1-010 — Cross-platform verification. CARRIED INTO M2 by owner decision.** Everything
+- [x] **TASK-M1-010 — Cross-platform verification. CARRIED INTO M2, and met there on 2026-09-16**
+      (`d8b72a4`, run 35079766314: macOS produced both ledger blocks, the digest covered them, and
+      the comparison agreed). Everything
       testable without macOS is done and is listed below; what remains is two claims about a
-      filesystem and a git remote that does not exist. It stays unticked deliberately — a carried
+      filesystem. (**Corrected 2026-09-16, TASKS_M2.md C-5:** this said "and a git remote that does
+      not exist". The remote exists and CI has run since 2026-09-15; the box stays open on the
+      owner's Q6 decision, for a different reason — the digest compared covered the pattern block
+      only.) It stays unticked deliberately — a carried
       obligation that reads as complete is how an obligation stops being one. It must appear in
       `BRIEF_M2.md`'s Definition of Done, or `attack.py`'s marker assertion will let the marker
       reach M3 with this never having run. The NFC divergence is the one difference a
@@ -193,9 +198,12 @@ wrong invalidates every verification recorded above it (D-4).
       entries into one. Both are claims about a filesystem, not about this code, and no Linux
       machine can settle either.
 
-      **It is also blocked on infrastructure that does not exist.** `git remote -v` is empty —
-      there is no remote, so CI has never run on this repository at all. This is not waiting on
-      approval to push; it is waiting on somewhere to push to.
+      **It was also blocked on infrastructure that did not exist**: `git remote -v` was empty, so
+      CI had never run on this repository at all — not waiting on approval to push, but on
+      somewhere to push to. **No longer true (corrected 2026-09-16, TASKS_M2.md C-5):** the remote
+      is `github.com/Naor-Peretz/secrev`, private, and CI has run on it since 2026-09-15, green on
+      macOS with a non-empty digest. What keeps this item open now is the owner's Q6 decision: the
+      digest compared the pattern block only, and the surface block joins it at the next push.
       *Accept:* the cross-platform hash-comparison job passes on a real macOS runner, having
       compared a non-empty digest.
 
@@ -245,7 +253,9 @@ wrong invalidates every verification recorded above it (D-4).
 
       **Closed by owner decision: the marker reads `M2` and the macOS run carries into M2.** §7 is
       the contract and all ten items are met; TASK-M1-010's remaining half is extra rigour this
-      ledger added, and it is blocked on a git remote that does not exist rather than on work.
+      ledger added, and it was blocked on a git remote that did not exist rather than on work.
+      (**Corrected 2026-09-16:** the remote exists and CI has run; see the note under
+      TASK-M1-010.)
       The reasoning given was that deferring it is a real but *bounded* cost, where the
       alternative risk is not — see the correction recorded under DOD-ITEM-10.
 

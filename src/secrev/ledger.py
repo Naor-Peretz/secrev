@@ -82,6 +82,14 @@ class Hit:
     question: str
     match_excerpt: str
     status: str
+    # The version of the ruleset that produced this record: the catalog's on a
+    # pattern record, the kinds file's on a surface record (owner decision on
+    # Q4, 2026-09-16). One field rather than two, so nothing reading the ledger
+    # has to branch on `source` before it can tell whether a verification has
+    # expired — which is what FR-4.6 needs of it. The name comes from the PRD's
+    # §7 contract and is wrong for half the records it now describes;
+    # renaming it is a PRD correction, raised in `.claude/TASKS_M2.md` rather
+    # than settled here (BRIEF_M1.md §8: a conflict is raised, not resolved).
     catalog_version: str
     window_spec: str
 

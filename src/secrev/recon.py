@@ -24,7 +24,8 @@ up in the workspace path and silently split one target's history in two.
 
 **What `loc_total` counts** is fixed here because nothing else fixes it, and it
 is bytes in a deterministic artifact: lines in text files, counted with
-`splitlines()`, excluding binaries and symlinks. Binaries have no lines, and a
+`inventory.split_lines` — the same lines the candidate sources number, and the
+ones an editor shows — excluding binaries and symlinks. Binaries have no lines, and a
 symlink's content is the file it points at, which is counted once at its own
 path or lies outside the tree entirely.
 """
@@ -39,7 +40,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from secrev.inventory import EXCLUDED_DIRS, FileEntry, language_of, walk
+from secrev.inventory import EXCLUDED_DIRS, FileEntry, language_of, split_lines, walk
 
 # Files whose name marks them as tests, for `security_process.test_files`.
 _TEST_FILE = re.compile(r"(^|/)(test_[^/]+|[^/]+_test)\.[a-z]+$|(^|/)tests?/")
@@ -179,19 +180,50 @@ def _security_process(root: Path, entries: list[FileEntry]) -> dict[str, Any]:
     }
 
 
+# Formats that hold no entry points of their own, or that the surface kinds
+# read only as named manifests. Every other language in the map is code.
+_NOT_CODE = frozenset({"ini", "json", "markdown", "text", "toml", "yaml"})
+
+# What the surface source cannot reach, one line each, so a reader sees the
+# limit rather than inferring it from a regex. BRIEF_M2.md §4 names the first
+# two; the rest are the line-oriented limits accepted in TASKS_M2.md (Q3) on
+# the condition that each is named here. Fixed text, not derived from the
+# kinds: recon is a peer of the surface source and does not import it (P11).
+_SURFACE_GAPS = (
+    "surface: HTTP routes are not enumerated (framework-specific; FR-1.3)",
+    "surface: IPC handlers are not enumerated (framework-specific; FR-1.3)",
+    "surface: the argument parser beneath a declared CLI command is not enumerated (needs AST, M4)",
+    "surface: a package with no `__all__` has no declared public surface to enumerate",
+    "surface: an `__all__` built at runtime, and names more than 20 lines below "
+    "its declaration, are not seen",
+    "surface: a declaration split across lines is missed, and several on one line "
+    "enter as one record (line-oriented, no AST in M2)",
+    "surface: hooks declared in agent or skill frontmatter, or in other clients' "
+    "configs, are not enumerated",
+    "surface: CLI commands declared in setup.cfg, setup.py or package.json are not enumerated",
+)
+
+
 def _coverage_gaps(languages: dict[str, int]) -> list[str]:
     """FR-3.8: degrade honestly rather than pass over what is not covered.
 
     §3's example reads "structural analysis unavailable for: yaml, markdown",
-    which implies structural analysis exists for the other languages. In M1 it
-    exists for none of them — `structure.py` is M4 — and the surface source is
-    M2. Saying so is the requirement; naming two languages would understate the
+    which implies structural analysis exists for the other languages. It exists
+    for none of them until M4, and naming two languages would understate the
     gap by implying the rest were covered.
+
+    The surface source exists since M2, so the line saying it did not is gone
+    (BRIEF_M2.md §4): a gap that is no longer true misleads as surely as a
+    missing one. What replaces it says what the source still cannot reach,
+    including the code languages present that no kind reads (STACK.md §7).
     """
     present = ", ".join(sorted(languages)) if languages else "none detected"
+    code = sorted(name for name in languages if name not in _NOT_CODE and name != "python")
+    others = f"not read for: {', '.join(code)}" if code else "no other code language present"
     return [
         f"structural analysis not implemented (M4); no coverage for: {present}",
-        "surface enumeration not implemented (M2); entry points are declared metadata only",
+        f"surface: code entry points are read in Python only; {others}",
+        *_SURFACE_GAPS,
     ]
 
 
@@ -207,7 +239,7 @@ def recon(root: Path) -> Recon:
             languages[language] = languages.get(language, 0) + 1
         # `os_path`, never `path`: the record is NFC, the filesystem may not be.
         raw = (root / entry.os_path).read_bytes()
-        loc_total += len(raw.decode("utf-8", errors="replace").splitlines())
+        loc_total += len(split_lines(raw.decode("utf-8", errors="replace")))
 
     source, sha = git_identity(root)
 

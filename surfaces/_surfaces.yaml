@@ -13,11 +13,151 @@
 # Line-oriented, like the catalog (TASKS_M2.md Q3 — no AST in M2). What a single
 # line cannot see is a recorded coverage gap, not an approximation.
 #
+# A kind's `files` match without regard to case, because the filesystems an
+# agent runs on often resolve names that way (kinds.py). Its `declaration`
+# matches as written unless it carries the `i` flag.
+#
 # `version` changes on any add or semantic change to a kind, for the reason the
 # catalog's does: a verification is only valid for the question it was made
 # against.
-version: "2026.09.1"
+version: "2026.09.8"
 kinds:
+  # A tool declared in server code (TASKS_M2.md C-3): every client connected to
+  # the server can call it, with arguments a model chose. The decorator forms
+  # of the Python SDK — `@mcp.tool()` (FastMCP) and `@server.call_tool()` (the
+  # low-level server, one dispatcher for every tool) — and programmatic
+  # registration with `add_tool(`. A call *to* a tool (`session.call_tool(`)
+  # is a call site, not an entry point, and is not matched. `list_tools` is
+  # not a tool; it is `surface.mcp_tool_listing`. A server with no Python in
+  # the tree is `surface.mcp_server`.
+  #
+  # Medium, not high: the decorator is matched by name, and the import that
+  # would say it is MCP's is on another line, which a line-oriented kind
+  # cannot see (Q3). Another agent framework's `@x.tool` enters too. That is
+  # still a tool a model can call, so the question is worded to hold for it.
+  - id: surface.mcp_tool
+    layer: [code]
+    precision: medium
+    files: ["**/*.py"]
+    declaration: '^\s*@[A-Za-z_][\w.]*\.(?:tool|call_tool)\b|^\s*[A-Za-z_][\w.]*\.add_tool\s*\('
+    question: >
+      What does this tool do with the arguments it is given, and what can it
+      reach with them — files, processes, the network, credentials? Any client
+      or model that can call it chooses those arguments. Trace each argument to
+      its sinks.
+
+  # What a low-level server tells a model about its tools. `@server.list_tools()`
+  # returns each tool's name, description and input schema, and that text
+  # enters the model's context as written: behaviour-defining prose (P8), the
+  # tool-side counterpart of a skill's description. FastMCP needs no kind of
+  # its own, because there the description is the decorated function's
+  # docstring, inside the `surface.mcp_tool` record's window. A client's
+  # `session.list_tools()` reads someone else's listing and is not matched.
+  # Medium, not high: the decorator is matched by name, not by import, so
+  # another library's `list_tools` decorator enters too and a reader resolves
+  # it.
+  - id: surface.mcp_tool_listing
+    layer: [instruction]
+    precision: medium
+    files: ["**/*.py"]
+    declaration: '^\s*@[A-Za-z_][\w.]*\.list_tools\b'
+    question: >
+      What do the tool names, descriptions and input schemas returned here tell
+      a model to do? Look for instructions addressed to the model, a description
+      broader than what the tool does, and one that differs from the code behind
+      it. Where does the text come from, and is any of it built from input?
+
+  # A server declared in a client's MCP configuration (TASKS_M2.md C-3): the
+  # `command` that starts a local server, or the `url` of a remote one. This
+  # is the half `surface.mcp_tool` cannot see — a server with no Python in the
+  # tree — and a local one runs with the user's privileges as soon as the
+  # client starts. The files are where clients read servers from: Claude
+  # Code's `.mcp.json`, the `mcp.json` Cursor and VS Code use, and Claude
+  # Desktop's config. A key that merely contains the word (`shutdownCommand`,
+  # an `--command` argument, an `env` entry) is not a declaration. One record
+  # per line: minified JSON holding several servers on one line is one record
+  # (a line-oriented limit, Q3).
+  - id: surface.mcp_server
+    layer: [manifest]
+    precision: high
+    files: ["**/.mcp.json", "**/mcp.json", "**/claude_desktop_config.json"]
+    declaration: '"(?:command|url)"\s*:'
+    question: >
+      What starts, or is connected to, when a client loads this configuration:
+      which command, with which arguments and environment, or which remote
+      endpoint? Who controls that code or that endpoint, and what tools does it
+      expose to a model? Trace it to what it can reach.
+
+  # A hook bound to an agent event: a command that runs, with the user's
+  # privileges, every time the event fires, fed the tool call or prompt that
+  # fired it. Claude Code reads bindings from `.claude/settings.json`,
+  # `.claude/settings.local.json`, and a plugin's `hooks/hooks.json`, as an
+  # event name keyed to a list: `"PreToolUse": [`.
+  #
+  # Matched by shape, not by a list of event names: an enumeration misses every
+  # event added after it was written, silently — a denylist over names, which
+  # is the polarity STACK.md §8 H-2 and P3 refuse. The shape is a capitalised
+  # key whose value is a list; the lower-case `"hooks": [` and a capitalised
+  # *value* (`"matcher": "Bash"`) are not bindings. Medium, because the shape
+  # cannot confirm the key is an event. Hooks declared elsewhere (agent or
+  # skill frontmatter, other clients' configs) are a recorded gap.
+  - id: surface.hook_binding
+    layer: [manifest]
+    precision: medium
+    files:
+      - "**/.claude/settings.json"
+      - "**/.claude/settings.local.json"
+      - "**/hooks/hooks.json"
+    declaration: '"[A-Z][a-z][A-Za-z]*"\s*:\s*\['
+    question: >
+      What runs when this event fires — which command, fed which input from
+      the tool call or prompt that fired it? Can a model, or content in the
+      reviewed tree, shape that input? If the hook gates something, can the
+      gate be bypassed, and does it fail open? Trace it to its sinks.
+
+  # A command a Python package installs: `name = "module.path:function"`, the
+  # value shape of a `[project.scripts]` entry, and of `gui-scripts` and
+  # `entry-points` groups, which are entry points too (a plugin group's
+  # entries run inside whatever loads the group). Whoever can run the command
+  # — a user, a script, an agent with a shell — chooses its arguments.
+  #
+  # Medium: a line cannot see which TOML section it is in, so the same shape
+  # under another table enters too and a reader resolves it. `build-backend`
+  # (no colon), version specifiers and URLs (`https:` is followed by `//`, not
+  # a name) do not match. The parser beneath the command, and commands
+  # declared in `setup.cfg`, `setup.py` or `package.json`, are recorded gaps.
+  - id: surface.cli_command
+    layer: [manifest]
+    precision: medium
+    files: ["**/pyproject.toml"]
+    declaration: '^\s*["'']?[\w.-]+["'']?\s*=\s*["''][\w.]+:[\w.]+["'']'
+    question: >
+      What does this command do with the arguments, environment and working
+      directory it is run with? Whoever can run it chooses them. Trace the
+      entry function through its argument parser to its sinks.
+
+  # A package's declared public surface: an assignment to `__all__` — `=`,
+  # the annotated form, `+=`, `.extend(` and `.append(`. Every exported name
+  # is callable by any code that imports the package, an agent's tool code
+  # included. One record per declaring line; the names of a list written over
+  # several lines sit in the record's `decl-20` window.
+  #
+  # Leading indentation is allowed, because an `__all__` inside an `if` block
+  # is still the module's; a class attribute of that name is a false positive
+  # a reader resolves, which costs less than a silent miss. Reading the name
+  # (`list(__all__)`, `mod.__all__`) and comparing it (`==`) are not
+  # declarations. A package with no `__all__`, and names past the window, are
+  # recorded gaps.
+  - id: surface.public_export
+    layer: [code]
+    precision: high
+    files: ["**/*.py"]
+    declaration: '^\s*__all__\s*(?::[^=]*)?(?:\+=|=(?!=))|^\s*__all__\.(?:extend|append)\('
+    question: >
+      Which names does this make the package's public API, and what can code
+      that imports them reach through them? Trace each exported callable from
+      its arguments to its sinks.
+
   # The description decides when a skill is loaded into an agent's context at
   # all, which makes it the skill's activation surface (FR-1.3, and the manifest
   # layer's "activation descriptions broad enough to load the artifact into

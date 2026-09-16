@@ -11,6 +11,8 @@ import re
 import unicodedata
 from pathlib import Path
 
+import pytest
+
 from secrev.recon import git_identity, recon, slug, to_json
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -60,14 +62,54 @@ def test_binary_files_are_not_counted_as_a_language() -> None:
     assert sum(result.inventory["by_language"].values()) < result.inventory["files_total"]
 
 
-def test_coverage_gaps_state_what_m1_does_not_do() -> None:
+def test_coverage_gaps_state_what_is_not_done() -> None:
     """FR-3.8: degrade honestly. §3's example implies structural analysis
-    exists for some languages; in M1 it exists for none, and saying "no
+    exists for some languages; it exists for none until M4, and saying "no
     coverage for yaml, markdown" would understate the gap by implying the rest
-    were covered."""
+    were covered. The surface source exists now, so the line that said it did
+    not is gone (BRIEF_M2.md §4) — a gap that is no longer true misleads as
+    surely as a missing one."""
     gaps = recon(FIXTURES).coverage_gaps
     assert any("structural analysis not implemented" in gap for gap in gaps)
-    assert any("surface enumeration not implemented" in gap for gap in gaps)
+    assert not any("surface enumeration not implemented" in gap for gap in gaps)
+
+
+@pytest.mark.parametrize(
+    "unreachable",
+    [
+        "HTTP routes",
+        "IPC handlers",
+        "argument parser",
+        "no `__all__`",
+        "built at runtime",
+        "split across lines",
+        "several on one line",
+        "frontmatter",
+        "setup.cfg",
+    ],
+)
+def test_coverage_gaps_name_what_the_surface_source_cannot_reach(unreachable: str) -> None:
+    """BRIEF_M2.md §4 names HTTP routes and IPC handlers. The rest are the
+    line-oriented limits the owner accepted in TASKS_M2.md on the condition
+    that each is named somewhere a reader will see it, rather than left
+    implicit in a regex."""
+    assert any(unreachable in gap for gap in recon(FIXTURES).coverage_gaps)
+
+
+def test_other_code_languages_are_named(tmp_path: Path) -> None:
+    """Surface kinds read code in Python only (STACK.md §7). A tree holding
+    other code has entry points no kind can see, and the gap names the
+    languages, as the structural line does."""
+    (tmp_path / "app.py").write_text("x = 1\n", encoding="utf-8")
+    (tmp_path / "server.ts").write_text("export const x = 1\n", encoding="utf-8")
+    (tmp_path / "run.sh").write_text("echo hi\n", encoding="utf-8")
+    [line] = [gap for gap in recon(tmp_path).coverage_gaps if "Python only" in gap]
+    assert line.endswith("not read for: shell, typescript")
+
+
+def test_a_python_only_tree_says_so() -> None:
+    [line] = [gap for gap in recon(FIXTURES).coverage_gaps if "Python only" in gap]
+    assert line.endswith("no other code language present")
 
 
 def test_entrypoints_are_declared_metadata_only(tmp_path: Path) -> None:

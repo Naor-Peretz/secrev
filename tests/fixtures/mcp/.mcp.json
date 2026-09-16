@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "notes": {
+      "command": "python",
+      "args": ["-m", "notes_server", "--command-timeout", "5"],
+      "env": {"COMMAND_LOG": "off"}
+    },
+    "search": {
+      "type": "http",
+      "url": "https://mcp.example.invalid/search"
+    }
+  }
+}
