@@ -16,6 +16,11 @@
     "what a later milestone cites: M9's report states which questions were asked, and a",
     "finding cites the question it came from. Removing a line here is the deliberate act."
   ],
+  "mcp-server.md": [
+    "MCP-01", "MCP-02", "MCP-03", "MCP-04", "MCP-05",
+    "MCP-06", "MCP-07", "MCP-08", "MCP-09", "MCP-10"
+  ],
+  "_classifier.md": [],
   "_agentic-core.md": [
     "CORE-01", "CORE-02", "CORE-03", "CORE-04", "CORE-05", "CORE-06", "CORE-07",
     "CORE-08", "CORE-09", "CORE-10", "CORE-11", "CORE-12", "CORE-13", "CORE-14",
