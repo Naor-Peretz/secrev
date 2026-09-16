@@ -100,8 +100,13 @@ matched here" is not a resolution (FR-3.11).
 - [x] `recon.json`'s `coverage_gaps` stops saying surface enumeration is unimplemented, and says
       what is still unreachable instead (HTTP routes, IPC handlers).
 - [x] The codebase still passes `STACK.md` §2.1 self-application.
-- [ ] **Carried from M1 — TASK-M1-010: the cross-platform determinism job passes on a real macOS
-      runner, having compared a non-empty digest.** Everything testable without macOS was done in
+- [x] **Carried from M1 — TASK-M1-010: the cross-platform determinism job passes on a real macOS
+      runner, having compared a non-empty digest.** *Met 2026-09-16 at `d8b72a4`, run
+      35079766314:* the macOS runner produced 35 pattern candidates and 10 surface candidates into
+      one workspace, hashed that `hits.jsonl` and `recon.json`, and `linux vs macos` printed
+      "Linux and macOS agree." having taken the comparison branch — no `NOTHING-COMPARED`
+      placeholder. Both ledger blocks were in what was compared, which is the condition the owner
+      set in Q6 and the first run for which it was true. Everything testable without macOS was done in
       M1: the generate step replayed locally, the comparison step defeat-tested in all three
       states including a divergence failing, NFD/NFC equivalence asserted at artifact level, and
       symlink-escape and case-folding containment. What remains is two claims about a filesystem —

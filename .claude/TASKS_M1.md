@@ -130,7 +130,9 @@ wrong invalidates every verification recorded above it (D-4).
       where the timestamps and the tool version go, being the one artifact NFR-3 exempts.
       *Accept:* `secrev sweep <fixtures> > out` produces parseable JSONL with nothing else in it.
 
-- [ ] **TASK-M1-010 — Cross-platform verification. CARRIED INTO M2 by owner decision.** Everything
+- [x] **TASK-M1-010 — Cross-platform verification. CARRIED INTO M2, and met there on 2026-09-16**
+      (`d8b72a4`, run 35079766314: macOS produced both ledger blocks, the digest covered them, and
+      the comparison agreed). Everything
       testable without macOS is done and is listed below; what remains is two claims about a
       filesystem. (**Corrected 2026-09-16, TASKS_M2.md C-5:** this said "and a git remote that does
       not exist". The remote exists and CI has run since 2026-09-15; the box stays open on the

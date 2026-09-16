@@ -141,6 +141,14 @@ pushed. The box closes when CI compares both blocks across platforms, which is t
 **M2's Definition of done therefore cannot be completed before that push**, and the milestone
 marker cannot move past it.
 
+**Met the same day, at `d8b72a4` (run 35079766314).** The macOS runner ran both sources into one
+workspace — 35 pattern candidates, 10 surface candidates — and hashed the merged `hits.jsonl`;
+`linux vs macos` took the comparison branch and printed "Linux and macOS agree." The job's own
+placeholder path, which exits 0 having compared nothing, was checked for and is absent from the
+log, because a green stage that verified nothing is the thing this project distrusts most (H-1).
+The stricter reading was worth holding: the run that satisfied the literal text on 2026-09-15
+carried the pattern block alone.
+
 Still open: **Q7** — a symlink escaping the root is recorded in `recon.json` but enters no ledger,
 so under P4 it has no exit. `sweep.py:246` assigns it to M2; `STACK.md` §5 and the brief push it to
 closure (M5). Not resolved in M2, and it needs an owner.
@@ -320,7 +328,8 @@ Q4 and Q6 (above, 2026-09-16).
       either block is missing, so a surface source that produced nothing cannot pass as
       compared (H-1). `ci.yml` runs `surfaces` before hashing. The cross-platform half is
       proven only when CI runs it on GitHub, which waits for the owner's push (compute
-      minutes); until then "Linux and macOS agree" on both blocks is unverified.
+      minutes). **Verified 2026-09-16** at `d8b72a4`, run 35079766314: the macOS digest covered
+      both blocks and the comparison agreed.
       *Accept:* the digest carries both blocks; Linux and macOS agree.
 
 - [x] **TASK-M2-010 — Self-application.** `secrev sweep src/secrev/`, `--sast`, `secrev surfaces .`
@@ -333,11 +342,13 @@ Q4 and Q6 (above, 2026-09-16).
       the three sources, as BRIEF_M2.md §5 predicts. The `surfaces` run had to be made by the
       owner: the guard reads the subcommand name as the protected directory (the finding above).
 
-- [ ] **TASK-M1-010 (carried)** — per Q6.
+- [x] **TASK-M1-010 (carried)** — per Q6, met at `d8b72a4` (run 35079766314): both ledger blocks
+      compared across platforms, and they agree.
 
 - [x] **TASK-M2-011 — Close, except what the push owns.** *Done 2026-09-16:* six of the seven
-      Definition-of-done boxes ticked in `BRIEF_M2.md` §4; the seventh is TASK-M1-010, open by the
-      owner's Q6 decision until CI compares both ledger blocks across platforms. Corrections
+      Definition-of-done boxes ticked in `BRIEF_M2.md` §4; the seventh, TASK-M1-010, was ticked
+      later the same day when the push made its evidence exist (`d8b72a4`, run 35079766314).
+      **All seven are met.** Corrections
       through spec-guard: the brief's "§1 and §7 bind" (it has no §7 — C-4), its "no git remote"
       clause and the three copies of that claim in `TASKS_M1.md` (C-5), its §2 asking for the
       parser beneath a CLI command while §1 defers AST to M4 (Q3), and `STACK.md` §7 calling MCP
