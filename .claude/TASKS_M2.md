@@ -149,9 +149,16 @@ log, because a green stage that verified nothing is the thing this project distr
 The stricter reading was worth holding: the run that satisfied the literal text on 2026-09-15
 carried the pattern block alone.
 
-Still open: **Q7** — a symlink escaping the root is recorded in `recon.json` but enters no ledger,
-so under P4 it has no exit. `sweep.py:246` assigns it to M2; `STACK.md` §5 and the brief push it to
-closure (M5). Not resolved in M2, and it needs an owner.
+**Q7 — resolved 2026-09-16: not M2, carried to M5.** A symlink escaping the root is recorded in
+`recon.json` and enters no ledger, so under P4 it has no exit yet. The conflict was one code
+comment against three binding documents: `sweep.py` said it "belongs to the surface source in M2",
+while the PRD puts the reachable artifact set in FR-1.2 and `closure.py` in M5 and calls an
+unresolvable closure member "itself a finding candidate, not an omission", `STACK.md` §5 calls the
+escaping symlink a closure question per P9, and `BRIEF_M2.md` §1 defers `closure.py` to M5 with its
+reason. Precedence (PRD > STACK.md > brief, and a docstring binds nothing) makes this M5's, so the
+docstring is corrected rather than the scope stretched. **Carried:** `BRIEF_M5.md`, when written,
+owns the escaping symlink — it is the first closure member the tool already detects and cannot yet
+resolve, which makes it a ready first test of `closure.py`.
 
 Closed: C-3 (third round above); Q9 (`CLAUDE.md`, 2026-09-15); C-4 and C-5 (TASK-M2-011, below);
 Q4 and Q6 (above, 2026-09-16).

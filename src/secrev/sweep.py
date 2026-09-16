@@ -115,8 +115,16 @@ def sweep(root: Path, catalog: Catalog) -> list[Hit]:
     Binary files are inventoried but never swept (`STACK.md` §5) — matching a
     regex against decoded binary produces hits that mean nothing and windows
     that hash differently on every platform. Symlinks are never followed; one
-    escaping the root is a candidate in its own right, which is a closure
-    question and belongs to the surface source in M2.
+    escaping the root is a candidate in its own right — a closure question
+    (P9), and the closure is `closure.py` in M5, not this source and not the
+    surface source.
+
+    This said "belongs to the surface source in M2" until the owner asked
+    where it belonged (Q7, 2026-09-16). Three binding documents say M5: the
+    PRD puts the reachable artifact set in FR-1.2 and `closure.py` in M5,
+    `STACK.md` §5 calls the escaping symlink a closure question, and
+    `BRIEF_M2.md` §1 defers `closure.py` with its reason. A docstring binds
+    nothing, and this one had been read as scope.
     """
     hits: list[Hit] = []
     for entry in walk(root):
