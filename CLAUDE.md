@@ -11,11 +11,21 @@ seven kinds in `_surfaces.yaml`. Both gates are green and every stage has someth
 including the artifact half of the determinism stage, which compares real `recon.json` and **both
 blocks** of `hits.jsonl`.
 
-**M3 is in progress** on `m3/overlays`; M2 is closed and merged as PR #13. The owner's decisions
-are recorded in `.claude/TASKS_M3.md`, which is the ledger — read it before touching M3. Done:
-`threat-models/_agentic-core.md` (PRD §8.1's eight sections, questions `CORE-01`…`CORE-27`) and
-`threat-models/skill.md` (§8.2's six sections, `SKILL-01`…`SKILL-10`). Not done: `mcp-server.md`,
-`_classifier.md`, and closing.
+**M3 is complete in work** on `m3/overlays`, unpushed; M2 is closed and merged as PR #13. The
+owner's decisions are in `.claude/TASKS_M3.md`, which is the ledger — read it before touching M3.
+`threat-models/` ships four files: `_agentic-core.md` (PRD §8.1's eight sections, `CORE-01`…
+`CORE-27`), `skill.md` and `mcp-server.md` (§8.2's six sections each, `SKILL-01`…`SKILL-10` and
+`MCP-01`…`MCP-10`), and `_classifier.md` (procedure only — the signals live in each overlay's
+applies-when section, so there is one list per archetype rather than two that drift).
+
+All seven `BRIEF_M3.md` §4 boxes are ticked, **including AC-4, which was read out of a diff rather
+than asserted**: `2ad18eb` contains no `.py` and does not touch `_agentic-core.md`. That is only
+true because the question-id pin is data (`tests/golden/question_ids.json`) rather than Python —
+with the pin in a test module, adding an archetype would have edited a script and AC-4 would have
+failed on its own terms.
+
+**The marker stays at `M3`** until `BRIEF_M4.md` and an M4 branch in `scope-guard.sh` exist. Moving
+it first write-locks the scoped tree (H-6), which is exactly what M1's close produced.
 
 M3 writes **prose**, so NFR-3 has no claim on it and the goldens do not cover it. What replaces
 that safety net is `tests/test_threat_models.py`: the question ids are a committed golden, so a

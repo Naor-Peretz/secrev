@@ -223,7 +223,7 @@ citation stops two copies of one rule agreeing only until one is edited.
       the note that it is this project's harness, in scope for its own review under AC-10, and not
       cleared by one. 380 tests (was 372), both gates green.
 
-- [ ] **TASK-M3-003 — `mcp-server.md`, and AC-4 demonstrated.** §8.2 item 3 requires *tool return
+- [x] **TASK-M3-003 — `mcp-server.md`, and AC-4 demonstrated.** §8.2 item 3 requires *tool return
       values* by name as a sink: they land in an agent's context and become instructions (P8).
       Written after `skill.md` so the diff can show `_agentic-core.md` untouched — AC-4 proven by
       doing it, not asserted.
@@ -251,6 +251,27 @@ citation stops two copies of one rule agreeing only until one is edited.
       honest encoding of "procedure, not questions", and the file is still pinned — so adding a
       question to it later fails until the golden says so. 371 tests, both gates green.
 
-- [ ] **TASK-M3-005 — Close.** DoD ticked; `STACK.md`/PRD corrections raised during the work go
+- [x] **TASK-M3-005 — Close.** DoD ticked; `STACK.md`/PRD corrections raised during the work go
       through spec-guard; receipts. The marker moves only after `BRIEF_M4.md` and its scope-guard
       rules exist.
+      *Done.* All seven `BRIEF_M3.md` §4 boxes ticked, box 5 from the real diff (`2ad18eb`).
+      Corrections made through spec-guard during the work: `STACK.md` §8 H-4 gained `tests/golden/`
+      with its reason and its stated cost; `BRIEF_M3.md` §2 gained `README.md`, whose absence had
+      made an undeclared file into a rule source for both overlays.
+      **Raised and deliberately left open — FR-1.4's capability manifest is owned by no milestone.**
+      PRD §13's build order names it in no row while P10 makes capability grants the privilege
+      boundary and four questions lean on it (`CORE-11`, `CORE-12`, `CORE-22`, `SKILL-08`). It is a
+      PRD correction, not a brief conflict, so M3 records it and does not choose a milestone
+      (`BRIEF_M1.md` §8). The core says so in its own text, which is what stops it reading as
+      answerable.
+      **The marker moved to `M3.5`, once that brief and its rules existed.** It did not move to
+      `M4`: the owner inserted a hardening milestone between M3 and M4 after an external review
+      found that a hostile target can hide code from the tool, hang it, or make it leak secrets
+      into the ledger. Rules first, then the marker, as at M3 — `BRIEF_M3.5.md`, its ledger, the
+      `scope-guard.sh` branch and its assertions all landed before `.claude/MILESTONE` changed, so
+      there was no window in which the scoped tree was write-locked (H-6).
+      The dotted token was not free: `attack.py`'s Definition-of-done assertion matched `M(\d+)`
+      and refused `M3.5` as "not a milestone token" — correct behaviour under H-9, and found before
+      the marker moved rather than after. The harness's notion of a milestone was widened to carry
+      a minor part, and the same change replaced a `range()` over brief numbers with a glob, since
+      the old form could only name briefs it could spell and `BRIEF_M3.5.md` was invisible to it.

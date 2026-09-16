@@ -110,14 +110,22 @@ questions rather than verdicts.
 - [x] `_classifier.md` sorts, by hand, the three artifacts this repository already knows about: a
       skill with a `SKILL.md`, an MCP server declared in `.mcp.json`, and one that is both. Multiple
       archetypes are the norm (FR-1.5).
-- [ ] **AC-4 demonstrated, not asserted:** adding one overlay file requires no script change and no
+- [x] **AC-4 demonstrated, not asserted:** adding one overlay file requires no script change and no
       edit to `_agentic-core.md`. Proven by writing the second overlay after the first and showing
       the core untouched in the diff.
-      *Open deliberately.* Everything the tree can show is in place — `mcp-server.md` written
-      without touching the core, and the question-id pin moved out of Python into
-      `tests/golden/question_ids.json` so that adding an archetype edits no script (owner decision
-      on C-1). What is missing is the diff itself, and this box asks for a property of a commit.
-      Ticking it from a working tree is the substitution "proven by doing it once" exists to forbid.
+      *Done, and the evidence is a diff rather than a claim.* `2ad18eb`, read with
+      `git show --stat`: `threat-models/mcp-server.md` (+230), `threat-models/_classifier.md`
+      (+114), `tests/golden/question_ids.json` (+5). **No `.py` in the commit at all, and
+      `_agentic-core.md` absent** — the two things AC-4 names, both provable from the diff without
+      taking anyone's word for it.
+      Stated precisely rather than flatteringly: this is not a one-file diff. `_classifier.md` is
+      M3's fourth deliverable and landed in the same commit because both were staged together; it
+      is not an archetype and adds none. The criterion rests on what the diff *contains*, not on
+      its file count, and on that it is unambiguous.
+      That the archetype cost no Python is the owner's C-1 ruling doing its work. With the
+      question-id pin still in a test module, this commit would have edited a `.py` file and AC-4
+      would have failed on its own terms — the pin is now `tests/golden/question_ids.json`, which
+      is data, and the test discovers overlays instead of naming them.
 - [x] Every mandatory question in an overlay is answerable from artifacts this tool already
       produces (`recon.json`, `hits.jsonl`), or is explicitly marked as needing a phase that does
       not exist yet. A question with no path to an answer is a wish.
