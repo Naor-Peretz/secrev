@@ -73,7 +73,7 @@ REFUSE = 2
 # `surfaces` joined in M2 (TASKS_M2.md C-1): the surface kinds are tool input
 # exactly as the catalog is, and they decide which entry points enter the
 # ledger at all. Protected in the change that created the directory.
-PROTECTED = ("src", "patterns", "surfaces", "scripts", r"\.claude")
+PROTECTED = ("src", "patterns", "surfaces", "scripts", "threat-models", r"\.claude")
 # The boundary is "not a path-name character" rather than "/ or start", so a
 # path inside a quoted argument still counts: shlex strips the quotes and
 # leaves `open('scripts/check.sh'` as one token. This widens the trigger; it

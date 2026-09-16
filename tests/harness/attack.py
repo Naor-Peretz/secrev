@@ -886,6 +886,43 @@ def scope_at(
     return rc, out
 
 
+def test_bash_refuses_writing_a_threat_model() -> None:
+    """M3's overlays are tool input in the sense that matters: a mandatory
+    question removed is a check that disappears from every later review of that
+    archetype (TASKS_M3.md D-1, STACK.md §8 H-4)."""
+    assert bash("echo x > threat-models/_agentic-core.md") == BLOCK
+
+
+def test_bash_permits_reading_a_threat_model() -> None:
+    """Protected against writing, not against being read — the same shape as
+    the catalog and the surface kinds."""
+    assert bash("cat threat-models/_agentic-core.md") == PASS_THROUGH
+
+
+def test_m3_permits_its_own_deliverables() -> None:
+    """A milestone that cannot write its own remit teaches people to click
+    through the guard, which is the cost side of H-2 that never shows up as a
+    refusal (the M2 precedent)."""
+    rc, out = scope_at("M3", "threat-models/_agentic-core.md", "# Core\n")
+    assert rc == PASS_THROUGH and not asks(out), "M3 must be able to write threat-models/"
+
+
+def test_another_milestone_may_not_rewrite_the_threat_model() -> None:
+    """Scoping is what stops a later milestone rewriting the questions while
+    calling itself structural work. M1 and M2 are closed and own no overlay.
+
+    Both are checked because the first draft of this test checked only M2 and
+    found it permitting the write: a milestone branch refuses the directories
+    it was written against and answers "permit" by omission for every one added
+    later. M1's branch was a bare `;;`, which permitted the whole scoped tree.
+    Adding a directory to `is_scoped_path` decides which paths the guard is
+    *consulted* about, never what any milestone answers.
+    """
+    for milestone in ("M1", "M2"):
+        rc, _ = scope_at(milestone, "threat-models/skill.md", "# Skill\n")
+        assert rc == BLOCK, f"threat-models/ is outside {milestone}'s remit, got rc={rc}"
+
+
 def test_m3_refuses_the_scoped_tree_for_its_own_reason() -> None:
     """M3 is the threat-model layer and writes prose into `threat-models/`,
     which is outside the scoped tree — so every write the guard *does* see

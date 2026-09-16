@@ -47,6 +47,13 @@ is_scoped_path() {
       # The surface kinds (M2, TASKS_M2.md C-1): data like the catalog, and
       # scoped like it — self-application does not apply, milestone scope does.
       surfaces/*|*/surfaces/*) return 0 ;;
+      # The threat models (M3, TASKS_M3.md D-1). Prose rather than data, and
+      # read by the reviewing agent rather than by a script — so the mechanism
+      # differs from patterns/ and surfaces/ while the failure mode does not: a
+      # mandatory question removed here is a check that disappears from every
+      # later review of that archetype. Scoped, so an M4 change cannot rewrite
+      # the threat model while calling itself structural work.
+      threat-models/*|*/threat-models/*) return 0 ;;
       *) return 1 ;;
     esac
 }

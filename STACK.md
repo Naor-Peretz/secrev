@@ -366,7 +366,15 @@ It is in scope for AC-10, and the rules below are binding on it.
 - **H-3 — Guards cover every tool that can write, not every tool that usually writes.**
   `Write|Edit|MultiEdit` alone leaves `Bash` as an open path. Under P7 a write is an execution
   primitive regardless of which tool performed it.
-- **H-4 — Protected paths are `src/`, `patterns/`, `surfaces/`, `scripts/`, and `.claude/`.**
+- **H-4 — Protected paths are `src/`, `patterns/`, `surfaces/`, `scripts/`, `threat-models/`, and
+  `.claude/`.** `threat-models/` joined in M3 (`TASKS_M3.md` D-1), in the change that created it.
+  Its case is not identical to the two below it and the difference is stated rather than glossed:
+  the catalog and the kinds are data a script reads, while an overlay is prose a reviewing agent
+  reads. The failure mode is what transfers — a mandatory question deleted from an overlay is a
+  check that disappears from every later review of that archetype. **Protection alone does not
+  close it:** it gates an *unreviewed* edit, and an approved edit that drops a question is equally
+  silent. Each mandatory question therefore carries a stable id and a test fails when one vanishes
+  without the golden being updated, which is the same discipline the artifact goldens use.
   `patterns/` and `surfaces/` especially: they are the tool's input. The catalog decides which
   questions are asked; the surface kinds decide which entry points enter the ledger at all (P11,
   NFR-6), so a kind edited without review narrows the review's scope with nothing reporting it. A

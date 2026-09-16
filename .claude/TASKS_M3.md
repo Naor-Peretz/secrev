@@ -8,6 +8,63 @@ the golden tests are unaffected — which also removes the safety net M1 and M2 
 replaces it is the Definition of done's demand that every mandatory question be answerable from
 something the tool already emits, or be marked as waiting for a phase that does not exist.
 
+## Decided by the owner, 2026-09-16 — with four corrections to my reasoning
+
+**D-1 — `threat-models/` is protected, in the change that creates it.** Agreed. Two corrections:
+
+- **The branch was the `surfaces` collision again.** I wrote that `threat-models` is unlikely to
+  appear as a command word, and the branch it would land on was called `m3/threat-models`. Once the
+  word is protected, `git log main..m3/threat-models`, `gh pr create --head …` and checking the
+  branch out by name are all refused, exactly as `m2/surfaces` was. Renamed to `m3/overlays` before
+  the protection commit, while nothing was pushed and the rename was free.
+- **Protection gates a change; it does not make a removal visible.** The stated failure mode is
+  "an unreviewed edit narrows the review with nothing reporting it", and protection only answers
+  the *unreviewed* half. An approved edit that drops a mandatory question is still silent. So every
+  mandatory question carries a stable id (`CORE-03`, `MCP-07`), and a test fails when an id
+  disappears without the golden being updated deliberately — the discipline the goldens already
+  use. The ids pay off twice more: M9's report can say which questions were asked and answered,
+  and a finding can cite the question it came from. `threat-models/**` also joins HARNESS-CI's
+  sensitive-path list, so the guarantee is not only local.
+
+**D-2 — `_classifier.md` stays in M3 and is written last.** Agreed, with one correction: writing
+it last prevents the *first* divergence, not the next one. If the classifier restates signals
+copied from each overlay, the two lists drift the first time an overlay is edited. So there is one
+source of truth — **the signals live in each overlay's applies-when section, and the classifier
+holds only the procedure**: how to read them, what to do with several matches, what to do with
+none. A test asserts every overlay has an applies-when section.
+
+The procedure fails toward inclusion, because misclassification is silent narrowing of exactly the
+kind P11 exists to prevent — an artifact tagged "skill" that also exposes an MCP server never gets
+the MCP questions:
+
+- apply **every** overlay that plausibly matches, not the best one;
+- if nothing matches, apply the core alone and record the result as a gap.
+
+**D-3 — the archetype does not go in `recon.json`.** Agreed, with one correction: "a judgment the
+agent records in its own phase" is not a record until it has a shape. Free-form prose cannot be
+checked by M7's gate or read by M9's report, and an agent that quietly skips an overlay leaves no
+trace — H-4's failure one level up. Without touching `recon.json`, the review phase's own output
+states: the archetypes chosen **and the evidence for each**, the overlays applied, and the question
+ids answered. That shape goes to M7 with the FR-1.5 placement question, so the freeze has something
+concrete to decide.
+
+**On the order — settled in advance so it cannot be settled under pressure.** `mcp-server.md`
+proves AC-4 only if the core is genuinely complete. If writing that overlay reveals a question that
+belongs in the core, the temptation is to put it in the overlay so the diff shows the core
+untouched and AC-4 stays green. **A core gap is a finding:** fix the core in its own commit, then
+re-prove AC-4 with an overlay that did not require touching it. The overlay is never bent to pass
+the test — that is the H-1 shape applied to an acceptance criterion.
+
+**Found while asserting D-1, and worth more than the assertion.** The test that a closed milestone
+may not rewrite an overlay failed with `rc=0`: `scope-guard.sh`'s M2 branch refuses `*patterns/*`
+by name and passes everything else, so adding a directory to `is_scoped_path` does **not** make
+every milestone police it. Scoping decides which paths the guard is consulted about; each
+milestone's branch decides the answer, and a branch written before the directory existed answers
+"permit" by omission. The guard was changed rather than the assertion weakened — the alternative
+was a test that matched the code and left the hole. Every milestone branch added later has to
+answer for every scoped directory, which is the cost of `case` over a default-deny table and is
+now written down instead of rediscovered.
+
 ## Open, for the owner — raised in `BRIEF_M3.md` §6, before implementation
 
 - **D-1 — Does `threat-models/` join the protected set (H-4)?** `patterns/` and `surfaces/` are
