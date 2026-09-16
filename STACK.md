@@ -326,7 +326,13 @@ report rather than implying uniform coverage.
 |---|---|---|
 | Pattern | Any text; language packs reduce false positives, they are not a prerequisite | All languages |
 | Structural | Requires a parser | **Python only** |
-| Surface | Requires entry-point conventions per ecosystem | Python, plus manifest-declared surfaces (MCP tools, skill activation, hook bindings) |
+| Surface | Requires entry-point conventions per ecosystem | Python, plus manifest-declared surfaces (MCP **servers**, skill activation, hook bindings) |
+
+  **Corrected in M2 (TASKS_M2.md C-3).** This row said "MCP tools" among the manifest-declared
+  surfaces. A manifest declares the *server* — the command that starts it, or the URL it lives at —
+  and the tools are declared in the server's own code, by decorator. Taking only one of the two
+  would have missed either every code-defined tool or every server with no Python in the tree, so
+  M2 ships both kinds and this row names the half a manifest actually carries.
 
 - **`structure.py` must sit behind a `Parser` interface**, with `ast` as the first implementation.
   Adding tree-sitter later must not require touching rule logic. Do not adopt tree-sitter in v1 —

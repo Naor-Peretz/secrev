@@ -38,10 +38,12 @@ The rules that decide bytes, stated because they are the ones not to revise:
   ordinal inside an id counts over byte-identical windows, so an unstable order
   would give the same content different ids on two runs.
 
-  **`catalog_version` carries the kinds file's `version`.** The Q4 default,
-  pending an owner decision: a surface record has no catalog, and this keeps a
-  change to a kind detectable the way FR-3.12 makes a pattern change
-  detectable.
+  **`catalog_version` carries the kinds file's `version`** — decided, not
+  defaulted (Q4, owner, 2026-09-16). The field holds the version of whichever
+  ruleset produced the record, so a change to a kind expires the verifications
+  made against it exactly as FR-3.12 does for a pattern, and nothing reading
+  the ledger has to branch on `source` first. The name is the PRD's and fits
+  half the records; renaming it is a PRD correction, raised in TASKS_M2.md.
 """
 
 from __future__ import annotations

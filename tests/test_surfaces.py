@@ -15,8 +15,8 @@ module they constrain:
   - the window is named `decl-20`: the same ±20 lines as `lines-20`, anchored
     on the declaration, under a name that says so (TASKS_M2.md C-2), so a
     surface window is never compared with a pattern window;
-  - `catalog_version` carries the kinds file's `version` — the Q4 default,
-    pending the owner's decision, and asserted so a change to it is visible.
+  - `catalog_version` carries the kinds file's `version` — the owner's Q4
+    decision, asserted here so a change to it is visible rather than silent.
 
 The ordering assertion is the H-8 control. Files arrive sorted from
 `inventory.walk`, so a two-run comparison would not catch a surface source that

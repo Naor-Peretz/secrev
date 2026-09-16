@@ -127,10 +127,26 @@ so it is recorded here to be carried into `BRIEF_M4.md` when that is written.
 TASK-M2-002 is therefore three commits: **002a** the `ledger.py` move, **002b** the protection,
 **002c** the kinds file and its loader.
 
-Still open, decided before the step that needs them: Q4 (`catalog_version` on a surface record),
-Q6 (tick TASK-M1-010), C-4 (`BRIEF_M2.md:10` says "§1 and §7 bind"; there is no §7), C-5 (stale
-"no git remote" in `BRIEF_M2.md` §4 and `TASKS_M1.md`), Q7 (escaping symlinks have no owner). C-3
-was decided in the third round above; Q9 was fixed in `CLAUDE.md` on 2026-09-15.
+**Q4 — decided 2026-09-16: keep it.** `catalog_version` holds the version of whichever ruleset
+produced the record — the catalog's on a pattern record, the kinds file's on a surface record. One
+field, so nothing reading the ledger branches on `source` before it can tell whether a verification
+has expired (FR-4.6). The name comes from the PRD §7 contract and is wrong for half the records it
+now describes. **Raised, not resolved** (BRIEF_M1.md §8): renaming it to something neutral is a PRD
+correction for a later milestone, and it would rewrite every golden.
+
+**Q6 — decided 2026-09-16: leave TASK-M1-010 open.** The condition as written is met (CI green on a
+real macOS runner, non-empty digest compared, 2026-09-15). The owner's stricter reading: that digest
+covered the pattern block only: the surface block joined the comparison in TASK-M2-009 and is not
+pushed. The box closes when CI compares both blocks across platforms, which is the next push.
+**M2's Definition of done therefore cannot be completed before that push**, and the milestone
+marker cannot move past it.
+
+Still open: **Q7** — a symlink escaping the root is recorded in `recon.json` but enters no ledger,
+so under P4 it has no exit. `sweep.py:246` assigns it to M2; `STACK.md` §5 and the brief push it to
+closure (M5). Not resolved in M2, and it needs an owner.
+
+Closed: C-3 (third round above); Q9 (`CLAUDE.md`, 2026-09-15); C-4 and C-5 (TASK-M2-011, below);
+Q4 and Q6 (above, 2026-09-16).
 
 ---
 
@@ -319,7 +335,17 @@ was decided in the third round above; Q9 was fixed in `CLAUDE.md` on 2026-09-15.
 
 - [ ] **TASK-M1-010 (carried)** — per Q6.
 
-- [ ] **TASK-M2-011 — Close.** DoD ticked; `BRIEF_M2.md` (C-4, C-5, Q3's contradiction) and
+- [x] **TASK-M2-011 — Close, except what the push owns.** *Done 2026-09-16:* six of the seven
+      Definition-of-done boxes ticked in `BRIEF_M2.md` §4; the seventh is TASK-M1-010, open by the
+      owner's Q6 decision until CI compares both ledger blocks across platforms. Corrections
+      through spec-guard: the brief's "§1 and §7 bind" (it has no §7 — C-4), its "no git remote"
+      clause and the three copies of that claim in `TASKS_M1.md` (C-5), its §2 asking for the
+      parser beneath a CLI command while §1 defers AST to M4 (Q3), and `STACK.md` §7 calling MCP
+      tools manifest-declared when a manifest declares the server (C-3). Q4's meaning is now
+      stated in `ledger.py`, `surfaces.py` and the test that asserts it. **The marker does not
+      move:** `BRIEF_M3.md` and its `scope-guard.sh` rules do not exist, and moving it without
+      them write-locks the scoped tree (H-6). *Original text:* DoD ticked; `BRIEF_M2.md` (C-4,
+      C-5, Q3's contradiction) and
       `STACK.md` (C-1, C-2) amendments through spec-guard; `CLAUDE.md` (Q9, and the TASK-M1-010
       condition it states wrongly — the runtime NFD test already exists, `test_sweep.py:170`).
       The marker moves only after `BRIEF_M3.md` and its scope-guard rules exist.
