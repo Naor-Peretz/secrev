@@ -307,8 +307,15 @@ was decided in the third round above; Q9 was fixed in `CLAUDE.md` on 2026-09-15.
       minutes); until then "Linux and macOS agree" on both blocks is unverified.
       *Accept:* the digest carries both blocks; Linux and macOS agree.
 
-- [ ] **TASK-M2-010 — Self-application.** `secrev sweep src/secrev/`, `--sast`, `secrev surfaces .`
-      with a small, explicable count.
+- [x] **TASK-M2-010 — Self-application.** `secrev sweep src/secrev/`, `--sast`, `secrev surfaces .`
+      with a small, explicable count. *Done at `361f275`:* CodeQL no alerts; the sweep finds 2 in
+      `src/secrev/` (both `fs.agent_config_write` on the `kinds.py` docstring that names
+      `.claude/settings.json` as its example — prose, not a write) and 8 in `scripts/`, the same
+      count M1 recorded; `surfaces` finds **27**, of which 15 are the harness's own hooks and
+      skills, 2 the tool's own entry points, 10 the fixtures, and 1 a false positive (a
+      `description:` line inside a documentation template). The surface count is the smallest of
+      the three sources, as BRIEF_M2.md §5 predicts. The `surfaces` run had to be made by the
+      owner: the guard reads the subcommand name as the protected directory (the finding above).
 
 - [ ] **TASK-M1-010 (carried)** — per Q6.
 
