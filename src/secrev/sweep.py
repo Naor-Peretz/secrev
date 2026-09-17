@@ -141,6 +141,17 @@ def sweep(
         # It tried and recorded the answer; a second read here would raise the
         # PermissionError that ended the whole sweep before M3.5, or block on
         # the FIFO, or spend the time the size bound exists to refuse.
+        #
+        # **The window this leaves, named rather than implied.** The decisions
+        # are carried forward; the read is not. `inventory` read this file to
+        # hash it, and this reads it again, so a target that replaces it with a
+        # FIFO or `chmod 000`s it *between* the two brings back the hang or the
+        # exit 3 — the flags describe a file that no longer exists. Closing it
+        # needs one read whose bytes travel on the entry, which holds a whole
+        # tree in memory and is an architecture decision rather than a
+        # hardening patch. It requires the target to mutate concurrently, which
+        # is why it is recorded and not treated as the same class as the
+        # single-shot evasions around it.
         if (
             entry.is_binary
             or entry.is_symlink

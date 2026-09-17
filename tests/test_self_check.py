@@ -5,11 +5,19 @@ been in the gate since M0, referenced by `check.sh`, `attack.py` and the CodeQL
 config, and nothing ever tested it. A check nobody has tried to defeat is an
 assumption rather than a control (H-8), and this one is the project's own gate.
 
-P3 says a denylist is a finding until proven otherwise, and `self_check.py` is
-a denylist three times over: banned call names, banned `(head, attr)` pairs,
-and banned import module strings. Each list is exact, so each is bypassed by
+P3 says a denylist is a finding until proven otherwise, and `self_check.py` was
+a denylist three times over: banned call names, banned `(head, attr)` pairs, and
+banned import module strings. Each list is exact, so each was bypassed by
 spelling the same thing differently. The founding finding of this project was a
 denylist bypass.
+
+**Two of the three are allowlists since a second review**, which measured eleven
+further bypasses walking past the M3.5 lists — among them two `yaml` loaders
+that contradict "safe_load only" and were simply not on the list of three that
+were. Imports are now checked against `ALLOWED_IMPORTS` and `yaml` members
+against `ALLOWED_YAML_ATTRS`. What remains a denylist is the `os` table, and
+`self_check.py` says so at the point where it is defined rather than leaving a
+reader to notice.
 
 Run as a subprocess rather than imported, following `test_codeql_check.py`: the
 Definition of done asks for a fixture "asserted to exit 1", and an exit code is
@@ -70,6 +78,35 @@ BYPASSES: list[tuple[str, str]] = [
     ),
     # The module key is "urllib", not "urllib.request".
     ("from-import-urllib", "from urllib import request\n\ndef f():\n    return request\n"),
+    # --- the eleven a second review measured passing the M3.5 checker ---
+    #
+    # The first two are the sharpest: `BANNED_ATTRS` named `load`,
+    # `unsafe_load` and `full_load`, and these two say the same thing with four
+    # more characters. A list of three that omits two is not a narrower rule,
+    # it is the same rule with a hole.
+    ("yaml-load-all", "import yaml\n\ndef f(t):\n    return yaml.load_all(t)\n"),
+    ("yaml-unsafe-load-all", "import yaml\n\ndef f(t):\n    return yaml.unsafe_load_all(t)\n"),
+    # `BANNED_CALLS` is keyed on a bare name, so reaching the same builtin
+    # through its module was an attribute on a module nothing had an opinion on.
+    ("builtins-eval", "import builtins\n\ndef f(x):\n    return builtins.eval(x)\n"),
+    # The callee is itself a call, so neither branch of `visit_Call` looked at
+    # it, and the name never appears in the source for a table to match.
+    ("getattr-callee", 'import os\n\ndef f(c):\n    return getattr(os, "system")(c)\n'),
+    # Bound to a local name. The alias map recorded imports and not assignments.
+    ("assignment-alias", "import os\n\ndef f(c):\n    run = os.system\n    return run(c)\n"),
+    # Process execution through modules no table named.
+    (
+        "asyncio-shell",
+        "import asyncio\n\ndef f(c):\n    return asyncio.create_subprocess_shell(c)\n",
+    ),
+    ("pty-spawn", "import pty\n\ndef f(c):\n    return pty.spawn(c)\n"),
+    ("ctypes-cdll", "import ctypes\n\ndef f(c):\n    return ctypes.CDLL(None).system(c)\n"),
+    # Egress through clients the six-module import denylist did not name. It
+    # named four; there are more than four.
+    ("third-party-client", "import httpx\n\ndef f(u):\n    return httpx.get(u)\n"),
+    ("client-submodule", "from urllib3 import PoolManager\n\ndef f():\n    return PoolManager()\n"),
+    # Deserialisation with the same machinery under a different name.
+    ("shelve-open", 'import shelve\n\ndef f():\n    return shelve.open("x")\n'),
 ]
 
 

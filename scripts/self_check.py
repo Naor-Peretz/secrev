@@ -30,9 +30,9 @@ BANNED_ATTRS = {
     ("pickle", "loads"): "STACK.md §2.1 — no pickle",
     ("marshal", "load"): "STACK.md §2.1 — no marshal",
     ("marshal", "loads"): "STACK.md §2.1 — no marshal",
-    ("yaml", "load"): "STACK.md §2.1 — yaml.safe_load only",
-    ("yaml", "unsafe_load"): "STACK.md §2.1 — yaml.safe_load only",
-    ("yaml", "full_load"): "STACK.md §2.1 — yaml.safe_load only",
+    # `yaml` is handled by `ALLOWED_YAML_ATTRS` rather than by rows here. The
+    # three that used to sit at this spot — `load`, `unsafe_load`, `full_load` —
+    # left `load_all` and `unsafe_load_all` passing, both measured.
     # `importlib.import_module` is `__import__` with a nicer spelling.
     ("importlib", "import_module"): "STACK.md §2.1 — no dynamic import",
 }
@@ -53,14 +53,84 @@ BANNED_OS_NAMES = {
     "system": "STACK.md §2.1 — no shell",
     "popen": "STACK.md §2.1 — no shell",
 }
-BANNED_IMPORTS = {
-    "requests": "NFR-4 — no network at runtime",
-    "urllib.request": "NFR-4 — no network at runtime",
-    "http.client": "NFR-4 — no network at runtime",
-    "socket": "NFR-4 — no network at runtime",
-    "pickle": "STACK.md §2.1 — no pickle",
-    "marshal": "STACK.md §2.1 — no marshal",
-}
+# **An allowlist, since a second review.** The denylist this replaces named six
+# modules, and eleven further bypasses were measured walking past it: two
+# third-party HTTP clients for egress, a foreign-function-interface module and a
+# pseudo-terminal helper for process execution, a persistent-mapping module that
+# deserialises the same way `pickle` does, and the async API's shell variant.
+# Each is answered by one more row, and the next one is answered by the row
+# after that — the denylist treadmill P3 exists to refuse, and which the comment
+# above `BANNED_OS_PREFIXES` already admitted this file was on.
+#
+# Note while editing this paragraph that the self-application guard reads it and
+# cannot tell a module *named as a finding* from one being imported. It refused
+# an earlier draft that spelled those client libraries out. Describing them is
+# the right answer rather than widening the guard: what it protects is worth
+# more than the phrasing, which is the same call `CLAUDE.md` records for its own
+# setup-advice assertion.
+#
+# The allowlist is cheap here in a way it is not in general: `src/secrev`
+# imports sixteen standard-library modules and one third-party package, and that
+# list is stable because `STACK.md` makes a new runtime dependency a documented
+# decision. So the set is small, and anything outside it is a question rather
+# than an assumption.
+#
+# **The process module is on this list, and an earlier draft left it off.** No
+# module under `src/secrev` imports it, so omitting it cost nothing there and
+# looked like free strictness — `recon.py`'s docstring has claimed that property
+# since M1. But `STACK.md` §2.1 forbids "subprocess with a shell string", not the
+# module: an argument list is the *correct* form, and `scan()` is pointed at
+# trees other than `src/secrev`. Refusing the import enforces something stricter
+# than the binding document, decided here rather than there.
+#
+# `test_clean_source_still_passes` caught it, which is exactly the job it was
+# written for, and the trap is already described two paragraphs down in
+# `_check`: a rule that fails the gate on good code is a rule someone deletes.
+# Whether `src/secrev` should be *held* to importing no process module is a
+# `STACK.md` amendment and is raised rather than taken here.
+#
+# Written as full dotted paths, so `importlib.metadata` is permitted while bare
+# `importlib` is not: `importlib.import_module` is `__import__` with a nicer
+# spelling, and `BANNED_ATTRS` already says so.
+ALLOWED_IMPORTS = frozenset(
+    {
+        "__future__",
+        "argparse",
+        "collections.abc",
+        "dataclasses",
+        "datetime",
+        "hashlib",
+        "importlib.metadata",
+        "json",
+        "os",
+        "pathlib",
+        "re",
+        "subprocess",
+        "sys",
+        "tempfile",
+        "tomllib",
+        "typing",
+        "unicodedata",
+        "yaml",
+    }
+)
+
+# The only `yaml` members this codebase uses. An allowlist rather than the three
+# banned spellings it replaces, because `yaml.load`, `yaml.unsafe_load` and
+# `yaml.full_load` were named while the two `_all` variants were not — and those
+# contradict "safe_load only" as directly as the ones that were listed. Naming
+# what is permitted needs no such foresight.
+ALLOWED_YAML_ATTRS = frozenset({"safe_load", "YAMLError"})
+
+
+def _import_allowed(module: str) -> bool:
+    """Whether `src/secrev` may import this module.
+
+    `secrev.*` by prefix: the package's own modules are the thing being checked,
+    not a dependency, and enumerating them here would mean editing this file
+    every time one is added.
+    """
+    return module in ALLOWED_IMPORTS or module.split(".", maxsplit=1)[0] == "secrev"
 
 
 def _dotted(node: ast.AST) -> str:
@@ -87,11 +157,20 @@ class Visitor(ast.NodeVisitor):
     executed rather than described.
 
     `aliases` maps a local name to the dotted path it was bound to, and every
-    call resolves through it first. The map is per module and deliberately
-    simple: it records imports, never assignments, so rebinding a banned member
-    to a local variable and calling that is still missed. Stated rather than
-    hidden — a checker claiming more reach than it has is worse than one whose
-    limit is written down.
+    call resolves through it first. It records imports and simple assignments:
+    `run = os.system` followed by `run(cmd)` was the last of eleven bypasses a
+    second review measured still passing, and it was recorded here as a stated
+    limit rather than closed. Six lines closed it, which is a poor trade against
+    leaving a documented hole where the document is the only thing holding it.
+
+    **The limit that remains, stated rather than hidden.** Only a name bound
+    directly to a dotted path is followed. A member reached through a container,
+    an element of a list, or the return value of a function is not — those are
+    not enumerable, and pursuing them is the treadmill `ALLOWED_IMPORTS` exists
+    to step off. What bounds the residue is that an aliased member must still
+    come from an imported module, and the import allowlist decides which those
+    are. A checker claiming more reach than it has is worse than one whose limit
+    is written down.
     """
 
     def __init__(self, rel: str) -> None:
@@ -105,21 +184,52 @@ class Visitor(ast.NodeVisitor):
     def visit_Import(self, node: ast.Import) -> None:
         for alias in node.names:
             self.aliases[alias.asname or alias.name.split(".")[0]] = alias.name
-            if why := BANNED_IMPORTS.get(alias.name):
-                self._flag(node, f"import {alias.name} — {why}")
+            if not _import_allowed(alias.name):
+                self._flag(
+                    node,
+                    f"import {alias.name} — not in ALLOWED_IMPORTS (STACK.md §2.1). "
+                    "A new runtime dependency is a STACK.md decision; add it there first",
+                )
         self.generic_visit(node)
 
     def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
         mod = node.module or ""
-        if why := BANNED_IMPORTS.get(mod):
-            self._flag(node, f"from {mod} import ... — {why}")
+        if not _import_allowed(mod):
+            self._flag(
+                node,
+                f"from {mod} import ... — not in ALLOWED_IMPORTS (STACK.md §2.1). "
+                "A new runtime dependency is a STACK.md decision; add it there first",
+            )
         for alias in node.names:
             dotted = f"{mod}.{alias.name}" if mod else alias.name
             self.aliases[alias.asname or alias.name] = dotted
-            # `from urllib import request` binds a banned module under a name
-            # the module-key test never sees, because that key is "urllib".
-            if why := BANNED_IMPORTS.get(dotted):
-                self._flag(node, f"from {mod} import {alias.name} — {why}")
+            # No second test on the dotted form. Under the old denylist this is
+            # where a submodule bound under an unexpected name was caught; under
+            # an allowlist the check on `mod` above already decided it, and
+            # testing `collections.abc.Callable` against a list of *modules*
+            # would refuse a legitimate import of a name from a permitted one.
+        self.generic_visit(node)
+
+    def visit_Assign(self, node: ast.Assign) -> None:
+        """Bind a plain name to the dotted path assigned to it.
+
+        `run = os.system` binds `system` under a name no table can match, and
+        `run(cmd)` then reaches `visit_Call` as a bare `ast.Name` whose id is in
+        no list. Resolving it here means the existing `BANNED_OS_NAMES` row does
+        the work, rather than a new row for every spelling of the rebinding.
+
+        Only `name = <dotted>`. A tuple target, a subscript, or a call on the
+        right is left alone: `_dotted` returns "" for anything that is not a
+        Name or an Attribute chain, so those simply do not bind.
+        """
+        dotted = _dotted(node.value)
+        if dotted:
+            head, _, rest = dotted.partition(".")
+            resolved = self.aliases.get(head, head)
+            full = f"{resolved}.{rest}" if rest else resolved
+            for target in node.targets:
+                if isinstance(target, ast.Name):
+                    self.aliases[target.id] = full
         self.generic_visit(node)
 
     def _check(self, node: ast.Call, dotted: str, shown: str) -> None:
@@ -131,6 +241,22 @@ class Visitor(ast.NodeVisitor):
 
         if why := BANNED_ATTRS.get((base, attr)):
             self._flag(node, f"{shown}() — {why}")
+
+        # A banned builtin reached through the `builtins` module. `BANNED_CALLS`
+        # is keyed on a bare name, so `builtins.eval(data)` arrived here as an
+        # attribute on a module nothing had an opinion about, and passed.
+        if base == "builtins" and (why := BANNED_CALLS.get(attr)):
+            self._flag(node, f"{shown}() — {why}")
+
+        # Allowlisted rather than listed: every `yaml` member but the two this
+        # codebase uses is a question. `yaml.load_all` and `yaml.unsafe_load_all`
+        # were both measured passing the three-row denylist this replaces.
+        if base == "yaml" and attr not in ALLOWED_YAML_ATTRS:
+            self._flag(
+                node,
+                f"{shown}() — STACK.md §2.1, yaml.safe_load only "
+                f"(permitted: {', '.join(sorted(ALLOWED_YAML_ATTRS))})",
+            )
 
         if base == "os":
             if why := BANNED_OS_NAMES.get(attr):
@@ -176,6 +302,22 @@ class Visitor(ast.NodeVisitor):
 
     def visit_Call(self, node: ast.Call) -> None:
         func = node.func
+
+        # `getattr(os, "system")(cmd)`. The callee is itself a call, so neither
+        # branch below ever looked at it and the name never appears in the
+        # source for a table to match. Flagged by *shape*: resolving an
+        # attribute at runtime and calling the result is unreviewable by an AST
+        # checker in principle, so it is a question rather than a miss.
+        if (
+            isinstance(func, ast.Call)
+            and isinstance(func.func, ast.Name)
+            and func.func.id == "getattr"
+        ):
+            self._flag(
+                node,
+                "getattr(...)() — STACK.md §2.1, a dynamically resolved callee "
+                "cannot be checked; name the call directly",
+            )
 
         if isinstance(func, ast.Name):
             if why := BANNED_CALLS.get(func.id):

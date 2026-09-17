@@ -21,6 +21,7 @@
     "unreadable": [],
     "not_regular": [],
     "too_large": [],
+    "unread_code": [],
     "symlinks": [],
     "excluded": [
       "node_modules/"
@@ -38,6 +39,7 @@
   },
   "coverage_gaps": [
     "excluded from review and not read at all: node_modules/ — override the set with --exclude",
+    "present but not read, classified binary (over 5% non-text bytes in the first 8 KiB): assets/blob.bin",
     "structural analysis not implemented (M4); no coverage for: json, markdown, python, text, toml",
     "surface: code entry points are read in Python only; no other code language present",
     "surface: HTTP routes are not enumerated (framework-specific; FR-1.3)",

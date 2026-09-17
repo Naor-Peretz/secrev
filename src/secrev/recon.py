@@ -88,6 +88,57 @@ def slug(name: str) -> str:
     return re.sub(r"-+", "-", re.sub(r"[^a-z0-9]+", "-", ascii_only)).strip("-") or "target"
 
 
+def _found_paths(entries: list[FileEntry]) -> frozenset[str]:
+    """Relative paths the walk itself found, as regular non-symlink files.
+
+    The structural half of the M3.5 D1 fix, and the reason that fix needed a
+    second pass. D1 added `and not ...is_symlink()` at each site a review had
+    demonstrated — `pyproject.toml`, `package.json`, `.git`, `.git/HEAD` — and
+    left `SECURITY.md`, `dependabot.yml`, `dependabot.yaml`, `_SAST_CONFIG` and
+    the `.github/workflows` glob reaching by name with no check at all. A second
+    review walked through every one of them.
+
+    Patching each site cannot close this class, because the class is *reaching
+    by name*: every new field that looks up a file is a new hole, and the check
+    has to be remembered rather than inherited. `inventory.walk` has never
+    followed a symlink, so a membership test against what it found is contained
+    by construction — and a site that forgets to use it fails closed, reporting
+    a file as absent rather than reading one outside the tree.
+
+    `is_regular` and not a symlink, deliberately not `is_readable`: a file that
+    exists and cannot be read is still *present*, and the fields built from this
+    set answer presence. The two that go on to read a file handle their own
+    `OSError` already.
+    """
+    return frozenset(item.os_path for item in entries if item.is_regular and not item.is_symlink)
+
+
+def _within_real_path(base: Path, relative: str) -> Path | None:
+    """`base/relative`, or None when any component of it is a symlink.
+
+    For `.git` only. Everything else is answered by `_found_paths`, but `.git`
+    is excluded from the walk, so nothing found it and there is no membership to
+    test — the one place a by-name reach is unavoidable.
+
+    Every component, not the last one. `is_symlink()` on the finished path
+    lstats only the final element, so `.git/refs -> ../../outside/refs` passed a
+    check written on `.git/refs/heads/main`: a foreign repository's SHA was
+    reported as this target's version, and `STACK.md` §6 then filed the review
+    under it. That is the D1 damage exactly, reached through a component nobody
+    was looking at.
+
+    Walked component by component rather than with `resolve()`, for the reason
+    `_resolve_ref` gives below: `resolve()` follows links, which is the thing
+    being defended against, and it raises `RuntimeError` on a loop.
+    """
+    current = base
+    for part in Path(relative).parts:
+        current = current / part
+        if current.is_symlink():
+            return None
+    return current
+
+
 def _resolve_ref(git_dir: Path, ref: str) -> str | None:
     """A ref's SHA from a loose file, then from `packed-refs`.
 
@@ -107,14 +158,15 @@ def _resolve_ref(git_dir: Path, ref: str) -> str | None:
     if ref.startswith("/") or ".." in Path(ref).parts:
         return None
 
-    loose = git_dir / ref
-    # `is_symlink` lstats and does not follow, so a link pointing out of the
-    # tree is refused rather than read.
-    if loose.is_file() and not loose.is_symlink():
+    # Every component checked, not just the last: see `_within_real_path`. The
+    # previous form tested `loose.is_symlink()`, which lstats one element and
+    # says nothing about the directories above it.
+    loose = _within_real_path(git_dir, ref)
+    if loose is not None and loose.is_file():
         return loose.read_text(encoding="utf-8").strip() or None
 
-    packed = git_dir / "packed-refs"
-    if packed.is_file() and not packed.is_symlink():
+    packed = _within_real_path(git_dir, "packed-refs")
+    if packed is not None and packed.is_file():
         for line in packed.read_text(encoding="utf-8", errors="replace").splitlines():
             if line.startswith(("#", "^")):
                 continue
@@ -158,7 +210,7 @@ def git_identity(root: Path) -> tuple[str, str | None]:
     return ("directory", None)
 
 
-def _entrypoints(root: Path) -> dict[str, list[str]]:
+def _entrypoints(root: Path, found: frozenset[str]) -> dict[str, list[str]]:
     """Declared metadata only. §3: "Deeper enumeration is M2's job; do not
     attempt it here." Reading a manifest is reading a declaration; walking
     imports to find what is reachable is the surface source, and doing it here
@@ -176,10 +228,9 @@ def _entrypoints(root: Path) -> dict[str, list[str]]:
     # so containment held for every file the tool discovered and failed for
     # every file it went looking for. That is the shape worth remembering: the
     # exception to a rule is wherever the rule is not the thing doing the work.
-    pyproject = root / "pyproject.toml"
-    if pyproject.is_file() and not pyproject.is_symlink():
+    if "pyproject.toml" in found:
         try:
-            data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+            data = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
         except (tomllib.TOMLDecodeError, OSError):
             data = {}
         scripts = data.get("project", {}).get("scripts", {})
@@ -187,10 +238,9 @@ def _entrypoints(root: Path) -> dict[str, list[str]]:
             declared += [f"{name} = {target}" for name, target in sorted(scripts.items())]
 
     # The same breach by the other manifest; see the note above `pyproject`.
-    package_json = root / "package.json"
-    if package_json.is_file() and not package_json.is_symlink():
+    if "package.json" in found:
         try:
-            data = json.loads(package_json.read_text(encoding="utf-8"))
+            data = json.loads((root / "package.json").read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError):
             data = {}
         binaries = data.get("bin")
@@ -199,20 +249,36 @@ def _entrypoints(root: Path) -> dict[str, list[str]]:
         elif isinstance(binaries, str):
             declared.append(binaries)
 
+    # From the walk, never from `glob`. `Path.glob` follows a symlinked
+    # directory, so a target shipping `.github -> /somewhere/else` had a foreign
+    # directory's workflow filenames copied into `recon.json` under this
+    # target's name — reported, in a field a reader takes as a statement about
+    # the tree in front of them.
+    #
+    # A consequence worth stating: if `.github` is excluded from the walk, no
+    # workflows are reported. That is the honest answer rather than a
+    # regression — an excluded directory was not read, and `coverage_gaps` says
+    # so on its own line.
     workflows = sorted(
-        f".github/workflows/{item.name}"
-        for item in (root / ".github" / "workflows").glob("*")
-        if item.is_file() and item.suffix in {".yml", ".yaml"}
+        path
+        for path in found
+        if path.startswith(".github/workflows/") and path.endswith((".yml", ".yaml"))
     )
     return {"declared": sorted(declared), "workflows": workflows}
 
 
-def _security_process(root: Path, entries: list[FileEntry]) -> dict[str, Any]:
+def _security_process(entries: list[FileEntry], found: frozenset[str]) -> dict[str, Any]:
+    """Every field from what the walk found; nothing reached by name.
+
+    All four of these were `is_file()` with no symlink check at all, which
+    `is_file()` answers by following the link. `SECURITY.md -> /etc/passwd`
+    reported `security_md: true` for a target with no security policy — a claim
+    about someone else's filesystem, presented as a property of this tree.
+    """
     return {
-        "security_md": (root / "SECURITY.md").is_file(),
-        "dependabot": (root / ".github" / "dependabot.yml").is_file()
-        or (root / ".github" / "dependabot.yaml").is_file(),
-        "sast_config": any((root / candidate).is_file() for candidate in _SAST_CONFIG),
+        "security_md": "SECURITY.md" in found,
+        "dependabot": ".github/dependabot.yml" in found or ".github/dependabot.yaml" in found,
+        "sast_config": any(candidate in found for candidate in _SAST_CONFIG),
         "test_files": sum(1 for entry in entries if _TEST_FILE.search(entry.path)),
     }
 
@@ -220,6 +286,27 @@ def _security_process(root: Path, entries: list[FileEntry]) -> dict[str, Any]:
 # Formats that hold no entry points of their own, or that the surface kinds
 # read only as named manifests. Every other language in the map is code.
 _NOT_CODE = frozenset({"ini", "json", "markdown", "text", "toml", "yaml"})
+
+# Present in the tree, and not read. One line each rather than one combined
+# line, because the remedies differ and a reader sent to the wrong one wastes
+# the trip: a permission, a kind of file, a threshold, a classification.
+#
+# `binary` is here because of the second review. A target put eight NUL bytes in
+# a comment — 12% of a 59-byte script, above the 5% threshold — and `install.sh`
+# carrying `curl | sh` left the review with `0 candidates, exit 0` and no line
+# anywhere naming it. Worse than silence: `coverage_gaps` then read
+# "no coverage for: markdown", because a skipped file contributes no language,
+# so the one honest-looking line in the artifact described a tree that did not
+# exist. M3.5 raised the cost of that evasion from one byte to eight and called
+# the class closed.
+_GAP_LIST_LIMIT = 5
+
+_UNREAD_REASONS = (
+    ("unreadable", "could not be read (a permission)"),
+    ("not_regular", "not a regular file (a FIFO, socket or device)"),
+    ("too_large", "larger than the size bound — raise it with --max-file-bytes"),
+    ("binary", "classified binary (over 5% non-text bytes in the first 8 KiB)"),
+)
 
 # What the surface source cannot reach, one line each, so a reader sees the
 # limit rather than inferring it from a regex. BRIEF_M2.md §4 names the first
@@ -241,7 +328,11 @@ _SURFACE_GAPS = (
 )
 
 
-def _coverage_gaps(languages: dict[str, int], applied: list[str] | None = None) -> list[str]:
+def _coverage_gaps(
+    languages: dict[str, int],
+    applied: list[str] | None = None,
+    unread: dict[str, list[str]] | None = None,
+) -> list[str]:
     """FR-3.8: degrade honestly rather than pass over what is not covered.
 
     `applied` names the excluded directories that were actually present, so a
@@ -278,8 +369,29 @@ def _coverage_gaps(languages: dict[str, int], applied: list[str] | None = None) 
             f"{', '.join(applied)} — override the set with --exclude"
         )
 
+    # Beside the excluded directories and for the same reason: a file present
+    # and not read is a gap, and one the artifact previously recorded only as a
+    # bare path in an `inventory` list that reads as bookkeeping.
+    not_read: list[str] = []
+    for key, why in _UNREAD_REASONS:
+        paths = (unread or {}).get(key) or []
+        if not paths:
+            continue
+        # Capped, and saying so. Every ordinary target holds binary assets, so
+        # an uncapped list puts every image in the tree on one line and the gap
+        # stops being readable — which is the same failure as not reporting it,
+        # reached from the other side. `cli._incomplete` already truncates this
+        # way; a truncation that does not say how much it left out would be a
+        # third way of reporting a partial answer as a whole one.
+        shown = ", ".join(paths[:_GAP_LIST_LIMIT])
+        if len(paths) > _GAP_LIST_LIMIT:
+            extra = len(paths) - _GAP_LIST_LIMIT
+            shown += f", and {extra} more — the full list is inventory.{key}"
+        not_read.append(f"present but not read, {why}: {shown}")
+
     return [
         *skipped,
+        *not_read,
         f"structural analysis not implemented (M4); no coverage for: {present}",
         f"surface: code entry points are read in Python only; {others}",
         *_SURFACE_GAPS,
@@ -297,6 +409,10 @@ def recon(
     # stated as a gap in `coverage_gaps`. Calling it again for the second use
     # would put a third full walk of the tree in this function.
     applied = exclusions_applied(root, excluded)
+    # What the walk actually found, for every field that used to reach a file by
+    # name. Computed once here rather than per field, so a site cannot be added
+    # later that quietly skips it.
+    found = _found_paths(entries)
     # Unreadable files are out of the text set: they have no countable lines
     # and no language we are entitled to claim, since the extension is the only
     # thing we ever saw. They are reported on their own footing below.
@@ -317,8 +433,42 @@ def recon(
         if language:
             languages[language] = languages.get(language, 0) + 1
         # `os_path`, never `path`: the record is NFC, the filesystem may not be.
+        # The third read of the same file in a run, after `inventory`'s and
+        # whichever candidate source runs. `text_entries` above carries every
+        # decision the walk made, so nothing is retried — but the same window
+        # `sweep.py` names applies, and this is the third place it is open.
         raw = (root / entry.os_path).read_bytes()
         loc_total += len(split_lines(raw.decode("utf-8", errors="replace")))
+
+    # Computed once, then used by the artifact, the gap lines and the exit code
+    # alike. Three copies of the same filter is three places for them to drift,
+    # and the exit code disagreeing with the artifact it was derived from is the
+    # worst of the three outcomes.
+    unread = {
+        "unreadable": sorted(item.path for item in entries if not item.is_readable),
+        "not_regular": sorted(item.path for item in entries if not item.is_regular),
+        "too_large": sorted(item.path for item in entries if not item.is_within_size_bound),
+        "binary": sorted(item.path for item in entries if item.is_binary),
+    }
+
+    # The subset a reviewer has to care about: a file whose *extension* says it
+    # is code, that nothing read.
+    #
+    # This distinction is why the exit code is not simply "anything unread". A
+    # PNG is binary in every ordinary target, so exiting 2 on `binary` alone
+    # would light the signal on almost every run — and an exit code that is
+    # always on is one people stop reading, which is the H-1 habit in a new
+    # place. A shell script classified binary is a different statement: the
+    # extension says code, so the classification removed something from review
+    # that a reviewer expected to be in it (P11).
+    unread_code = sorted(
+        {
+            path
+            for paths in unread.values()
+            for path in paths
+            if (language := language_of(path)) is not None and language not in _NOT_CODE
+        }
+    )
 
     source, sha = git_identity(root)
 
@@ -336,23 +486,28 @@ def recon(
             "files_total": len(entries),
             "by_language": {key: languages[key] for key in sorted(languages)},
             "loc_total": loc_total,
-            "binary": sorted(item.path for item in entries if item.is_binary),
+            "binary": unread["binary"],
             # Present, and not read. FR-3.8 requires degrading honestly rather
             # than passing over what is not covered: a file absent from every
             # list in this artifact reads as reviewed and clean, which is the
             # one thing it is not.
-            "unreadable": sorted(item.path for item in entries if not item.is_readable),
+            "unreadable": unread["unreadable"],
             # Present, and not a regular file: a FIFO, socket or device. Listed
             # separately from `unreadable` because they are different facts —
             # one is a permission the reviewer might be able to change, the
             # other is a thing that has no content to review at all. Reading
             # one of these is what hung the walk indefinitely before M3.5.
-            "not_regular": sorted(item.path for item in entries if not item.is_regular),
+            "not_regular": unread["not_regular"],
             # Present, and larger than the size bound, so never read. A third
             # fact rather than a variant of the two above: this one is a
             # threshold the reviewer can raise with `--max-file-bytes`, where
             # the others are a permission and a kind of file (STACK.md §5).
-            "too_large": sorted(item.path for item in entries if not item.is_within_size_bound),
+            "too_large": unread["too_large"],
+            # The four lists above, filtered to what has a code extension. It is
+            # what `cli._incomplete` keys the exit code on, and it is in the
+            # artifact rather than derived there so that the number a reader
+            # sees and the number the exit code was computed from are the same.
+            "unread_code": unread_code,
             "symlinks": [
                 {
                     "path": item.path,
@@ -376,9 +531,9 @@ def recon(
             # was simply never called.
             "excluded": applied,
         },
-        entrypoints=_entrypoints(root),
-        security_process=_security_process(root, entries),
-        coverage_gaps=_coverage_gaps(languages, applied),
+        entrypoints=_entrypoints(root, found),
+        security_process=_security_process(entries, found),
+        coverage_gaps=_coverage_gaps(languages, applied, unread),
     )
 
 

@@ -138,7 +138,10 @@ checks that looked like they were working.
       disagree about scope". One held six names and the other fourteen — missing `.git`,
       `.venv-audit` and all five tool caches. Broken deliberately rather than repaired: what we skip
       linting *our* code and what we skip reviewing *someone else's target* are different questions.
-- [x] **A3 — A NUL byte no longer removes a file from review.** A runnable `install.sh` carrying a
+- [x] **A3 — No byte count removes a file from review.** *(Reopened and re-closed 2026-09-17: one
+      NUL stopped working in M3.5 and eight did not, because the target picks the ratio. The answer
+      is the exit code and a `coverage_gaps` line, not a different threshold —
+      `.claude/TASKS_M3.5.md`.)* A runnable `install.sh` carrying a
       NUL in a comment produces the same candidate as one without it. Evidence: a fixture pair, and
       the sweep finding the same rule in both —
       `test_a_nul_in_a_comment_does_not_hide_a_script_from_the_sweep`, which failed first as
@@ -188,7 +191,10 @@ checks that looked like they were working.
       The defect the box names — a target fact reported as an internal error — is gone in both
       cases, and both run to completion. What changed is that "not exit 3" and "therefore exit 2"
       turned out to be two different claims once the cases were separated.
-- [x] **C3 — A crafted line cannot make the shipped catalog take superlinear time.** A 1 MB
+- [x] **C3 — A crafted line cannot make the shipped catalog take superlinear time.** *(Reopened and
+      re-closed 2026-09-17: four patterns were quadratic, not one, and the check measured a single
+      pattern with `re.search` where `sweep.py` uses `finditer`. Now every pattern and every surface
+      kind, in `tests/test_catalog_timing.py`.)* A 1 MB
       minified line completes within a stated bound. Evidence: a timing assertion with a generous
       margin, plus the rewritten `log.sensitive` with its fixture pair intact.
       Measured: 185.72 ms at 9,600 bytes and 11.4 s at 76,800 before the fix, extrapolating to
@@ -207,7 +213,10 @@ checks that looked like they were working.
       the residue is stated: a keyword more than 400 characters into one call is no longer seen.
       **The bounds half of this work is not done**: `--max-file-bytes` and a line-length bound are
       mechanism and remain raised in §6 for the owner.
-- [x] **D1 — recon reads nothing outside the target.** `pyproject.toml`, `package.json`, `.git` and
+- [x] **D1 — recon reads nothing outside the target.** *(Reopened and re-closed 2026-09-17: five
+      more reach-by-name sites, patched per site the first time. They now derive from `_found_paths`,
+      what the walk found, so containment is inherited rather than remembered.)* `pyproject.toml`,
+      `package.json`, `.git` and
       `.git/HEAD` as symlinks pointing outside are not followed, and a `ref:` value containing `..`
       is refused. Evidence: a fixture tree with all four — five tests, all red first.
       **The breach published what it read, rather than merely touching it.** The manifests put a
@@ -222,7 +231,10 @@ checks that looked like they were working.
       The `ref:` case needed no symlink at all — the target supplies the path directly, and
       `path.traversal` is a rule this tool ships, so being subject to it is the self-application
       failure AC-10 exists to prevent.
-- [x] **E1 — `self_check.py` does not pass the nine bypasses.** Aliased imports, `from x import y`
+- [x] **E1 — `self_check.py` does not pass the twenty bypasses.** *(Reopened and re-closed
+      2026-09-17: eleven more walked past the M3.5 denylists, including two `yaml` loaders that
+      contradict "safe_load only". Imports and `yaml` members are allowlists now.)* Aliased imports,
+      `from x import y`
       call forms, `os.system`, `__import__`, f-string arguments. Evidence: a fixture file containing
       all nine, asserted to exit 1 — and asserted to *have* exited 0 before the fix.
       **All nine exited 0 with empty stdout and stderr.** The gate did not struggle and report
@@ -246,7 +258,10 @@ checks that looked like they were working.
       limit and names the structural property that actually holds the rule. The narrowed version
       that would be true — flag write calls in any module except `cli.py` — is real work and is
       recorded as a candidate task rather than folded in here.
-- [x] **E3 — The settings allowlist is asserted.** No auto-approved rule grants arbitrary command
+- [x] **E3 — The settings allowlist is asserted.** *(Reopened and re-closed 2026-09-17:
+      `git diff --no-index /dev/null .env` printed the file, so the rule survived the removal of the
+      four that did the same; and `pytest:*` runs anything in an unprotected `tests/`. Both
+      removed.)* No auto-approved rule grants arbitrary command
       execution, and `attack.py` fails if one is added. Evidence: H-8 — add one back, watch it fail.
       Both clauses now hold. The allowlist and the deny list are pinned in `attack.py`, and H-8 was
       performed rather than asserted — with a probe rule added, exactly 1 of 120 assertions failed

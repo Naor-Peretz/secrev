@@ -401,18 +401,33 @@ def _incomplete(result: Recon) -> int:
     never that it is absent.
     """
     unreadable = result.inventory["unreadable"]
-    if not unreadable:
+    # Files with a code extension that nothing read, for any reason. Added after
+    # a second review showed that `unreadable` alone left two evasions at exit 0:
+    # eight NUL bytes in a comment classified a runnable `install.sh` as binary,
+    # and padding it past `--max-file-bytes` did the same, both with
+    # `0 candidates, exit 0` and no line in `coverage_gaps` naming the file.
+    #
+    # The docstring above already said why that is wrong — "exit 0 here would be
+    # a clean review of a tree the tool could not fully see" — and the code
+    # applied the reasoning to one of the four ways a file goes unread.
+    unread_code = result.inventory["unread_code"]
+    if not unreadable and not unread_code:
         return EXIT_OK
-    # Named rather than repeated: the count is a display choice, and a message
-    # that truncates must say how much it left out or it is a third way of
-    # reporting a partial answer as a whole one.
-    limit = 5
-    shown = ", ".join(unreadable[:limit])
-    if len(unreadable) > limit:
-        shown += f", and {len(unreadable) - limit} more"
-    sys.stderr.write(
-        f"{len(unreadable)} file(s) could not be read and were not reviewed: {shown}\n"
-    )
+
+    for count, what, paths in (
+        (len(unreadable), "could not be read and were not reviewed", unreadable),
+        (len(unread_code), "have a code extension and were never read", unread_code),
+    ):
+        if not paths:
+            continue
+        # Named rather than repeated: the count is a display choice, and a
+        # message that truncates must say how much it left out or it is a third
+        # way of reporting a partial answer as a whole one.
+        limit = 5
+        shown = ", ".join(paths[:limit])
+        if count > limit:
+            shown += f", and {count - limit} more"
+        sys.stderr.write(f"{count} file(s) {what}: {shown}\n")
     return EXIT_USAGE
 
 

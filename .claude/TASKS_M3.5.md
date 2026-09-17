@@ -737,3 +737,79 @@ Raised during the work, not from the review:
   **Measured before it shipped:** the real dependency set still reports "13 dependencies, every
   licence allowed", so nothing was passing on a permissive branch. Had one failed, that would have
   been a finding about our dependencies rather than a reason to revert.
+
+## The second review, 2026-09-17 — five boxes were closed on the demonstrated case
+
+A second external review ran the tool from `pr15`, replayed the original attack trees (all now
+refused), then varied them. Seven findings, and **one shape underneath five of them**: M3.5 fixed
+the site that had been demonstrated rather than the class that produced it. One pattern of four,
+four reach-by-name sites of nine, four permission rules of six, nine bypass spellings of twenty,
+one of four ways a file goes unread. Each box then recorded the demonstrated case as evidence, so
+each read as closed.
+
+DoD boxes **A3, C3, D1, E1 and E3 were unticked** and re-closed against the class. The owner asked
+for two (C3, D1); the other three are the same state and are raised here rather than left ticked.
+
+- **C3 — four patterns were quadratic, not one.** `net.fetch_exec`, `deser.unsafe`,
+  `exec.shell_true` and `path.traversal` all carry an unbounded `[^x]*` reachable from a repeatable
+  start. Under `finditer`, which is what `sweep.py:78` uses: 0.164 s at 20 KB and 0.618 s at 40 KB
+  for `net.fetch_exec`. All four now carry `{0,400}`; re-measured at 1.9–2.1x for 2x input, and
+  `net.fetch_exec` fell from 0.618 s to 0.014 s.
+  **The C3 check measured with `re.search`, which returns at the first match.** `deser.unsafe`
+  measured 0.000 s under it and 0.692 s under `finditer` — the check modelled the cheap call.
+  Replaced by `tests/test_catalog_timing.py`, over every pattern *and* every surface kind, with a
+  seed-coverage assertion so a rule added without a timing seed turns it red.
+  **Two of the four were not in the review either**, and were found by measuring the whole catalog
+  rather than the two reported.
+- **D1 — five more reach-by-name sites**, one of them (`dependabot`) not in the review and one
+  (`_SAST_CONFIG`) found while fixing the others. `SECURITY.md`, `dependabot.yml`/`.yaml` and the
+  SAST configs used a bare `is_file()`, which follows a link; `.github/workflows` used `glob`,
+  which follows a linked directory; `_resolve_ref` tested `is_symlink()` on the finished path,
+  which lstats the last component only, so `.git/refs -> ../../outside` reported a foreign SHA.
+  **Fixed structurally, not per site.** Those fields now come from `_found_paths`, the set the walk
+  actually found, so containment is inherited rather than remembered. `.git` is excluded from the
+  walk, so it gets `_within_real_path`, which checks every component.
+- **A3 — one NUL byte no longer hides a file; eight still did.** The threshold was measured against
+  the fixtures, but the attacker picks the ratio: 8 NULs in a 59-byte script is 12%. Padding past
+  `--max-file-bytes` does the same. Both returned `0 candidates, exit 0`, and `coverage_gaps` read
+  `no coverage for: markdown` — naming the one harmless file and omitting the script carrying
+  `curl | sh`.
+  **Refined from the review's literal proposal, deliberately.** It asked for exit 2 on `binary` and
+  `too_large` alike; every ordinary target holds binary assets, so that lights the signal on nearly
+  every run, and an exit code that is always on is H-1's habit in a new place. The exit now keys on
+  `unread_code` — unread files whose *extension* says code — and every unread bucket gets a
+  `coverage_gaps` line regardless, capped at five with a pointer to the inventory field.
+- **E1 — eleven more bypasses**, including `yaml.load_all` and `yaml.unsafe_load_all`, which
+  contradict "safe_load only" as directly as the three that were listed. Imports and `yaml` members
+  are now **allowlists**; the `os` table stays a denylist and says so where it is defined.
+  **An over-reach was caught by the suite's own control.** The first allowlist omitted the process
+  module, which reads as free strictness since `src/secrev` imports none — but `STACK.md` §2.1
+  forbids a shell *string*, not the module, and `test_clean_source_still_passes` went red. Holding
+  the package to importing none is a `STACK.md` amendment and is raised, not taken here.
+- **E3 — `git diff --no-index /dev/null .env` prints the file**, so the rule survived the removal of
+  the four that did the same. Demonstrated, not argued. Removed rather than narrowed: matchers are
+  prefix-based, and enumerating the flags that turn a diff into a read is a denylist over flags.
+  `Bash(pytest:*)` and `Bash(python3 -m pytest:*)` went with it — pytest runs whatever is in
+  `tests/`, `conftest.py` included, and `tests/` is not protected, so between them they were
+  arbitrary execution approved unattended.
+- **G-3 leaked four more shapes.** URL userinfo (`scheme://user:pass@host`) matches neither rule —
+  no credential word, and a password is rarely 32 characters. `PGPASS` and `private_key` named a
+  credential and were not on the word list. A quoted value was cut at the first space.
+  **One of them only appeared to pass**: `passphrase=correct-horse-battery` was redacted by the
+  long-opaque rule because `=` is inside its alphabet and the string reached exactly 32 characters.
+  One character shorter and it leaked. `tests/test_ledger.py`, which did not exist, now pins the
+  short case.
+- **"One read per file, carried forward" overstates, and the review's wording overstates back.**
+  Both consumers *do* honour every flag the walk set before reading — the protections are there.
+  What is not carried forward is the read: there are two, so a file replaced between them is a real
+  TOCTOU window. Recorded at all three sites. **Not fixed**: a single read means the bytes travel on
+  the entry, which holds a tree in memory, and wrapping the second read in a silent skip would
+  create an unreported gap — P4's "silence is not an outcome" inside a change that reads as
+  hardening. Raised as an architecture question.
+
+**Three errors of mine during this pass, recorded because the pattern matters.** The first ReDoS
+probe used `re.search` and reported `deser.unsafe` as unreproduced — the same false negative the C4
+probe made in M3.5, repeated after the file documenting it had been read. Two changes half-landed:
+`_entrypoints` gained a `found` parameter in its body but not its signature, and the call site was
+updated before the variable existed. Writing the parts down first is not enough; they have to be
+checked against what actually landed.

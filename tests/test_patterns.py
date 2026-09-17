@@ -65,11 +65,12 @@ def test_the_shipped_catalog_loads_and_is_the_expected_size() -> None:
     original seed pattern touched path handling (§6)."""
     loaded = load(PACKS)
     assert len(loaded.patterns) == 9
-    # Bumped in M3.5 with `log.sensitive`'s `{0,400}` bound; `patterns/_base.yaml`
-    # carries the reason. Pinning the literal here is deliberate: a catalog
-    # version change expires verifications (FR-4.6), so it should cost an edit
-    # to a test rather than pass unnoticed.
-    assert loaded.version == "2026.09.2"
+    # Bumped in M3.5 with `log.sensitive`'s `{0,400}` bound, and again when the
+    # four remaining quadratic patterns gained the same bound;
+    # `patterns/_base.yaml` carries both reasons. Pinning the literal here is
+    # deliberate: a catalog version change expires verifications (FR-4.6), so it
+    # should cost an edit to a test rather than pass unnoticed.
+    assert loaded.version == "2026.09.3"
 
 
 def test_every_pattern_has_a_fixture_directory(catalog: Catalog) -> None:

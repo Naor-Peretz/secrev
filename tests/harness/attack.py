@@ -1439,14 +1439,39 @@ AUTO_APPROVED = frozenset(
         "Bash(python3 scripts/self_check.py)",
         "Bash(python3 scripts/determinism_check.py)",
         "Bash(sh scripts/check.sh)",
-        "Bash(python3 -m pytest:*)",
+        # `Bash(pytest:*)` and `Bash(python3 -m pytest:*)` were removed after a
+        # second review, and they are the sharpest case in this file: neither
+        # names a command that does anything dangerous, and together they were
+        # arbitrary execution.
+        #
+        # pytest runs whatever is in `tests/`, `conftest.py` included, and
+        # `tests/` is not in the protected set — so an agent could write
+        # `tests/test_x.py` containing `os.system(...)`, run it under a rule
+        # approved unattended, and never meet a guard. The execution grant is
+        # not in the command; it is in what the command reads. That is the same
+        # shape as `head` reading a denied file, one level further out.
+        #
+        # This is also why DoD box E3's first clause was still false after
+        # M3.5 fixed it once: the box was re-ticked against the four rules that
+        # had been demonstrated, not against the property it claims.
         "Bash(python3 -m ruff:*)",
         "Bash(python3 -m mypy:*)",
-        "Bash(pytest:*)",
         "Bash(ruff:*)",
         "Bash(mypy:*)",
         "Bash(git status:*)",
-        "Bash(git diff:*)",
+        # `Bash(git diff:*)` was removed for the reason the four below were:
+        # `git diff --no-index /dev/null .env` prints the file, so it defeated
+        # `deny Read(**/.env)` exactly as `head` did. Demonstrated, not
+        # reasoned about — it printed a fixture's contents in full.
+        #
+        # Removed rather than narrowed. Permission matchers are prefix-based,
+        # so no spelling of this rule can admit `git diff HEAD` while refusing
+        # `--no-index`, and enumerating the flags that turn a diff into a read
+        # would be a denylist over flags — the polarity P3 and H-2 refuse, and
+        # the same argument that keeps `find` out of the bash-guard read set.
+        #
+        # The cost is real and is accepted: reading a protected path for review
+        # now asks first, as `head` and `cat` already do.
         "Bash(git log:*)",
         "Bash(git branch:*)",
         "Bash(git show:*)",

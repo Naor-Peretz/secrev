@@ -120,6 +120,11 @@ def surfaces(
         # second read is what raised out of the run). A peer source must skip
         # exactly what the pattern source skips, or the two disagree about
         # scope and only one of them says so.
+        #
+        # The same carried-forward window `sweep.py` describes applies here, and
+        # for the same reason: what is carried forward is the decision, not the
+        # read. See the note there; a peer source inherits the limit as well as
+        # the rule.
         if (
             entry.is_binary
             or entry.is_symlink

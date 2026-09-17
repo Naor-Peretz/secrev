@@ -75,18 +75,43 @@ _REDACTED = "[REDACTED]"
 # The two rules were assumed to cover for each other. They do not: none of
 # those values is long enough to reach `_LONG_OPAQUE`'s floor, so when the key
 # rule missed, nothing caught it.
+# A second review widened it again, and the three misses were all the key list
+# being a list:
+#
+#   * `PGPASS=` and `passphrase=` name a credential and matched no alternative.
+#     `passphrase` *appeared* to redact, which is worse than an outright miss:
+#     `_LONG_OPAQUE` happened to cover `passphrase=correct-horse-battery`
+#     because `=` is in its alphabet and the whole string reached 32 characters.
+#     One character shorter and it leaked. A rule that passes its own probe by
+#     coincidence is the F1 failure in miniature.
+#   * `private_key =` likewise, and its value — a 26-character PEM head — sits
+#     below `_LONG_OPAQUE`'s floor, so nothing else caught it either.
+#
+# The value shape was also wrong for a quoted string. `[^\s"',)]` stops at a
+# space, so `password='hunter2 with space'` redacted up to the space and printed
+# the rest. A quoted value now runs to its closing quote, which is what a quote
+# means; an unquoted one keeps the old shape, where a space really does end it.
 _SECRET_ASSIGNMENT = re.compile(
     r"""(?ix)
     (?P<key>  [A-Za-z0-9_.-]*
-              (?: token | password | passwd | secret | api[_-]?key
+              (?: token | password | passwd | passphrase | pgpass
+                | secret | api[_-]?key | private[_-]?key
                 | credential | authorization | bearer )
               [A-Za-z0-9_.-]* )
     (?P<sep>  ["']? \s* [=:] \s* (?: bearer \s+ )? )
-    (?P<quote> ["']? )
-    (?P<value> [^\s"',)]{4,} )
+    (?: (?P<quote> ["'] ) (?P<quoted> [^"'\n]{4,} )
+      | (?P<bare>  [^\s"',)]{4,} ) )
     """
 )
 _LONG_OPAQUE = re.compile(r"(?<![A-Za-z0-9+/=_-])[A-Za-z0-9+/=_-]{32,}(?![A-Za-z0-9+/=_-])")
+
+# `scheme://user:password@host`, the commonest place a live credential is
+# written without a key naming it. `_SECRET_ASSIGNMENT` cannot see it — there is
+# no credential word anywhere in `postgres://admin:hunter2@db/app` — and the
+# password is usually far too short for `_LONG_OPAQUE`. The user half is kept:
+# it is not the secret, and a connection string with both halves gone tells a
+# reader nothing about which account was involved.
+_URL_CREDENTIAL = re.compile(r"(?i)\b([a-z][a-z0-9+.\-]*://)([^\s:/@]+):([^\s/@]{1,})@")
 
 # The alphabet `_LONG_OPAQUE` measures. An excerpt boundary landing inside a
 # run of these is what `_widen_to_run_boundaries` exists to prevent.
@@ -133,11 +158,30 @@ def to_jsonl(hits: list[Hit]) -> str:
     return "".join(json.dumps(asdict(hit), ensure_ascii=False) + "\n" for hit in hits)
 
 
+def _mask_assignment(match: re.Match[str]) -> str:
+    """Replace the value, keep everything that says what the value was.
+
+    The key, the separator and the opening quote are re-emitted so the excerpt
+    still reads as an assignment — `password='[REDACTED]'` tells a reviewer what
+    was found, where `[REDACTED]` alone tells them only that something was.
+
+    No closing quote is added. A quoted value matches up to but not including
+    it, so the original closing quote is still in the text after the span this
+    replaces; emitting one here would double it.
+    """
+    quote = match.group("quote") or ""
+    return f"{match.group('key')}{match.group('sep')}{quote}{_REDACTED}"
+
+
 def redact(text: str) -> str:
-    """G-3: anything resembling a credential, before it reaches the ledger."""
-    text = _SECRET_ASSIGNMENT.sub(
-        lambda m: f"{m.group('key')}{m.group('sep')}{m.group('quote')}{_REDACTED}", text
-    )
+    """G-3: anything resembling a credential, before it reaches the ledger.
+
+    URL userinfo first. It is the one shape with no credential word anywhere in
+    it, so neither rule below can see it: `postgres://admin:hunter2@db` names no
+    key, and the password is far too short for `_LONG_OPAQUE`'s floor.
+    """
+    text = _URL_CREDENTIAL.sub(lambda m: f"{m.group(1)}{m.group(2)}:{_REDACTED}@", text)
+    text = _SECRET_ASSIGNMENT.sub(_mask_assignment, text)
     return _LONG_OPAQUE.sub(_REDACTED, text)
 
 

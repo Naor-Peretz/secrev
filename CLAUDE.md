@@ -37,20 +37,41 @@ this file describes:
 - **Two new flags.** `--exclude NAMES` *replaces* the default exclusion set (`--exclude ""` skips
   nothing); `--max-file-bytes N` bounds what is read, default 5 MiB. Both are on `recon`, `sweep`
   and `surfaces`, and both are recorded in `recon.json` rather than only in the invocation.
-- **Three "present but not read" fields** in `recon.json`, kept apart on purpose: `unreadable` (a
-  permission), `not_regular` (a FIFO, socket or device), `too_large` (a threshold). Different
-  problems with different remedies — folding them would send a reviewer to check file modes that
-  were never involved. `excluded` now lists what was *applied*, and `coverage_gaps` states it.
+- **Four "present but not read" fields** in `recon.json`, kept apart on purpose: `unreadable` (a
+  permission), `not_regular` (a FIFO, socket or device), `too_large` (a threshold), and `binary` (a
+  classification). Different problems with different remedies — folding them would send a reviewer
+  to check file modes that were never involved. `excluded` now lists what was *applied*, each
+  non-empty bucket gets its own `coverage_gaps` line, capped at five names with a pointer to the
+  inventory field. A fifth field, `unread_code`, is those four filtered to what has a code
+  extension: it is what the exit code keys on, and it is in the artifact rather than derived in
+  `cli.py` so the number a reader sees and the number the exit code came from are the same.
 - **A target can no longer stop the review.** A symlink loop, an unreadable file and a FIFO each
   used to end it — the FIFO by blocking forever, with no exception and no timeout. All three now
-  complete and record the fact; an unreadable file is exit 2, never exit 3.
+  complete and record the fact; an unreadable file is exit 2, never exit 3. **So is any file with a
+  code extension that went unread for any of the four reasons** — that half was missing until a
+  second review, so eight NUL bytes in a comment, or padding past `--max-file-bytes`, still bought
+  `0 candidates, exit 0`. An ordinary binary asset does not: exiting 2 on `binary` alone would fire
+  on nearly every real target, and a signal that is always on is H-1's habit in a new place.
 - **G-3 actually redacts.** `\b` could not match inside `DB_PASSWORD`, JSON's quote broke the
-  separator, and redaction ran *after* truncation so a cut credential escaped the length floor.
+  separator, and redaction ran *after* truncation so a cut credential escaped the length floor. A
+  second review found four more: URL userinfo (`scheme://user:pass@host`, which names no credential
+  and is too short for the long-opaque floor), `PGPASS`, `private_key`, and a quoted value cut at
+  the first space. One of them had only *appeared* to pass — `passphrase=` was caught by the
+  long-opaque rule because `=` is inside its alphabet and the string happened to reach 32
+  characters. `tests/test_ledger.py`, which did not exist, pins the short case.
 - **Binary is a proportion, not a single NUL** (`STACK.md` §5), so one NUL in a comment no longer
-  removes a file from review.
+  removes a file from review. **Eight still did**, because the target picks the ratio and 8 NULs in
+  a 59-byte script is 12%. A threshold measured against our fixtures answers where *our* files sit,
+  not where a crafted one can be put — which is why the answer is the exit code and the gap line
+  rather than a different number.
 - **Writes are atomic** and the workspace is `0o700`, because it holds `match_excerpt` values.
-- **`self_check.py` resolves import aliases.** AST-based was never the same as sound: it passed
-  nine spellings, including `os.system` and `__import__`, and had no tests at all.
+- **`self_check.py` is an allowlist for imports and for `yaml`.** AST-based was never the same as
+  sound: it passed nine spellings, including `os.system` and `__import__`, and had no tests at all.
+  Alias resolution closed those; a second review then measured eleven more walking past the
+  denylists, among them `yaml.load_all` and `yaml.unsafe_load_all`, which contradict "safe_load
+  only" as directly as the three that *were* listed. Imports are now checked against
+  `ALLOWED_IMPORTS` and `yaml` members against `ALLOWED_YAML_ATTRS`. The `os` table stays a
+  denylist and says so where it is defined.
 
 Four things were raised during M3.5 and all four are settled in
 `.claude/TASKS_M3.5.md`, none of them by leaving them alone:
@@ -328,8 +349,10 @@ red for a release nobody in this repository made, which is the drift
 `self_check.py` is AST-based on purpose, and **AST-based is not the same as sound**. Until M3.5 it
 tested the spelling at each call site, so an import alias or a `from x import y` walked straight
 past it — nine such spellings were measured exiting 0, on a file containing `os.system` and
-`__import__`. It now resolves names through the module's own imports before testing them, and
-`tests/test_self_check.py`, which did not exist until M3.5, carries all nine. `shell=True` is a
+`__import__`. It resolves names through the module's own imports before testing them, and checks
+what remains against allowlists rather than denylists — the denylists survived M3.5 and let eleven
+further spellings through, which is P3 arriving where the file had already admitted it would.
+`tests/test_self_check.py`, which did not exist until M3.5, carries all twenty. `shell=True` is a
 structure question, and a grep here
 would be the exact mistake the catalog is designed not to make. The crude grep-shaped check inside
 `check.sh` is a separate backstop; both must pass and neither replaces the other.

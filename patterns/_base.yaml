@@ -29,7 +29,20 @@
 # `tests/golden/hits.jsonl` carries this string, so a bump is visible there and
 # nowhere else: the candidate ids do not move, because `window_sha256` is over
 # window text and takes no account of the catalog.
-version: "2026.09.2"
+#
+# Bumped again to 2026.09.3 after a second external review measured three more
+# patterns quadratic — `net.fetch_exec` here, `exec.shell_true` and
+# `path.traversal` in `python.yaml`, plus `deser.unsafe`'s lookahead. All four
+# now carry the same `{0,400}` bound, and all four match differently on real
+# targets, which FR-4.6 makes an invalidation trigger exactly as before.
+#
+# Worth recording *why* one bump was not enough. M3.5 fixed the pattern that
+# had been demonstrated rather than the shape that caused it, and the C3 timing
+# check measured that one pattern with `re.search` — which returns at the first
+# match, so it measured a single scan where `sweep.py`'s `finditer` performs
+# one per start position. A check built around the example it was written from
+# confirms the example.
+version: "2026.09.3"
 
 patterns:
   - id: net.bind_all
@@ -50,8 +63,23 @@ patterns:
 
   - id: net.fetch_exec
     layer: [code]
+    # `{0,400}` for the reason `log.sensitive` carries below, and this entry
+    # exists because that fix was applied to the pattern that was *demonstrated*
+    # rather than to the shape. Three more patterns had it, and the review that
+    # found them measured what the M3.5 check did not.
+    #
+    # The M3.5 timing check used `re.search`, which returns at the first match.
+    # `sweep.py` uses `finditer` (D-6: two hits on one line stay two hits), so
+    # every start position is tried and the real cost is K starts times N
+    # characters. Measured under `finditer`: 0.164 s on 20 KB and 0.618 s on
+    # 40 KB — 3.8x for 2x the input, which is quadratic.
+    #
+    # Residue, stated: a pipe more than 400 characters after `curl` is no longer
+    # seen. That is a bound on the rule where §5 asks for a bound on the scan,
+    # taken deliberately because the alternative is a live hang in a shipped
+    # pattern.
     regex: |-
-      (?:curl|wget)\b[^|\n]*\|\s*(?:sudo\s+)?(?:ba|z|da|k)?sh\b|urlretrieve\s*\(
+      (?:curl|wget)\b[^|\n]{0,400}\|\s*(?:sudo\s+)?(?:ba|z|da|k)?sh\b|urlretrieve\s*\(
     precision: high
     default_severity_hint: high
     question: >-

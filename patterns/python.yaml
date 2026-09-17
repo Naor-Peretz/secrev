@@ -19,14 +19,24 @@
 # run has one catalog_version" — so the version belongs to the whole catalog
 # rather than to a pack, and bumping only `_base.yaml` is not a valid state.
 # That check is what caught the half-change.
-version: "2026.09.2"
+#
+# Bumped again to 2026.09.3 alongside `_base.yaml`, which carries the reason:
+# three of the four patterns that gained a `{0,400}` bound this time live here.
+version: "2026.09.3"
 
 patterns:
   - id: exec.shell_true
     layer: [code]
     languages: [python]
+    # `{0,400}` for the reason `_base.yaml`'s `log.sensitive` carries. Measured
+    # under `finditer`, which is how `sweep.py` applies a pattern: 0.019 s on
+    # 20 KB and 0.075 s on 40 KB — 4.0x for 2x the input.
+    #
+    # Residue, stated: `shell=True` more than 400 characters into one
+    # `subprocess` call is no longer seen. That is a miss, the same trade
+    # `log.sensitive` took, and it is taken for the same reason.
     regex: |-
-      subprocess\.[a-zA-Z_]+\([^)]*shell\s*=\s*True
+      subprocess\.[a-zA-Z_]+\([^)]{0,400}shell\s*=\s*True
     owasp: ASI-02
     precision: high
     default_severity_hint: high
@@ -64,7 +74,7 @@ patterns:
     layer: [code]
     languages: [python]
     regex: |-
-      \bpickle\.loads?\s*\(|\bmarshal\.loads\s*\(|\byaml\.load\s*\((?![^)]*\bLoader\s*=\s*(?:yaml\.)?(?:C?SafeLoader|BaseLoader)\b)
+      \bpickle\.loads?\s*\(|\bmarshal\.loads\s*\(|\byaml\.load\s*\((?![^)]{0,400}\bLoader\s*=\s*(?:yaml\.)?(?:C?SafeLoader|BaseLoader)\b)
     precision: high
     default_severity_hint: high
     question: >-
@@ -106,7 +116,7 @@ patterns:
     layer: [code]
     languages: [python]
     regex: |-
-      \bos\.path\.join\s*\(|\bos\.path\.(?:abspath|realpath|normpath|expanduser)\s*\(|\bPath\s*\([^)]*\)\s*/|\.\.[\\/]|\bshutil\.(?:copy\w*|move|rmtree)\s*\(|\bos\.(?:remove|unlink|rename|makedirs)\s*\(
+      \bos\.path\.join\s*\(|\bos\.path\.(?:abspath|realpath|normpath|expanduser)\s*\(|\bPath\s*\([^)]{0,400}\)\s*/|\.\.[\\/]|\bshutil\.(?:copy\w*|move|rmtree)\s*\(|\bos\.(?:remove|unlink|rename|makedirs)\s*\(
     precision: low
     default_severity_hint: medium
     question: >-

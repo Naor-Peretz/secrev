@@ -74,15 +74,25 @@ BINARY_SNIFF_BYTES = 8192
 # STACK.md §5. A file larger than this is inventoried, recorded as skipped, and
 # never read.
 #
-# Not a defence against superlinear time, which no longer exists: M3.5 made
-# `log.sensitive` linear, and the shipped catalog measures linear in every
-# shape tried. This bounds what a *hostile file* can cost — 9.6 MB of crafted
-# lines measured 14 seconds.
+# Not a defence against superlinear time. That sentence stood here while three
+# patterns besides `log.sensitive` were still quadratic, on the strength of a
+# timing check that measured one pattern with `re.search` — which returns at the
+# first match, where `sweep.py` uses `finditer` and pays the retry at every
+# start position. The claim was true of the rule that had been demonstrated and
+# false of the catalog. `tests/test_catalog_timing.py` now measures every
+# pattern and every surface kind under the model the sweep actually uses.
+#
+# What this bounds is what a *hostile file* can cost once the rules are linear.
+# Measured after the four remaining bounds landed: the whole catalog costs about
+# 2.5 ms/KiB against a crafted single line, so 5 MiB is roughly 13 seconds — not
+# the 8 the earlier note gave, which was derived from the same defective
+# measurement.
 #
 # 5 MiB because the bound's own cost is a coverage gap. Real source is rarely
 # this large and minified bundles can be, so a tighter cap would hide exactly
-# the shipped artifact a reviewer most needs to open. At ~1.7 ms/KiB worst
-# case this bounds a hostile file at roughly 8 seconds.
+# the shipped artifact a reviewer most needs to open. A file past it is recorded
+# in `too_large`, named in `coverage_gaps`, and — when its extension says code —
+# makes the run exit 2 rather than reporting a clean review.
 MAX_FILE_BYTES = 5 * 1024 * 1024
 
 # Extension to language. One map, owned here, because two consumers need the
