@@ -70,10 +70,18 @@ def _file_hits(entry: FileEntry, text: str, kinds: tuple[Kind, ...], version: st
     # wrong against the rule — `tests/test_surfaces.py` asserts the order itself.
     found.sort(key=lambda item: (item[0], item[1]))
 
-    matches = [
-        Match(rule_id=rule_id, line=index + 1, window=window(lines, index))
-        for index, rule_id, _ in found
-    ]
+    # One window per line, shared by every match on it — the same change
+    # `sweep.py` carries, and for the same reason. A peer source pays the same
+    # cost, so it gets the same fix rather than waiting to be measured
+    # separately.
+    windows: dict[int, str] = {}
+    matches: list[Match] = []
+    for index, rule_id, _ in found:
+        text_window = windows.get(index)
+        if text_window is None:
+            text_window = window(lines, index)
+            windows[index] = text_window
+        matches.append(Match(rule_id=rule_id, line=index + 1, window=text_window))
     identifiers = assign(entry.path, matches)
 
     hits: list[Hit] = []

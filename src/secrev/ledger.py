@@ -111,7 +111,25 @@ _LONG_OPAQUE = re.compile(r"(?<![A-Za-z0-9+/=_-])[A-Za-z0-9+/=_-]{32,}(?![A-Za-z
 # password is usually far too short for `_LONG_OPAQUE`. The user half is kept:
 # it is not the secret, and a connection string with both halves gone tells a
 # reader nothing about which account was involved.
-_URL_CREDENTIAL = re.compile(r"(?i)\b([a-z][a-z0-9+.\-]*://)([^\s:/@]+):([^\s/@]{1,})@")
+_URL_CREDENTIAL = re.compile(r"(?i)\b([a-z][a-z0-9+.\-]*://)([^\s:/@]*):([^\s/@]{1,})@")
+
+# A credential passed as a command-line argument, where the separator is a space
+# rather than `=` or `:`. `_SECRET_ASSIGNMENT` cannot see it — there is no
+# separator character to anchor on — and these are among the commonest shapes in
+# exactly the kind of file this tool reads: install scripts, CI steps, docker
+# invocations. `-p` is included despite being two characters because it is
+# `mysql`'s and `docker login`'s spelling; it is anchored to a word boundary and
+# requires a value, so a bare `-p` flag with no argument does not match.
+_CLI_CREDENTIAL = re.compile(
+    r"""(?ix)
+    (?P<flag> (?:^|\s)
+              (?: --? (?: password | passwd | pass | pwd | token | secret
+                        | api[_-]?key | auth | credential )
+                | -p )
+              \s+ )
+    (?P<value> [^\s]{4,} )
+    """
+)
 
 # The alphabet `_LONG_OPAQUE` measures. An excerpt boundary landing inside a
 # run of these is what `_widen_to_run_boundaries` exists to prevent.
@@ -181,6 +199,10 @@ def redact(text: str) -> str:
     key, and the password is far too short for `_LONG_OPAQUE`'s floor.
     """
     text = _URL_CREDENTIAL.sub(lambda m: f"{m.group(1)}{m.group(2)}:{_REDACTED}@", text)
+    # The flag is kept and the value replaced, for `_mask_assignment`'s reason:
+    # `--password [REDACTED]` tells a reviewer what was found where a bare
+    # marker tells them only that something was.
+    text = _CLI_CREDENTIAL.sub(lambda m: f"{m.group('flag')}{_REDACTED}", text)
     text = _SECRET_ASSIGNMENT.sub(_mask_assignment, text)
     return _LONG_OPAQUE.sub(_REDACTED, text)
 

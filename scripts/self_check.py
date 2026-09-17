@@ -40,19 +40,30 @@ BANNED_ATTRS = {
 # Process execution through `os`, which had no entry at all until M3.5 — so
 # `os.system(cmd)` passed a gate whose entire subject is process execution.
 #
-# **This stays a denylist, and P3 makes that a standing finding rather than a
-# resolution.** `os` is a large surface and its dangerous members cannot be
-# enumerated with confidence; `os.exec*` and `os.spawn*` alone are a dozen
-# spellings. It is matched by prefix below rather than by an exhaustive list,
-# which is a shape test rather than a name list and so is narrower than it
-# looks — but it is not an allowlist, and nothing here should read as though
-# the question were closed. The structural fix in this file is alias
-# resolution; this table is the part that remains honest guesswork.
-BANNED_OS_PREFIXES = ("exec", "spawn", "posix_spawn")
-BANNED_OS_NAMES = {
-    "system": "STACK.md §2.1 — no shell",
-    "popen": "STACK.md §2.1 — no shell",
-}
+# **An allowlist since a third review, and the previous comment here said why
+# it had to become one.** It read: "`os` is a large surface and its dangerous
+# members cannot be enumerated with confidence... nothing here should read as
+# though the question were closed." That was accurate and it stayed a denylist
+# anyway, through two passes, because each round of bypasses was answered by
+# widening the list that had just failed.
+#
+# The package calls exactly two `os` members — `os.replace` in `cli.py` and
+# `os.walk` in `inventory.py`. `os.sep` is here for completeness and is never a
+# call, so it never reaches the test below. Two permitted names against a module
+# with several hundred is the difference between guessing at what is dangerous
+# and stating what is used.
+ALLOWED_OS_ATTRS = frozenset({"replace", "walk", "sep"})
+
+# Mappings that hold callables by name, where a subscript is a member lookup
+# rather than an element access. `__dict__` is matched by suffix so it catches
+# any object's, not just a module's.
+NAMESPACE_LOOKUPS = frozenset({"globals", "locals", "vars", "sys.modules"})
+
+# `subprocess` with an argument list is correct (`STACK.md` §2.1 forbids a shell
+# *string*), but an argv whose first element is a shell and whose second is `-c`
+# is a shell string wearing a list. Matched by shape rather than by a list of
+# interpreter names alone: the `-c` is what makes the rest of the argv a script.
+_SHELL_BINARIES = ("sh", "bash", "zsh", "dash", "ksh", "csh", "tcsh", "fish")
 # **An allowlist, since a second review.** The denylist this replaces named six
 # modules, and eleven further bypasses were measured walking past it: two
 # third-party HTTP clients for egress, a foreign-function-interface module and a
@@ -201,6 +212,18 @@ class Visitor(ast.NodeVisitor):
                 "A new runtime dependency is a STACK.md decision; add it there first",
             )
         for alias in node.names:
+            # `from os import *` binds every public name with no statement
+            # naming any of them, so the alias map — and therefore every check
+            # that resolves through it — sees nothing at all. There is no
+            # spelling of this that can be resolved, which makes it a question
+            # rather than a miss.
+            if alias.name == "*":
+                self._flag(
+                    node,
+                    f"from {mod} import * — STACK.md §2.1, a wildcard import binds names "
+                    "this checker cannot resolve; import what is used",
+                )
+                continue
             dotted = f"{mod}.{alias.name}" if mod else alias.name
             self.aliases[alias.asname or alias.name] = dotted
             # No second test on the dotted form. Under the old denylist this is
@@ -258,11 +281,12 @@ class Visitor(ast.NodeVisitor):
                 f"(permitted: {', '.join(sorted(ALLOWED_YAML_ATTRS))})",
             )
 
-        if base == "os":
-            if why := BANNED_OS_NAMES.get(attr):
-                self._flag(node, f"{shown}() — {why}")
-            elif attr.startswith(BANNED_OS_PREFIXES):
-                self._flag(node, f"{shown}() — STACK.md §2.1 — no process execution")
+        if base == "os" and attr not in ALLOWED_OS_ATTRS:
+            self._flag(
+                node,
+                f"{shown}() — STACK.md §2.1, not in ALLOWED_OS_ATTRS "
+                f"(permitted: {', '.join(sorted(ALLOWED_OS_ATTRS))})",
+            )
 
         if base != "subprocess":
             return
@@ -292,6 +316,29 @@ class Visitor(ast.NodeVisitor):
         # Those are not enumerable, and `shell=` above is the check that
         # actually carries this rule.
         first = node.args[0] if node.args else None
+
+        # An argv that *is* a shell string: `["/bin/sh", "-c", cmd]`. The list
+        # form is the correct one and passes every check above, which is exactly
+        # why this shape is worth naming — it satisfies the letter of "pass an
+        # argument list" while handing a shell a script to parse.
+        if isinstance(first, ast.List):
+            head = first.elts[0] if first.elts else None
+            binary = (
+                head.value.rpartition("/")[2]
+                if isinstance(head, ast.Constant) and isinstance(head.value, str)
+                else ""
+            )
+            dash_c = any(
+                isinstance(element, ast.Constant) and element.value == "-c"
+                for element in first.elts[1:]
+            )
+            if binary in _SHELL_BINARIES and dash_c:
+                self._flag(
+                    node,
+                    f"{shown}([{binary!r}, '-c', ...]) — STACK.md §2.1, an argv whose "
+                    "first element is a shell and whose second is -c is a shell string",
+                )
+
         if isinstance(first, ast.JoinedStr) or (
             isinstance(first, ast.Constant) and isinstance(first.value, str)
         ):
@@ -318,6 +365,43 @@ class Visitor(ast.NodeVisitor):
                 "getattr(...)() — STACK.md §2.1, a dynamically resolved callee "
                 "cannot be checked; name the call directly",
             )
+
+        # The same defect through a subscript instead of a call:
+        # `os.__dict__["system"](cmd)` puts the Subscript in the callee
+        # position, and `sys.modules["os"].system(cmd)` hides it one level down
+        # as the *value* of the attribute. Neither leaves a dotted name for any
+        # table to match, and both are the same statement as `getattr` above —
+        # a name chosen at runtime.
+        #
+        # **Narrowed after the first version flagged four sites in this
+        # package.** "Any subscripted callee" is `x[i].method()`, which is
+        # ordinary Python: three of the four were *slices* — `text[5:].strip()`
+        # — and a slice cannot name a member at all. A rule that fails on good
+        # code is one someone deletes, which this file says two paragraphs
+        # below about a different rule and which it had just done again.
+        #
+        # So: never a slice, and only when the thing being subscripted is a
+        # namespace that holds callables. That list is a denylist over
+        # namespaces and is stated as one — but it is a closed set in the
+        # language rather than a guess about a library's surface, which is what
+        # makes it different from the `os` table this file used to carry.
+        subscript = (
+            func
+            if isinstance(func, ast.Subscript)
+            else func.value
+            if isinstance(func, ast.Attribute) and isinstance(func.value, ast.Subscript)
+            else None
+        )
+        if subscript is not None and not isinstance(subscript.slice, ast.Slice):
+            holder = _dotted(subscript.value)
+            if not holder and isinstance(subscript.value, ast.Call):
+                holder = _dotted(subscript.value.func)
+            if holder in NAMESPACE_LOOKUPS or holder.endswith("__dict__"):
+                self._flag(
+                    node,
+                    f"{holder}[...]() — STACK.md §2.1, a member looked up in a namespace "
+                    "cannot be checked; name the call directly",
+                )
 
         if isinstance(func, ast.Name):
             if why := BANNED_CALLS.get(func.id):

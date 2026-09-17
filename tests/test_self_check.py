@@ -107,6 +107,24 @@ BYPASSES: list[tuple[str, str]] = [
     ("client-submodule", "from urllib3 import PoolManager\n\ndef f():\n    return PoolManager()\n"),
     # Deserialisation with the same machinery under a different name.
     ("shelve-open", 'import shelve\n\ndef f():\n    return shelve.open("x")\n'),
+    # --- the four a third review measured passing the allowlist rewrite ---
+    #
+    # A wildcard binds every public name while naming none, so the alias map —
+    # and every check that resolves through it — sees nothing.
+    ("wildcard-import", "from os import *\n\ndef f(c):\n    return system(c)\n"),
+    # The callee is a subscript, so no dotted name exists for a table to match.
+    # Two spellings of one defect, and the same defect `getattr(...)()` is.
+    (
+        "modules-subscript",
+        'import sys\n\ndef f(c):\n    return sys.modules["os"].system(c)\n',
+    ),
+    ("dict-subscript", 'import os\n\ndef f(c):\n    return os.__dict__["system"](c)\n'),
+    # An argument list is the *correct* form and passes every other check, which
+    # is what makes this one worth naming: it is a shell string wearing a list.
+    (
+        "argv-shell",
+        'import subprocess\n\ndef f(c):\n    return subprocess.Popen(["/bin/sh", "-c", c])\n',
+    ),
 ]
 
 
@@ -144,6 +162,31 @@ def test_clean_source_still_passes(tmp_path: Path) -> None:
         "    subprocess.run(['ls', '-l'], check=False)\n"
         "    subprocess.run(build_argv('x'), check=False)\n"
         "    return subprocess.run(argv, check=False), data\n"
+    )
+    result = check(write(tmp_path, body))
+    assert result.returncode == 0, f"{result.stdout}{result.stderr}"
+
+
+def test_ordinary_subscripting_is_not_a_namespace_lookup(tmp_path: Path) -> None:
+    """The control this needed and did not have, written from the damage.
+
+    The rule that catches `os.__dict__["system"](cmd)` was first written as "any
+    subscripted callee", which is `x[i].method()` — ordinary Python. It flagged
+    four sites in `src/secrev`, and three of them were *slices*, where no member
+    is being named at all.
+
+    These four lines are those sites, copied rather than invented: a dict of
+    lists being appended to, and three string slices with a method called on the
+    result. A checker that refuses them is one someone switches off, which this
+    file's own `_check` warns about in the paragraph about argument lists.
+    """
+    body = (
+        "def f(blocks, key, path, line, text, left, right):\n"
+        "    blocks[key].append(line)\n"
+        "    suffix = path[path.rfind('.'):].lower()\n"
+        "    span = line[left:right].strip()\n"
+        "    rest = text[5:].strip()\n"
+        "    return suffix, span, rest\n"
     )
     result = check(write(tmp_path, body))
     assert result.returncode == 0, f"{result.stdout}{result.stderr}"

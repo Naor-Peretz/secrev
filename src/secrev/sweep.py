@@ -82,10 +82,19 @@ def _file_hits(entry: FileEntry, text: str, catalog: Catalog) -> list[Hit]:
     # stay two records (D-6) and are separated by column, never merged.
     found.sort(key=lambda item: (item[0], item[1], item[2]))
 
-    matches = [
-        Match(rule_id=rule_id, line=index + 1, window=window(lines, index))
-        for index, rule_id, _, _, _ in found
-    ]
+    # One window per line, shared by every match on it. `window()` joins ±20
+    # lines, so building it per *match* is O(window) work repeated once per
+    # candidate — and on a crafted single line the window is approximately the
+    # whole line. 16,000 matches on one 160 KB line rebuilt that string 16,000
+    # times. Sharing the object also lets `ids.assign` hash it once (see there).
+    windows: dict[int, str] = {}
+    matches: list[Match] = []
+    for index, rule_id, _, _, _ in found:
+        text_window = windows.get(index)
+        if text_window is None:
+            text_window = window(lines, index)
+            windows[index] = text_window
+        matches.append(Match(rule_id=rule_id, line=index + 1, window=text_window))
     identifiers = assign(entry.path, matches)
 
     hits: list[Hit] = []

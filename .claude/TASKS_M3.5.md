@@ -813,3 +813,90 @@ probe made in M3.5, repeated after the file documenting it had been read. Two ch
 `_entrypoints` gained a `found` parameter in its body but not its signature, and the call site was
 updated before the variable existed. Writing the parts down first is not enough; they have to be
 checked against what actually landed.
+
+## The third review, 2026-09-17 — the cost moved, it did not leave
+
+A third external review ran the tool from `3906c51`, replayed every attack tree
+from both previous rounds — all refused — and then varied them again. Five
+findings. The headline one is that **C3's guarantee was false for a third time,
+by a route neither previous fix could have covered**.
+
+- **ReDoS, through identity rather than through regex.** Every pattern is linear
+  and `secrev sweep` was still quadratic: 0.37 s, 1.17 s, 4.06 s at 40/80/160 KB,
+  about 3.5x per doubling. The cost had moved out of `patterns/` entirely.
+  Each candidate's window is ±20 lines, which on a file that is one enormous
+  line is approximately the whole line, and that window was **rebuilt once per
+  match and then hashed twice** — `window()` in the source, `window_sha256` for
+  the ordinal's group key, and `window_sha256` again inside `derive`. Three
+  passes over ~N characters, K times.
+  Fixed by sharing one window object per line across the matches on it and
+  hashing it once. Measured after: 0.13 s, 0.25 s, 0.50 s — a flat 2.0x, and
+  160 KB fell from 4.06 s to 0.50 s. **No id moved**, because the bytes fed to
+  SHA-256 are the same four components in the same order; only the number of
+  times they are computed changed. `derive()` keeps its signature — it is the
+  `STACK.md` §5 identity contract — and delegates to `_id_from_digest`.
+  **`test_catalog_timing.py` could not have caught this and still cannot**: it
+  times regexes. A second test now times `sweep()` itself and asserts the
+  *ratio*, because a ceiling in seconds passes on a fast runner while the curve
+  is still quadratic — which is how the previous check stayed green through
+  exactly this defect.
+  The reviewer named two of the three passes; the `window()` rebuild was found
+  by reading the call site rather than from the report.
+- **A file with no code extension still hid at exit 0.** `unread_code` keyed on
+  the extension, so `install` with a shebang and eight NULs, and a `SKILL.md`
+  with a NUL inside an HTML comment, were both classified binary and reported
+  clean. The second is the sharper case: the instruction layer is this tool's
+  own subject (P8), and `markdown` sits in `_NOT_CODE`.
+  `_is_code` now asks three questions — extension, shebang, artifact name.
+  `has_shebang` is set from bytes `_file_entry` had already read to answer
+  `is_binary`, so it costs a slice rather than an open. **An oversized file is
+  still judged by its name alone**, because reading two bytes there means
+  opening a file the size bound exists to leave shut, and that is the TOCTOU
+  window this milestone spent its effort documenting.
+- **The `.env` deny was walked around by two more git subcommands.**
+  `git add -f .env && git show :.env` reads the blob back out of the index;
+  `git blame --contents .env README.md` reads the named file for its content.
+  Both reproduced, both exit 0 with the value on stdout, both auto-approved.
+  Removed. What stays is inspection that reports *about* history — `log`,
+  `shortlog`, `rev-parse`, `rev-list`, `remote`, `status`, `branch` — rather
+  than anything that can be pointed at a working-tree path and made to emit it.
+  **Three rounds, three removals, one class.** It was named correctly the first
+  time ("a command that can print a file's contents defeats a Read deny") and
+  answered each time by removing the commands that had been *demonstrated*.
+- **`self_check.py`: four more, and the `os` table finally inverted.** A
+  wildcard import binds every name while naming none; a subscripted callee
+  (`sys.modules["os"].system`, `os.__dict__["system"]`) leaves no dotted name to
+  match; and `subprocess.Popen(["/bin/sh", "-c", cmd])` is a shell string
+  wearing the argument list that every other check asks for.
+  The `os` denylist became `ALLOWED_OS_ATTRS` — the package calls exactly
+  `os.replace` and `os.walk`. The comment that table carried had said, for two
+  milestones, that it could not be enumerated with confidence and should not
+  read as closed. It was right both times and stayed a denylist anyway.
+- **G-3 leaked four more shapes**: URL userinfo with no username, `--password X`
+  and `-p X` (a space-separated CLI flag, which has no separator character for
+  the key rule to anchor on), `pwd=` and `MYSQL_ROOT_PW=`. All redacted, with
+  three over-redaction controls — `--port 8080`, a plain URL, and prose — held
+  green on both sides of the change.
+
+**Two rules of mine failed on good code during this pass, and both were caught
+by controls rather than by review.** The import allowlist omitted `subprocess`,
+which reads as free strictness since `src/secrev` imports none — but §2.1
+forbids a shell *string*, not the module, and `test_clean_source_still_passes`
+went red. Then "any subscripted callee" flagged four sites in this package,
+three of them *slices* (`text[5:].strip()`), where no member is named at all;
+the rule is now limited to namespaces that hold callables, and
+`test_ordinary_subscripting_is_not_a_namespace_lookup` is written from the four
+real lines rather than from invented ones.
+
+**Raised, not closed:**
+
+- **Ledger flooding is M7's.** A 5 MB crafted file produces roughly 500,000
+  records, every one of which P4 requires be resolved. Linear time does not make
+  that reviewable, and triage is where it belongs.
+- **Whether `src/secrev` should be *held* to importing no process module** is a
+  `STACK.md` §2.1 amendment, not a script edit. Removing `subprocess` from
+  `ALLOWED_IMPORTS` would enforce something stricter than the binding document
+  and would fail the control test above on correct code.
+- **Redaction's remaining tail** — `Cookie: session=`, and any key naming a
+  credential in a vocabulary the list does not carry — is the structural limit
+  of redacting by key name, stated rather than chased.

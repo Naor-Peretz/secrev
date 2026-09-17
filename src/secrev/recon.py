@@ -287,6 +287,54 @@ def _security_process(entries: list[FileEntry], found: frozenset[str]) -> dict[s
 # read only as named manifests. Every other language in the map is code.
 _NOT_CODE = frozenset({"ini", "json", "markdown", "text", "toml", "yaml"})
 
+# How many paths a `coverage_gaps` line names before it says "and N more".
+# Every ordinary target holds binary assets, so an uncapped list puts every
+# image in the tree on one line and the gap stops being readable — the same
+# failure as not reporting it, reached from the other side.
+_GAP_LIST_LIMIT = 5
+
+# Files that are an agentic artifact by *name*, whatever their extension says.
+#
+# The extension test calls these markdown or JSON, which `_NOT_CODE` treats as
+# carrying no entry points — true of documentation and false of these. A third
+# review put a NUL inside an HTML comment in a `SKILL.md` and removed two
+# candidates from the review at exit 0, and the instruction layer is where this
+# tool's own subject lives (P8): prose that reaches an agent's context is
+# behaviour-defining and is reviewed as such.
+#
+# Matched on the lowercased basename because `STACK.md` §4 makes case a finding
+# class rather than portability — `.CLAUDE.md` and `claude.md` are one file on
+# macOS and two on Linux.
+_AGENT_ARTIFACTS = frozenset(
+    {
+        "skill.md",
+        "agents.md",
+        "claude.md",
+        "hooks.json",
+        ".mcp.json",
+        "mcp.json",
+        "claude_desktop_config.json",
+    }
+)
+
+
+def _is_code(entry: FileEntry) -> bool:
+    """Whether a reviewer should care that this file went unread.
+
+    Three tests, in order of confidence. The extension is the cheap one. A
+    shebang is the file declaring itself executable regardless of its name, and
+    is the case the extension test cannot reach. The artifact names are the case
+    *both* miss, because their extension is real and says `markdown` or `json`.
+    """
+    language = language_of(entry.path)
+    if language is not None and language not in _NOT_CODE:
+        return True
+    if entry.has_shebang:
+        return True
+    name = entry.path.rsplit("/", 1)[-1].lower()
+    return name in _AGENT_ARTIFACTS or name.endswith(".mdc")
+
+
 # Present in the tree, and not read. One line each rather than one combined
 # line, because the remedies differ and a reader sent to the wrong one wastes
 # the trip: a permission, a kind of file, a threshold, a classification.
@@ -298,9 +346,8 @@ _NOT_CODE = frozenset({"ini", "json", "markdown", "text", "toml", "yaml"})
 # "no coverage for: markdown", because a skipped file contributes no language,
 # so the one honest-looking line in the artifact described a tree that did not
 # exist. M3.5 raised the cost of that evasion from one byte to eight and called
-# the class closed.
-_GAP_LIST_LIMIT = 5
-
+# the class closed; a third review then hid a file with no extension at all, and
+# `_is_code` above is where that is answered.
 _UNREAD_REASONS = (
     ("unreadable", "could not be read (a permission)"),
     ("not_regular", "not a regular file (a FIFO, socket or device)"),
@@ -461,13 +508,9 @@ def recon(
     # place. A shell script classified binary is a different statement: the
     # extension says code, so the classification removed something from review
     # that a reviewer expected to be in it (P11).
+    unread_paths = {path for paths in unread.values() for path in paths}
     unread_code = sorted(
-        {
-            path
-            for paths in unread.values()
-            for path in paths
-            if (language := language_of(path)) is not None and language not in _NOT_CODE
-        }
+        item.path for item in entries if item.path in unread_paths and _is_code(item)
     )
 
     source, sha = git_identity(root)

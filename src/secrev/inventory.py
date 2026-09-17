@@ -288,6 +288,22 @@ class FileEntry:
     # — while on APFS, which matches either form, the same code silently works.
     # A defect that fails only on the platform without the forgiving filesystem
     # is the kind cross-platform CI is for.
+    # True when the file begins `#!`, which makes it executable code whatever
+    # its name says. Added after a third review: `install` with no extension and
+    # eight NUL bytes in a comment was classified binary, never swept, and
+    # reported exit 0 — because the "is this code" test was the extension, and
+    # the file had none.
+    #
+    # A pure function of the first two bytes, so NFR-3 is unaffected: the answer
+    # cannot vary by machine. Set only where the bytes were read — an oversized
+    # file returns before anything is opened, and claiming a shebang there would
+    # mean opening it, which is the read this milestone spent its effort
+    # removing. Stated rather than hidden: a file past `--max-file-bytes` is
+    # judged by its name alone.
+    has_shebang: bool = False
+
+    # The name the OS actually reported, native separators, NOT normalised —
+    # the only string that will reopen the file.
     os_path: str = field(default="", compare=False)
 
 
@@ -484,6 +500,9 @@ def _file_entry(root: Path, path: Path, max_bytes: int | None = None) -> FileEnt
         symlink_target=None,
         escapes_root=False,
         sha256=content_sha256(raw),
+        # Free here: these bytes were read to answer `is_binary`, so the
+        # question costs a slice rather than an open.
+        has_shebang=raw[:2] == b"#!",
         os_path=relative,
     )
 

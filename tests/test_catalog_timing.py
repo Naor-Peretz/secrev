@@ -37,6 +37,7 @@ import pytest
 
 from secrev.catalog import load
 from secrev.kinds import load_file
+from secrev.sweep import sweep
 
 ROOT = Path(__file__).resolve().parent.parent
 PACKS = sorted((ROOT / "patterns").glob("*.yaml"))
@@ -135,4 +136,51 @@ def test_no_rule_goes_superlinear_on_a_crafted_line(rule_id: str) -> None:
     assert elapsed < CEILING_SECONDS, (
         f"{rule_id}: {len(line)} characters took {elapsed:.2f}s — "
         f"bound an unbounded quantifier rather than raising this ceiling"
+    )
+
+
+def test_a_full_sweep_is_linear_in_the_length_of_a_crafted_line(tmp_path: Path) -> None:
+    """The level above the rules, which the tests above structurally cannot see.
+
+    Every rule was linear and `secrev sweep` was still quadratic. The cost had
+    moved out of the catalog and into identity: each candidate's window is ±20
+    lines, which on a file that is one enormous line is approximately the whole
+    line, and that window was rebuilt once per match and then hashed twice.
+    K candidates times N characters — quadratic again, with nothing in
+    `patterns/` to blame.
+
+    Measured before the fix: 0.37 s, 1.17 s, 4.06 s at 40/80/160 KB — a ratio of
+    about 3.5x for each doubling. After it: 0.13 s, 0.25 s, 0.50 s, a flat 2.0x.
+
+    So this asserts the *shape*, not a duration. A ceiling in seconds would pass
+    on a fast runner while the curve was still quadratic, which is how the
+    previous check stayed green through exactly this defect; the ratio is what
+    distinguishes the two. The bound is loose because timing on a shared runner
+    is noisy, and 3.0 still separates 2.0 from 3.5 with room on both sides.
+    """
+    catalog = load(PACKS)
+    seed = "yaml.load("
+
+    def elapsed_for(size: int) -> float:
+        target = tmp_path / f"t{size}"
+        target.mkdir()
+        (target / "big.py").write_text(seed * (size // len(seed)) + "\n", encoding="utf-8")
+        start = time.perf_counter()
+        hits = sweep(target, catalog)
+        taken = time.perf_counter() - start
+        assert hits, "the crafted line produced no candidates — the probe measures nothing"
+        return taken
+
+    small = elapsed_for(40_000)
+    large = elapsed_for(80_000)
+
+    # A floor, because dividing two sub-millisecond numbers measures the clock.
+    if small < 0.01:  # pragma: no cover - only on an implausibly fast machine
+        pytest.skip(f"baseline too small to compare: {small:.4f}s")
+
+    ratio = large / small
+    assert ratio < 3.0, (
+        f"doubling the line multiplied the sweep by {ratio:.1f}x "
+        f"({small:.2f}s then {large:.2f}s) — linear is ~2x. "
+        "The rules are timed above; this is the pipeline around them."
     )

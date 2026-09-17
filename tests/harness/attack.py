@@ -1474,11 +1474,26 @@ AUTO_APPROVED = frozenset(
         # now asks first, as `head` and `cat` already do.
         "Bash(git log:*)",
         "Bash(git branch:*)",
-        "Bash(git show:*)",
+        # `Bash(git show:*)` and `Bash(git blame:*)` followed `git diff` out, a
+        # review later, and the delay is the finding rather than the fix.
+        #
+        # Both were demonstrated printing a file `deny Read(**/.env)` refuses:
+        # `git add -f .env` then `git show :.env` reads it back out of the
+        # index, and `git blame --contents .env README.md` reads the named file
+        # for its content. Both exited 0 with the value on stdout.
+        #
+        # The class was named when `head`, `wc`, `ls` and `diff` were removed —
+        # "a command that can print a file's contents defeats a Read deny" —
+        # and the response each time enumerated the commands that had been
+        # *shown* doing it. `git` has more subcommands that read a blob than
+        # anyone will list from memory, which is why what stays here is
+        # inspection that reports *about* history (`log`, `shortlog`,
+        # `rev-parse`, `rev-list`, `remote`, `status`, `branch`) rather than
+        # anything that can be pointed at a working-tree path and made to emit
+        # it.
         "Bash(git rev-parse:*)",
         "Bash(git rev-list:*)",
         "Bash(git remote:*)",
-        "Bash(git blame:*)",
         "Bash(git shortlog:*)",
         "Bash(git ls-files:*)",
         "Bash(git stash list:*)",

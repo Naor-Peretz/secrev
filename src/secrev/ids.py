@@ -78,7 +78,32 @@ def derive(*, relative_path: str, rule_id: str, window: str, ordinal: int) -> st
     The separator is NUL because it cannot occur in any of the components, so
     no pair of distinct inputs can produce one string.
     """
-    parts = (relative_path, rule_id, window_sha256(window), str(ordinal))
+    return _id_from_digest(
+        relative_path=relative_path,
+        rule_id=rule_id,
+        window_digest=window_sha256(window),
+        ordinal=ordinal,
+    )
+
+
+def _id_from_digest(*, relative_path: str, rule_id: str, window_digest: str, ordinal: int) -> str:
+    """`derive()` with the window already hashed.
+
+    Split out so `assign` can hash a window **once** and use the result twice:
+    for the ordinal's group key and for the id. It used to hash the same window
+    in both places, and `window()` rebuilt that window per match on top of that
+    — three passes over the same text, per candidate.
+
+    That is invisible in ordinary files and quadratic on a crafted one. A single
+    200 KB line matching 20,000 times is 20,000 windows of ~200 KB each, built
+    and hashed twice apiece. The catalog was made linear in the previous pass
+    and the cost simply moved here, where a regex timing test cannot see it.
+
+    **No identity changes.** The bytes fed to SHA-256 are the same four
+    components in the same order with the same separator; only the number of
+    times the window digest is computed differs.
+    """
+    parts = (relative_path, rule_id, window_digest, str(ordinal))
     digest = hashlib.sha256("\x00".join(parts).encode("utf-8")).hexdigest()
     return digest[:ID_LENGTH]
 
@@ -90,18 +115,30 @@ def assign(relative_path: str, matches: list[Match]) -> list[str]:
     group of byte-identical windows. A match whose window is unique in the
     file is always ordinal 0, so another match of the same rule appearing or
     vanishing elsewhere cannot disturb it.
+
+    Each distinct window is hashed once. The sources hand every match on one
+    line the *same* string object, so this cache is keyed on a string whose hash
+    Python has already computed and stored — the lookup does not re-read the
+    text. Without that sharing the cache would still be correct and would cost
+    what it saves, which is why the memoisation here and in the two sources is
+    one change rather than two.
     """
     seen: dict[tuple[str, str], int] = {}
+    digests: dict[str, str] = {}
     assigned: list[str] = []
     for item in matches:
-        group = (item.rule_id, window_sha256(item.window))
+        digest = digests.get(item.window)
+        if digest is None:
+            digest = window_sha256(item.window)
+            digests[item.window] = digest
+        group = (item.rule_id, digest)
         ordinal = seen.get(group, 0)
         seen[group] = ordinal + 1
         assigned.append(
-            derive(
+            _id_from_digest(
                 relative_path=relative_path,
                 rule_id=item.rule_id,
-                window=item.window,
+                window_digest=digest,
                 ordinal=ordinal,
             )
         )
