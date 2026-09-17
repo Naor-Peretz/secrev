@@ -21,6 +21,7 @@ been run against anything real.
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 
 import pytest
@@ -64,7 +65,11 @@ def test_the_shipped_catalog_loads_and_is_the_expected_size() -> None:
     original seed pattern touched path handling (§6)."""
     loaded = load(PACKS)
     assert len(loaded.patterns) == 9
-    assert loaded.version == "2026.09.1"
+    # Bumped in M3.5 with `log.sensitive`'s `{0,400}` bound; `patterns/_base.yaml`
+    # carries the reason. Pinning the literal here is deliberate: a catalog
+    # version change expires verifications (FR-4.6), so it should cost an edit
+    # to a test rather than pass unnoticed.
+    assert loaded.version == "2026.09.2"
 
 
 def test_every_pattern_has_a_fixture_directory(catalog: Catalog) -> None:
@@ -128,6 +133,58 @@ def test_agent_config_rule_is_case_insensitive(catalog: Catalog) -> None:
     pattern = next(item for item in catalog.patterns if item.id == "fs.agent_config_write")
     assert pattern.regex.search('open(".CLAUDE/settings.json", "w")')
     assert pattern.regex.search('open(".claude/settings.json", "w")')
+
+
+def test_log_sensitive_still_sees_a_credential_inside_a_nested_call(catalog: Catalog) -> None:
+    """The regression two rejected M3.5 fixes would have introduced, and which
+    no fixture in this repository could have caught.
+
+    `log.sensitive` was quadratic because `[^)\\n]*` let every `print(` start
+    position consume the whole line. The obvious repair — excluding `(` as well
+    — is linear, and agrees with all seven shipped fixtures, and silently stops
+    matching every nested call. `print(sanitize(password))` is probably the
+    most likely real spelling of this finding, because a credential reaching a
+    log call has usually been passed through something first.
+
+    The fixtures agreed with the broken candidate, so they were not the control
+    here. This is: a future optimisation that reintroduces the bug has to turn
+    this red before it can ship.
+    """
+    rule = next(item for item in catalog.patterns if item.id == "log.sensitive")
+    for line in (
+        "print(sanitize(password))",
+        "logger.info(mask(token))",
+        "logger.debug(fmt(str(api_key)))",
+        'console.log("ctx", redact(secret))',
+    ):
+        assert rule.regex.search(line), line
+
+
+def test_log_sensitive_does_not_go_superlinear_on_a_crafted_line(catalog: Catalog) -> None:
+    """DoD C3: a crafted line cannot make the shipped catalog take superlinear
+    time, within a stated bound and a generous margin.
+
+    The adversarial shape is not a nested quantifier — `log.sensitive` never
+    had one. It is many matching start positions with no `)` to stop
+    consumption, since `re.search` retries the whole pattern from every one of
+    them: K starts each scanning N characters is O(N*K).
+
+    Measured before the `{0,400}` bound: 185.72 ms at 9,600 bytes, 11.4 s at
+    76,800, which extrapolates to roughly 48 minutes on 1 MB. After it, this
+    1.2 MB line measures about 1.9 s.
+
+    The margin is deliberately wide. This asserts the absence of a quadratic
+    blowup, not a performance target, and a tight bound would fail on a loaded
+    CI runner and teach people to delete the test rather than read it.
+    """
+    rule = next(item for item in catalog.patterns if item.id == "log.sensitive")
+    line = "print(" * 200_000
+
+    start = time.perf_counter()
+    rule.regex.search(line)
+    elapsed = time.perf_counter() - start
+
+    assert elapsed < 10.0, f"a 1.2 MB crafted line took {elapsed:.2f}s"
 
 
 def test_safe_loader_spellings_do_not_match_deser_unsafe(catalog: Catalog) -> None:

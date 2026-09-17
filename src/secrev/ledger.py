@@ -44,7 +44,11 @@ WINDOW_SPEC = "lines-20"
 # pattern window that happens to cover the same lines.
 DECL_WINDOW_SPEC = "decl-20"
 
-# §5: "the matched span with a small margin, truncated to 200 chars".
+# `BRIEF_M1.md` §5: "the matched span with a small margin, truncated to 200
+# chars". Cited wrongly as `STACK.md` §5 until M3.5 — §5 there fixes traversal,
+# hashing and the window, and says nothing about excerpts. The number was right
+# and the attribution was not, which is the quieter half of the F1 finding: a
+# citation nobody can follow is one nobody checks.
 EXCERPT_MARGIN = 24
 EXCERPT_LIMIT = 200
 
@@ -56,14 +60,37 @@ _REDACTED = "[REDACTED]"
 # under-redaction copies a live secret into an artifact that gets committed,
 # pasted into an issue, and read by people who were never meant to have it.
 # The asymmetry decides the polarity.
+#
+# M3.5 widened this after an external review defeated it three ways, all of
+# them the commonest spellings a credential actually has:
+#
+#   * The key was anchored with `\b`, which cannot match between `_` and `P`.
+#     `DB_PASSWORD=` and `OPENAI_API_KEY=` therefore never matched at all. The
+#     key now absorbs the identifier it sits inside, on either side.
+#   * The separator allowed no closing quote, so `{"password": "..."}` — JSON,
+#     the commonest serialised form — went through untouched.
+#   * `Authorization: Bearer <token>` redacted the word `Bearer` and left the
+#     token, so the scheme is now part of the separator rather than the value.
+#
+# The two rules were assumed to cover for each other. They do not: none of
+# those values is long enough to reach `_LONG_OPAQUE`'s floor, so when the key
+# rule missed, nothing caught it.
 _SECRET_ASSIGNMENT = re.compile(
     r"""(?ix)
-    \b (?P<key> token | password | passwd | secret | api[_-]?key
-              | credential | authorization | bearer )
-    \s* (?P<sep> [=:] \s* ) (?P<quote> ["']? ) (?P<value> [^\s"',)]{4,} )
+    (?P<key>  [A-Za-z0-9_.-]*
+              (?: token | password | passwd | secret | api[_-]?key
+                | credential | authorization | bearer )
+              [A-Za-z0-9_.-]* )
+    (?P<sep>  ["']? \s* [=:] \s* (?: bearer \s+ )? )
+    (?P<quote> ["']? )
+    (?P<value> [^\s"',)]{4,} )
     """
 )
 _LONG_OPAQUE = re.compile(r"(?<![A-Za-z0-9+/=_-])[A-Za-z0-9+/=_-]{32,}(?![A-Za-z0-9+/=_-])")
+
+# The alphabet `_LONG_OPAQUE` measures. An excerpt boundary landing inside a
+# run of these is what `_widen_to_run_boundaries` exists to prevent.
+_RUN_CHARS = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=_-")
 
 
 @dataclass(frozen=True)
@@ -114,18 +141,49 @@ def redact(text: str) -> str:
     return _LONG_OPAQUE.sub(_REDACTED, text)
 
 
-def excerpt(line: str, start: int, end: int) -> str:
-    """The matched span with a small margin, truncated, then redacted.
+def _widen_to_run_boundaries(line: str, left: int, right: int) -> tuple[int, int]:
+    """Push both edges outward until neither sits inside a credential-shaped run.
 
-    Redaction runs last so it cannot be defeated by the truncation splitting a
-    secret in half — a truncated secret is still most of a secret.
+    A run cut at the boundary is a run the redactor can no longer measure:
+    `_LONG_OPAQUE` keys on length, so half a token is not a shorter finding, it
+    is no finding. Widening is linear in the line and bounded by it.
+    """
+    while left > 0 and line[left - 1] in _RUN_CHARS:
+        left -= 1
+    while right < len(line) and line[right] in _RUN_CHARS:
+        right += 1
+    return left, right
+
+
+def excerpt(line: str, start: int, end: int) -> str:
+    """The matched span with a small margin, redacted, then truncated to 200.
+
+    **Redaction runs before truncation** — the reverse of what this function
+    did until M3.5, and the reverse of what its own docstring claimed. The old
+    argument was that "redaction runs last so it cannot be defeated by the
+    truncation splitting a secret in half". That has the causality backwards:
+    redacting last means redacting text a cut has already shortened, and
+    `_LONG_OPAQUE` measures length. A 40-character credential cut to 20 drops
+    below the floor and stops being redactable at all. PRD G-3 says a
+    credential is "never reproduced", and twenty characters of one is a
+    reproduction.
+
+    Two things cut, not one. The 200-character cap is the obvious edge; the
+    ±24 margin is the same defect in different clothes, and it bites sooner,
+    because a credential sitting just past the margin is clipped to a handful
+    of characters before the redactor ever sees it. Both edges are widened
+    first, so what reaches `redact` contains whole runs or none.
+
+    Truncating after redaction can clip the `[REDACTED]` marker itself. That
+    is cosmetic — the secret is already gone, and a short marker is not one.
     """
     left = max(0, start - EXCERPT_MARGIN)
     right = min(len(line), end + EXCERPT_MARGIN)
-    span = line[left:right].strip()
+    left, right = _widen_to_run_boundaries(line, left, right)
+    span = redact(line[left:right].strip())
     if len(span) > EXCERPT_LIMIT:
         span = span[:EXCERPT_LIMIT]
-    return redact(span)
+    return span
 
 
 def window(lines: list[str], index: int) -> str:

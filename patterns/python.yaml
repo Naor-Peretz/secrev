@@ -11,7 +11,15 @@
 # Nothing here is a verdict. `exec.dynamic` matching does not mean the file is
 # unsafe; it means a reader has to answer where the argument came from.
 
-version: "2026.09.1"
+# Bumped alongside `_base.yaml`, which carries the reason: `log.sensitive`
+# gained a `{0,400}` bound in M3.5 and so matches differently on real targets,
+# which FR-4.6 makes an invalidation trigger.
+#
+# Not an independent decision. `catalog.load` refuses a mixed catalog — "one
+# run has one catalog_version" — so the version belongs to the whole catalog
+# rather than to a pack, and bumping only `_base.yaml` is not a valid state.
+# That check is what caught the half-change.
+version: "2026.09.2"
 
 patterns:
   - id: exec.shell_true

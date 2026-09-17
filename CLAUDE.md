@@ -11,7 +11,7 @@ seven kinds in `_surfaces.yaml`. Both gates are green and every stage has someth
 including the artifact half of the determinism stage, which compares real `recon.json` and **both
 blocks** of `hits.jsonl`.
 
-**M3 is complete in work** on `m3/overlays`, unpushed; M2 is closed and merged as PR #13. The
+**M3 is closed and merged as PR #14**; M2 as PR #13. The
 owner's decisions are in `.claude/TASKS_M3.md`, which is the ledger — read it before touching M3.
 `threat-models/` ships four files: `_agentic-core.md` (PRD §8.1's eight sections, `CORE-01`…
 `CORE-27`), `skill.md` and `mcp-server.md` (§8.2's six sections each, `SKILL-01`…`SKILL-10` and
@@ -24,8 +24,58 @@ true because the question-id pin is data (`tests/golden/question_ids.json`) rath
 with the pin in a test module, adding an archetype would have edited a script and AC-4 would have
 failed on its own terms.
 
-**The marker stays at `M3`** until `BRIEF_M4.md` and an M4 branch in `scope-guard.sh` exist. Moving
-it first write-locks the scoped tree (H-6), which is exactly what M1's close produced.
+**The marker now reads `M3.5`** — a hardening pass inserted between M3 and M4 by owner decision,
+after an external review found that a hostile target can hide code from the tool, hang it, or make
+it leak secrets into the ledger. `BRIEF_M3.5.md` scopes it. Rules landed before the marker, so there
+was no window in which the scoped tree was write-locked (H-6).
+
+**M3.5's work is complete — all fifteen Definition-of-done boxes — and the marker stays at `M3.5`
+until `BRIEF_M4.md` and its scope-guard rules exist.** Moving it first write-locks the scoped tree
+with no rules to permit anything (H-6). What changed, because most of it is behaviour the rest of
+this file describes:
+
+- **Two new flags.** `--exclude NAMES` *replaces* the default exclusion set (`--exclude ""` skips
+  nothing); `--max-file-bytes N` bounds what is read, default 5 MiB. Both are on `recon`, `sweep`
+  and `surfaces`, and both are recorded in `recon.json` rather than only in the invocation.
+- **Three "present but not read" fields** in `recon.json`, kept apart on purpose: `unreadable` (a
+  permission), `not_regular` (a FIFO, socket or device), `too_large` (a threshold). Different
+  problems with different remedies — folding them would send a reviewer to check file modes that
+  were never involved. `excluded` now lists what was *applied*, and `coverage_gaps` states it.
+- **A target can no longer stop the review.** A symlink loop, an unreadable file and a FIFO each
+  used to end it — the FIFO by blocking forever, with no exception and no timeout. All three now
+  complete and record the fact; an unreadable file is exit 2, never exit 3.
+- **G-3 actually redacts.** `\b` could not match inside `DB_PASSWORD`, JSON's quote broke the
+  separator, and redaction ran *after* truncation so a cut credential escaped the length floor.
+- **Binary is a proportion, not a single NUL** (`STACK.md` §5), so one NUL in a comment no longer
+  removes a file from review.
+- **Writes are atomic** and the workspace is `0o700`, because it holds `match_excerpt` values.
+- **`self_check.py` resolves import aliases.** AST-based was never the same as sound: it passed
+  nine spellings, including `os.system` and `__import__`, and had no tests at all.
+
+Four things were raised during M3.5 and all four are settled in
+`.claude/TASKS_M3.5.md`, none of them by leaving them alone:
+
+- **Five auto-approved rules removed.** Four read a file's contents to stdout and so defeated
+  `deny Read(**/.env)` through Bash while it refused the `Read` tool; one resolved and installed
+  dependencies, and build hooks are third-party code execution. They still run — they ask first.
+  `sha256sum` and `shasum` stay, because a digest is not the file, and `git diff` is allowlisted
+  separately.
+- **The licence allowlist read `;` and `,` as disjunctions**, so a package reporting two licences
+  passed on the permissive one. `_normalise` now returns groups of alternatives: every group must
+  be satisfied, one alternative within a group suffices.
+- **PRD §13 gained an M3.5 row**, between M3 and M4. A row rather than a renumbering, so every
+  existing reference in the PRD, the briefs and the receipts stays true.
+
+The ledger states each precisely. Note when editing this paragraph that
+`test_setup_advice_matches_stack_md` reads this file for setup advice and cannot tell a command
+*named as a finding* from one being recommended — it fired here once already. Rewriting the prose
+is the right answer rather than widening the assertion: what it protects is worth more than the
+phrasing.
+
+A milestone token may now carry a minor part. `attack.py` matched `M(\d+)` and correctly refused
+`M3.5` as "not a milestone token" (H-9); the harness's notion of a milestone was widened rather than
+the check weakened, and the same change stopped it building brief names with `range()` — a form that
+could only check briefs it could spell.
 
 M3 writes **prose**, so NFR-3 has no claim on it and the goldens do not cover it. What replaces
 that safety net is `tests/test_threat_models.py`: the question ids are a committed golden, so a
@@ -45,9 +95,9 @@ exits 0 on its placeholder path by design — a green conclusion alone would hav
 advertised install pipes a fetched script into a shell, which is `net.fetch_exec`, one of the nine
 patterns this tool ships.
 
-### The current milestone is M3
+### The current milestone is M3.5
 
-`.claude/MILESTONE` reads `M3`, and **M0, M1 and M2 are closed** — every box in the Definition of
+`.claude/MILESTONE` reads `M3.5`, and **M0, M1, M2 and M3 are closed** — every box in the Definition of
 done of `BRIEF_M0.md`, `BRIEF_M1.md` and `BRIEF_M2.md` is ticked, with per-task receipts in
 `.claude/receipts.md` and the ledgers in `.claude/TASKS_M0.md`, `.claude/TASKS_M1.md` and
 `.claude/TASKS_M2.md`. One obligation was carried across a milestone boundary rather than done, by
@@ -275,7 +325,12 @@ exits 2. And its blocking outdated-dependency check is deliberately absent: it t
 red for a release nobody in this repository made, which is the drift
 `.github/requirements/dev.txt` was pinned to avoid. Dependabot answers that question as a PR.
 
-`self_check.py` is AST-based on purpose. `shell=True` is a structure question, and a grep here
+`self_check.py` is AST-based on purpose, and **AST-based is not the same as sound**. Until M3.5 it
+tested the spelling at each call site, so an import alias or a `from x import y` walked straight
+past it — nine such spellings were measured exiting 0, on a file containing `os.system` and
+`__import__`. It now resolves names through the module's own imports before testing them, and
+`tests/test_self_check.py`, which did not exist until M3.5, carries all nine. `shell=True` is a
+structure question, and a grep here
 would be the exact mistake the catalog is designed not to make. The crude grep-shaped check inside
 `check.sh` is a separate backstop; both must pass and neither replaces the other.
 
@@ -389,7 +444,8 @@ the last checkpoint before work becomes history.
 | `BRIEF_M0.md` | Harness repair. Closed. |
 | `BRIEF_M1.md` | The pattern sweep — the first milestone that produced `src/secrev/`. Closed. |
 | `BRIEF_M2.md` | The surface source. Closed. |
-| `BRIEF_M3.md` | The threat-model layer. **Current.** §1 and §4 bind; §2 is written against M2's real output, not from the PRD alone. |
+| `BRIEF_M3.md` | The threat-model layer. Closed. |
+| `BRIEF_M3.5.md` | Hardening the reviewer against a hostile target. **Current.** Written against a review that ran the tool, not from the PRD — where a finding contradicts binding text, the text is corrected through spec-guard. |
 
 Resolution order: **a brief loses to `STACK.md`; `STACK.md` loses to the PRD on intent and wins on
 mechanism.** Where a brief and the PRD conflict, raise it rather than silently resolving — a
@@ -458,7 +514,9 @@ wrong invalidates everything above.
 - Skip `.git/`, and any directory named `node_modules`, `.venv`, `.venv-audit`, `venv`,
   `__pycache__`, `dist`, `build`, `.mypy_cache`, `.ruff_cache`, `.pytest_cache`, `.tox`, `.nox`,
   `.eggs` — exact names, not a pattern (`STACK.md` §5 has why), recorded in `recon.json` as
-  exclusions applied, never silently. Binary = NUL byte in first 8 KiB, inventoried but not swept.
+  exclusions applied, never silently. Binary = more than 5% non-text bytes in the first 8 KiB,
+  inventoried but not swept — **not** a single NUL, which was a one-byte scope evasion until M3.5
+  (`STACK.md` §5 carries the measurements behind the threshold).
   Symlinks never followed; one escaping the root is itself a candidate.
 - Two names that differ only by normalisation are refused, not merged
   (`inventory.NormalisationCollision`, exit 2). Both would derive one candidate id, so resolving one

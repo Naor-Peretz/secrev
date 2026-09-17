@@ -82,21 +82,61 @@ ALIASES = {
 SELF = "secrev"
 
 
-def _normalise(raw: str) -> list[str]:
-    """Split an expression into candidate SPDX ids, one of which must be allowed."""
-    text = raw.strip()
-    parts = [text]
-    for separator in (" OR ", ";", ","):
+def _normalise(raw: str) -> list[list[str]]:
+    """Licence groups that must *each* be satisfied, each a list of
+    alternatives of which *one* must be allowed.
+
+    `;` and `,` separate licences that all apply — they are how `pip-licenses`
+    joins multiple trove classifiers. `" OR "` offers a choice, and the
+    licensee takes it.
+
+    Until M3.5 all three were split identically into one flat list, and the
+    caller accepted when *any* entry was allowed. So `"MIT, GPL-3.0"` passed on
+    the strength of MIT alone: a check admitting exactly what it exists to
+    refuse, with every gate run green. `"MIT License; BSD License"` is two
+    groups of one; `"MIT OR Apache-2.0"` is one group of two.
+    """
+    groups = [raw.strip()]
+    for separator in (";", ","):
         expanded: list[str] = []
-        for part in parts:
-            expanded.extend(part.split(separator))
-        parts = expanded
-    out = []
-    for part in parts:
-        cleaned = part.strip()
-        if cleaned:
-            out.append(ALIASES.get(cleaned.lower(), cleaned))
+        for group in groups:
+            expanded.extend(group.split(separator))
+        groups = expanded
+
+    out: list[list[str]] = []
+    for group in groups:
+        alternatives = [
+            ALIASES.get(part.strip().lower(), part.strip())
+            for part in group.split(" OR ")
+            if part.strip()
+        ]
+        if alternatives:
+            out.append(alternatives)
     return out
+
+
+def is_allowed(raw: str) -> bool:
+    """Whether a licence expression is acceptable under `ALLOWED`.
+
+    Extracted from `main` in M3.5-013 so the decision can be tested at all: it
+    was inline in a function that shells out to `pip-licenses`, so nothing could
+    reach it without the audit venv installed.
+
+    Every group must be satisfied and one alternative within a group suffices,
+    which is what `;`/`,` and `" OR "` actually mean. This accepted when *any*
+    candidate anywhere was allowed until M3.5, so `"MIT, GPL-3.0"` passed on
+    MIT alone.
+
+    **The empty case is guarded explicitly, and that is not decoration.** The
+    old rule was `any(...)`, and `any([])` is `False`, so a package declaring no
+    licence was refused for free. The new rule is `all(...)`, and `all([])` is
+    `True` — so without this line, tightening the check would have silently
+    turned "no licence stated" into "acceptable".
+    """
+    groups = _normalise(raw)
+    if not groups:
+        return False
+    return all(any(candidate in ALLOWED for candidate in group) for group in groups)
 
 
 def _collect() -> list[dict[str, str]] | None:
@@ -144,7 +184,7 @@ def main() -> int:
         if name == SELF:
             continue
         checked += 1
-        if not any(candidate in ALLOWED for candidate in _normalise(raw)):
+        if not is_allowed(raw):
             disallowed.append(f"{name} {entry.get('Version', '?')}: {raw}")
 
     if disallowed:

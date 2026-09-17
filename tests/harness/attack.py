@@ -751,8 +751,16 @@ def test_documentation_architect_still_points_at_stack_md() -> None:
 # ------------------------------------------------------------ current milestone
 
 
-def test_milestone_marker_is_m3() -> None:
-    """M2 is closed, so the marker moves again.
+def test_milestone_marker_is_m3_5() -> None:
+    """M3 is closed, so the marker moves again — to `M3.5`, a hardening pass
+    inserted between M3 and M4 rather than a renumbering.
+
+    The dotted token is new and it broke an assertion by construction: the DoD
+    check below matched `M(\\d+)` and raised "not a milestone token" on `M3.5`.
+    That was the guard behaving correctly — refusing a state it could not reason
+    about (H-9) — so the harness's notion of a milestone was widened rather than
+    the check weakened. Found before the marker moved, which is the only time
+    finding it is cheap.
 
     It read M1 while BRIEF_M0.md sat unbuilt beside it, and TASK-011 pulled it
     back; leaving it at M0 after M0 closed would have refused every write to
@@ -767,12 +775,30 @@ def test_milestone_marker_is_m3() -> None:
     first, and only then the marker. Either order is survivable; only one of
     them is survivable without a window in which nothing can be written.
     """
-    assert (REPO / ".claude" / "MILESTONE").read_text(encoding="utf-8").strip() == "M3"
+    assert (REPO / ".claude" / "MILESTONE").read_text(encoding="utf-8").strip() == "M3.5"
 
 
 def _unticked(brief: str) -> list[str]:
     text = (REPO / brief).read_text(encoding="utf-8")
     return [line.strip() for line in text.splitlines() if line.strip().startswith("- [ ]")]
+
+
+# A milestone token, with an optional minor part. M3.5 was inserted between M3
+# and M4 rather than renumbering M4 to M12, which would have falsified every
+# existing reference in the PRD, the briefs and the receipts.
+_MILESTONE = re.compile(r"^M(\d+)(?:\.(\d+))?$")
+
+
+def _milestone_key(token: str) -> tuple[int, int] | None:
+    """`(major, minor)` for ordering, or None when the token is not one.
+
+    None rather than a default: the caller refuses on it. A marker the harness
+    cannot parse is a state it cannot reason about, and guessing `M0` there
+    would silence every assertion keyed off the marker (H-9)."""
+    match = _MILESTONE.match(token)
+    if match is None:
+        return None
+    return (int(match.group(1)), int(match.group(2) or 0))
 
 
 def test_m0_definition_of_done_is_fully_ticked() -> None:
@@ -796,17 +822,29 @@ def test_the_marker_may_not_pass_a_brief_with_open_boxes() -> None:
     Keyed off the marker rather than hardcoded, so it keeps working at M3
     without anyone remembering to extend it — which is exactly what did not
     happen the first time.
+
+    Briefs are enumerated from disk rather than built with `range()`. The
+    earlier form constructed `BRIEF_M0.md` … `BRIEF_M{n-1}.md`, so a brief whose
+    name it could not spell was invisible to it — and `BRIEF_M3.5.md` is exactly
+    that name. A check that silently skips what it cannot enumerate is the same
+    shape as the scope-guard hole M3's D-1 assertion found: an answer of
+    "nothing to see" produced by omission rather than by looking.
     """
     marker = (REPO / ".claude" / "MILESTONE").read_text(encoding="utf-8").strip()
-    if not (match := re.fullmatch(r"M(\d+)", marker)):
+    current = _milestone_key(marker)
+    if current is None:
         raise AssertionError(f"MILESTONE holds {marker!r}, which is not a milestone token")
 
-    for number in range(int(match.group(1))):
-        brief = f"BRIEF_M{number}.md"
-        if (REPO / brief).is_file():
-            assert not _unticked(brief), (
-                f"MILESTONE is {marker} but {brief} still has open DoD items: {_unticked(brief)}"
-            )
+    for path in sorted(REPO.glob("BRIEF_M*.md")):
+        key = _milestone_key(path.stem.removeprefix("BRIEF_"))
+        # `>= current` skips the brief at the marker, which is the one still
+        # being worked and is *expected* to have open boxes.
+        if key is None or key >= current:
+            continue
+        assert not _unticked(path.name), (
+            f"MILESTONE is {marker} but {path.name} still has open DoD items: "
+            f"{_unticked(path.name)}"
+        )
 
 
 def test_session_start_reports_the_marker_and_says_when_the_brief_is_absent() -> None:
@@ -969,6 +1007,68 @@ def test_m3_refuses_the_scoped_tree_for_its_own_reason() -> None:
         assert "no rules permitting this write" not in err, (
             f"M3 has rules; it must not refuse as though it had none: {err}"
         )
+
+
+def test_m3_5_permits_the_machinery_it_hardens() -> None:
+    """M3.5 fixes how the tool reads a hostile target (BRIEF_M3.5.md §1), so
+    its remit is src/, scripts/ and — unusually — patterns/.
+
+    patterns/ was refused under M2 and is permitted here for exactly one
+    rewrite: `log.sensitive` is quadratic on a crafted line. The brief bounds
+    that, not this guard, which cannot tell a rewritten regex from a changed
+    question. The fixture pair every pattern ships is what would catch the
+    latter."""
+    for relative in (
+        "src/secrev/ledger.py",
+        "src/secrev/surfaces.py",
+        "scripts/self_check.py",
+        "patterns/_base.yaml",
+    ):
+        rc, out = scope_at("M3.5", relative, "x = 1\n")
+        assert rc == PASS_THROUGH and not asks(out), (
+            f"M3.5 must be able to write {relative}, got rc={rc}"
+        )
+
+
+def test_m3_5_refuses_the_layers_it_does_not_own() -> None:
+    """Answered by name rather than by omission. The D-1 assertion in M3 cost a
+    real hole to find: a milestone branch refuses the directories it was
+    written against and answers "permit" by silence for every one added later,
+    so scoping a directory never decides what a milestone may do with it.
+
+    Note that `src/secrev/surfaces.py` is permitted above while `surfaces/` is
+    refused here — fixing how the surface source reads files is in remit, and
+    changing which entry points it looks for is not."""
+    for relative, expected in (
+        ("surfaces/_surfaces.yaml", "reachability classes"),
+        ("threat-models/_agentic-core.md", "threat models are M3"),
+    ):
+        with milestone_tree("M3.5") as tmp:
+            path = str(Path(tmp) / relative)
+            rc, _, err = run_hook(
+                "scope-guard.sh", write_payload(path, "x\n"), project_dir=Path(tmp)
+            )
+        assert rc == BLOCK, f"M3.5 must refuse {relative}, got rc={rc}"
+        assert expected in err, f"M3.5's refusal must give its own reason: {err}"
+        assert "no rules permitting this write" not in err, (
+            f"M3.5 has rules; it must not refuse as though it had none: {err}"
+        )
+
+
+def test_m3_5_does_not_object_to_its_own_subject() -> None:
+    """`scripts/self_check.py` is AST-based by design and has been since M0:
+    `shell=True` is a structure question, and a grep there would be the exact
+    mistake the catalog is designed not to make.
+
+    The heuristic that flags `import ast` exists to catch M4 arriving early in
+    the *product*. Firing it on the one file M3.5 is chartered to harden would
+    be a guard objecting to the work it exists to permit — which does not stop
+    the work, it moves it somewhere the guard cannot see, and costs every other
+    check in that file its credibility. Same reasoning as M2 and surfaces."""
+    rc, out = scope_at("M3.5", "scripts/self_check.py", "import ast\n\nast.parse(src)\n")
+    assert rc == PASS_THROUGH and not asks(out), (
+        f"M3.5 must not object to the AST in the file it hardens: {out}"
+    )
 
 
 def test_scope_guard_refuses_on_unknown_milestone() -> None:
@@ -1314,6 +1414,111 @@ def test_bash_guard_is_wired() -> None:
     assert any("bash-guard.sh" in command for command in commands), (
         "a Bash matcher exists but does not invoke bash-guard.sh"
     )
+
+
+# Every auto-approved rule, pinned. M3.5 E3.
+#
+# `test_bash_guard_is_wired` has parsed this same file since M0 — and reads
+# only `hooks.PreToolUse`. The half that grants execution was never looked at,
+# which is how `Bash(find:*)` and `Bash(uv run:*)` both arrived without anyone
+# noticing: not a missing parser, a parser aimed at the wrong half of the file.
+#
+# Pinned rather than pattern-matched, for the reason the owner settled in C-1
+# for question ids: discovery in code, the pin in data. A rule that tried to
+# recognise "arbitrary execution" would be a denylist over command shapes (P3),
+# and would need to be right about every shell in advance. A pin needs only to
+# be *noticed*, and every addition costs a deliberate edit here.
+AUTO_APPROVED = frozenset(
+    {
+        # `Bash(uv sync:*)` was removed in M3.5-010. It runs a dependency
+        # resolve and install, and build hooks are third-party code execution —
+        # against a `STACK.md` §3 that permits `uv` but says nothing may depend
+        # on it. `uv python` stays: installing an interpreter is not the same
+        # act, and nothing here is raised about it.
+        "Bash(uv python:*)",
+        "Bash(python3 scripts/self_check.py)",
+        "Bash(python3 scripts/determinism_check.py)",
+        "Bash(sh scripts/check.sh)",
+        "Bash(python3 -m pytest:*)",
+        "Bash(python3 -m ruff:*)",
+        "Bash(python3 -m mypy:*)",
+        "Bash(pytest:*)",
+        "Bash(ruff:*)",
+        "Bash(mypy:*)",
+        "Bash(git status:*)",
+        "Bash(git diff:*)",
+        "Bash(git log:*)",
+        "Bash(git branch:*)",
+        "Bash(git show:*)",
+        "Bash(git rev-parse:*)",
+        "Bash(git rev-list:*)",
+        "Bash(git remote:*)",
+        "Bash(git blame:*)",
+        "Bash(git shortlog:*)",
+        "Bash(git ls-files:*)",
+        "Bash(git stash list:*)",
+        "Bash(git add:*)",
+        "Bash(git restore --staged:*)",
+        "Bash(git checkout -b:*)",
+        "Bash(git switch -c:*)",
+        "Bash(gh auth status)",
+        "Bash(gh pr view:*)",
+        "Bash(gh pr list:*)",
+        "Bash(gh pr diff:*)",
+        "Bash(gh pr checks:*)",
+        "Bash(gh run list:*)",
+        "Bash(gh run view:*)",
+        # `ls`, `wc`, `head` and `diff` were removed in M3.5-010, settling the
+        # question that task's accept line names: `Bash(head:*)` against
+        # `deny Read(**/.env)`.
+        #
+        # Each of the four reads a file's contents to stdout, so each defeated
+        # the deny rule through Bash while it refused the `Read` tool. A deny
+        # that four allow rules walk around is worse than no deny, because it
+        # reads as protection — the same "two disagreeing" state E2 refused in
+        # the README, in the permission set instead.
+        #
+        # They still run; they ask first. `sha256sum` and `shasum` stay because
+        # they emit a digest rather than the file, and `git diff` is allowlisted
+        # separately, so reading a protected path for review is unaffected.
+        "Bash(sha256sum:*)",
+        "Bash(shasum:*)",
+        # `Bash(sh .claude/hooks/*)` was removed in M3.5-010. Permission
+        # matchers are prefix-based, so it auto-approved any command beginning
+        # with that prefix — arbitrary execution, and the reason DoD box E3's
+        # first clause was false. Precedent: `Bash(uv run:*)` went the same way
+        # in -000, for the same reason and at the same cost.
+    }
+)
+
+
+def test_the_auto_approved_allowlist_is_pinned() -> None:
+    """E3. Any change to what runs unattended has to be made here as well.
+
+    This does not claim the pinned set is *safe* — three entries in it are
+    raised as open questions in `.claude/TASKS_M3.5.md`. It claims only that
+    the set cannot change in silence, which is the property it lacked when two
+    execution grants arrived unnoticed.
+    """
+    settings = json.loads((REPO / ".claude" / "settings.json").read_text("utf-8"))
+    allow = set(settings.get("permissions", {}).get("allow", []))
+    assert allow, "permissions.allow is empty or unreadable — the pin cannot be checked (H-9)"
+
+    added = sorted(allow - AUTO_APPROVED)
+    removed = sorted(AUTO_APPROVED - allow)
+    assert not added, (
+        f"auto-approved rules added without review: {added}. Each one runs "
+        "unattended; add it to AUTO_APPROVED only after deciding it should."
+    )
+    assert not removed, f"auto-approved rules removed but still pinned here: {removed}"
+
+
+def test_the_deny_list_is_pinned_too() -> None:
+    """A deny rule removed is as consequential as an allow rule added, and
+    quieter: nothing fails, a refusal simply stops happening."""
+    settings = json.loads((REPO / ".claude" / "settings.json").read_text("utf-8"))
+    deny = set(settings.get("permissions", {}).get("deny", []))
+    assert deny == {"Read(**/.env)", "Read(**/.env.*)"}, f"deny list changed: {sorted(deny)}"
 
 
 def test_docs_no_longer_call_the_bypass_open() -> None:

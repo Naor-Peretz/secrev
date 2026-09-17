@@ -40,7 +40,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from secrev.inventory import EXCLUDED_DIRS, FileEntry, language_of, split_lines, walk
+from secrev.inventory import FileEntry, exclusions_applied, language_of, split_lines, walk
 
 # Files whose name marks them as tests, for `security_process.test_files`.
 _TEST_FILE = re.compile(r"(^|/)(test_[^/]+|[^/]+_test)\.[a-z]+$|(^|/)tests?/")
@@ -89,13 +89,32 @@ def slug(name: str) -> str:
 
 
 def _resolve_ref(git_dir: Path, ref: str) -> str | None:
-    """A ref's SHA from a loose file, then from `packed-refs`."""
+    """A ref's SHA from a loose file, then from `packed-refs`.
+
+    **The ref comes from the target's own HEAD**, so it is attacker-chosen
+    input to a path join. Until M3.5 it was joined verbatim: a target writing
+    `ref: ../../escape` walked straight out of the tree, and if the file it
+    landed on held 40 hex characters they were reported as the target's
+    version. No symlink needed — the target supplies the path directly. This
+    tool ships `path.traversal` as a rule, so being subject to it is the
+    self-application failure AC-10 exists to prevent.
+
+    Checked as a string rather than with `resolve()`. `resolve()` follows
+    symlinks, which is the thing being defended against, and M3.5-002 already
+    established that it raises `RuntimeError` on a symlink loop — a containment
+    check that can be hung by the tree it is containing is not a check.
+    """
+    if ref.startswith("/") or ".." in Path(ref).parts:
+        return None
+
     loose = git_dir / ref
-    if loose.is_file():
+    # `is_symlink` lstats and does not follow, so a link pointing out of the
+    # tree is refused rather than read.
+    if loose.is_file() and not loose.is_symlink():
         return loose.read_text(encoding="utf-8").strip() or None
 
     packed = git_dir / "packed-refs"
-    if packed.is_file():
+    if packed.is_file() and not packed.is_symlink():
         for line in packed.read_text(encoding="utf-8", errors="replace").splitlines():
             if line.startswith(("#", "^")):
                 continue
@@ -113,6 +132,13 @@ def git_identity(root: Path) -> tuple[str, str | None]:
     and "it is not a repository" are both better answers than a fabricated one.
     """
     git_dir = root / ".git"
+    # A symlinked `.git` is refused before anything else. `is_dir()` follows
+    # the link, so a target pointing `.git` at another checkout had that
+    # repository's HEAD read and its SHA reported as this target's version —
+    # and `STACK.md` §6 makes the version a directory in the workspace, so one
+    # tree's review would have been filed under another's history (M3.5 D1).
+    if git_dir.is_symlink():
+        return ("directory", None)
     if git_dir.is_file():
         # A worktree or submodule: `.git` is a file pointing elsewhere. Not
         # followed — the pointer leaves the target tree, and P9 makes that a
@@ -122,7 +148,7 @@ def git_identity(root: Path) -> tuple[str, str | None]:
         return ("directory", None)
 
     head = git_dir / "HEAD"
-    if not head.is_file():
+    if head.is_symlink() or not head.is_file():
         return ("directory", None)
 
     text = head.read_text(encoding="utf-8", errors="replace").strip()
@@ -140,8 +166,18 @@ def _entrypoints(root: Path) -> dict[str, list[str]]:
     """
     declared: list[str] = []
 
+    # `is_file()` follows symlinks, so until M3.5 a target shipping either
+    # manifest as a link had a file elsewhere on the machine read, parsed, and
+    # its declared entry points copied into `recon.json` — a quiet leak, since
+    # the entry points simply appear and nothing records where they came from.
+    #
+    # `inventory.walk` has never followed a symlink. These two files, and the
+    # `.git` pair above, are reached *by name* rather than found by the walk,
+    # so containment held for every file the tool discovered and failed for
+    # every file it went looking for. That is the shape worth remembering: the
+    # exception to a rule is wherever the rule is not the thing doing the work.
     pyproject = root / "pyproject.toml"
-    if pyproject.is_file():
+    if pyproject.is_file() and not pyproject.is_symlink():
         try:
             data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
         except (tomllib.TOMLDecodeError, OSError):
@@ -150,8 +186,9 @@ def _entrypoints(root: Path) -> dict[str, list[str]]:
         if isinstance(scripts, dict):
             declared += [f"{name} = {target}" for name, target in sorted(scripts.items())]
 
+    # The same breach by the other manifest; see the note above `pyproject`.
     package_json = root / "package.json"
-    if package_json.is_file():
+    if package_json.is_file() and not package_json.is_symlink():
         try:
             data = json.loads(package_json.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError):
@@ -204,8 +241,18 @@ _SURFACE_GAPS = (
 )
 
 
-def _coverage_gaps(languages: dict[str, int]) -> list[str]:
+def _coverage_gaps(languages: dict[str, int], applied: list[str] | None = None) -> list[str]:
     """FR-3.8: degrade honestly rather than pass over what is not covered.
+
+    `applied` names the excluded directories that were actually present, so a
+    skipped directory is a *stated* gap rather than one a reader has to infer
+    from `inventory.excluded` (M3.5 A2). That is A2's headline made true: a
+    target cannot hide code in an excluded directory without it being visible.
+
+    The line disappears when nothing was skipped — including when the set is
+    narrowed from the command line — so an override is visible in the artifact
+    and not only in the invocation that produced it. Defaulted so that callers
+    which do not pass it keep the previous output exactly.
 
     §3's example reads "structural analysis unavailable for: yaml, markdown",
     which implies structural analysis exists for the other languages. It exists
@@ -220,16 +267,48 @@ def _coverage_gaps(languages: dict[str, int]) -> list[str]:
     present = ", ".join(sorted(languages)) if languages else "none detected"
     code = sorted(name for name in languages if name not in _NOT_CODE and name != "python")
     others = f"not read for: {', '.join(code)}" if code else "no other code language present"
+
+    # First in the list, because a directory left unread is the largest gap
+    # this tool can have and the likeliest place for something to have been
+    # put. Everything below it is a limit on how well we read what we did read.
+    skipped: list[str] = []
+    if applied:
+        skipped.append(
+            "excluded from review and not read at all: "
+            f"{', '.join(applied)} — override the set with --exclude"
+        )
+
     return [
+        *skipped,
         f"structural analysis not implemented (M4); no coverage for: {present}",
         f"surface: code entry points are read in Python only; {others}",
         *_SURFACE_GAPS,
     ]
 
 
-def recon(root: Path) -> Recon:
-    entries = walk(root)
-    text_entries = [item for item in entries if not item.is_binary and not item.is_symlink]
+def recon(
+    root: Path,
+    excluded: frozenset[str] | None = None,
+    max_bytes: int | None = None,
+) -> Recon:
+    entries = walk(root, excluded, max_bytes)
+
+    # Computed once and used twice — reported in `inventory.excluded` and
+    # stated as a gap in `coverage_gaps`. Calling it again for the second use
+    # would put a third full walk of the tree in this function.
+    applied = exclusions_applied(root, excluded)
+    # Unreadable files are out of the text set: they have no countable lines
+    # and no language we are entitled to claim, since the extension is the only
+    # thing we ever saw. They are reported on their own footing below.
+    text_entries = [
+        item
+        for item in entries
+        if item.is_readable
+        and item.is_regular
+        and item.is_within_size_bound
+        and not item.is_binary
+        and not item.is_symlink
+    ]
 
     languages: dict[str, int] = {}
     loc_total = 0
@@ -258,6 +337,22 @@ def recon(root: Path) -> Recon:
             "by_language": {key: languages[key] for key in sorted(languages)},
             "loc_total": loc_total,
             "binary": sorted(item.path for item in entries if item.is_binary),
+            # Present, and not read. FR-3.8 requires degrading honestly rather
+            # than passing over what is not covered: a file absent from every
+            # list in this artifact reads as reviewed and clean, which is the
+            # one thing it is not.
+            "unreadable": sorted(item.path for item in entries if not item.is_readable),
+            # Present, and not a regular file: a FIFO, socket or device. Listed
+            # separately from `unreadable` because they are different facts —
+            # one is a permission the reviewer might be able to change, the
+            # other is a thing that has no content to review at all. Reading
+            # one of these is what hung the walk indefinitely before M3.5.
+            "not_regular": sorted(item.path for item in entries if not item.is_regular),
+            # Present, and larger than the size bound, so never read. A third
+            # fact rather than a variant of the two above: this one is a
+            # threshold the reviewer can raise with `--max-file-bytes`, where
+            # the others are a permission and a kind of file (STACK.md §5).
+            "too_large": sorted(item.path for item in entries if not item.is_within_size_bound),
             "symlinks": [
                 {
                     "path": item.path,
@@ -267,13 +362,23 @@ def recon(root: Path) -> Recon:
                 for item in sorted(entries, key=lambda item: item.path)
                 if item.is_symlink
             ],
-            # Recorded as applied, never silently (STACK.md §5). A reader
-            # cannot tell an empty `.git/` from a skipped one unless told.
-            "excluded": [f"{name}/" for name in sorted(EXCLUDED_DIRS)],
+            # Recorded as *applied*, never silently, and never as the constant
+            # (STACK.md §5). This emitted all fourteen names in EXCLUDED_DIRS
+            # until M3.5 — the directories the tool *could* skip rather than
+            # the ones it did — so the field answered a question nobody asked
+            # and a reader still could not tell a skipped `dist/` from an
+            # absent one. That distinction is the entire reason §5 requires
+            # exclusions to be recorded, and `dist/` is the sharp case: our
+            # build output, and a reviewed target's shipped artifact.
+            #
+            # `exclusions_applied` has existed and been correct since M1, with
+            # a docstring explaining exactly why the distinction matters. It
+            # was simply never called.
+            "excluded": applied,
         },
         entrypoints=_entrypoints(root),
         security_process=_security_process(root, entries),
-        coverage_gaps=_coverage_gaps(languages),
+        coverage_gaps=_coverage_gaps(languages, applied),
     )
 
 

@@ -109,8 +109,17 @@ def _file_hits(entry: FileEntry, text: str, catalog: Catalog) -> list[Hit]:
     return hits
 
 
-def sweep(root: Path, catalog: Catalog) -> list[Hit]:
+def sweep(
+    root: Path,
+    catalog: Catalog,
+    excluded: frozenset[str] | None = None,
+    max_bytes: int | None = None,
+) -> list[Hit]:
     """Every candidate in `root`, in a deterministic order.
+
+    `excluded` is threaded to `inventory.walk` and `None` means the default set
+    (M3.5 A2). Passed through rather than read here, because what a source
+    skips is a property of the walk and there must be exactly one answer to it.
 
     Binary files are inventoried but never swept (`STACK.md` §5) — matching a
     regex against decoded binary produces hits that mean nothing and windows
@@ -127,8 +136,18 @@ def sweep(root: Path, catalog: Catalog) -> list[Hit]:
     nothing, and this one had been read as scope.
     """
     hits: list[Hit] = []
-    for entry in walk(root):
-        if entry.is_binary or entry.is_symlink:
+    for entry in walk(root, excluded, max_bytes):
+        # Everything `inventory` already decided, honoured rather than retried.
+        # It tried and recorded the answer; a second read here would raise the
+        # PermissionError that ended the whole sweep before M3.5, or block on
+        # the FIFO, or spend the time the size bound exists to refuse.
+        if (
+            entry.is_binary
+            or entry.is_symlink
+            or not entry.is_readable
+            or not entry.is_regular
+            or not entry.is_within_size_bound
+        ):
             continue
         # `os_path`, never `path`: the record is NFC, the filesystem may not be.
         raw = (root / entry.os_path).read_bytes()

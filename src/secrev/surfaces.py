@@ -98,16 +98,35 @@ def _file_hits(entry: FileEntry, text: str, kinds: tuple[Kind, ...], version: st
     return hits
 
 
-def surfaces(root: Path, kinds: Kinds) -> list[Hit]:
+def surfaces(
+    root: Path,
+    kinds: Kinds,
+    excluded: frozenset[str] | None = None,
+    max_bytes: int | None = None,
+) -> list[Hit]:
     """Every surface candidate in `root`, in a deterministic order.
+
+    `excluded` is threaded to `inventory.walk`; `None` means the default set
+    (M3.5 A2). A peer source must skip exactly what the pattern source skips,
+    or an override would change scope for one and not the other.
 
     Binary files are inventoried but never read, and symlinks are never
     followed (`STACK.md` §5) — exactly as in the pattern source. A symlink
     escaping the root is a closure question, not a surface (TASKS_M2.md Q7).
     """
     hits: list[Hit] = []
-    for entry in walk(root):
-        if entry.is_binary or entry.is_symlink:
+    for entry in walk(root, excluded, max_bytes):
+        # `inventory` already tried; this does not try again (M3.5 C2 — the
+        # second read is what raised out of the run). A peer source must skip
+        # exactly what the pattern source skips, or the two disagree about
+        # scope and only one of them says so.
+        if (
+            entry.is_binary
+            or entry.is_symlink
+            or not entry.is_readable
+            or not entry.is_regular
+            or not entry.is_within_size_bound
+        ):
             continue
         applicable = tuple(kind for kind in kinds.kinds if kind.applies(entry.path))
         if not applicable:
