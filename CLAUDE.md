@@ -42,16 +42,21 @@ this file describes:
   classification). Different problems with different remedies — folding them would send a reviewer
   to check file modes that were never involved. `excluded` now lists what was *applied*, each
   non-empty bucket gets its own `coverage_gaps` line, capped at five names with a pointer to the
-  inventory field. A fifth field, `unread_code`, is those four filtered to what has a code
-  extension: it is what the exit code keys on, and it is in the artifact rather than derived in
+  inventory field. A fifth field, `unread_code`, is those four filtered to what is **not** a known
+  binary asset: it is what the exit code keys on, and it is in the artifact rather than derived in
   `cli.py` so the number a reader sees and the number the exit code came from are the same.
+  That polarity is the fourth review's correction. It asked "does this look like code" three times
+  — extension, then shebang, then a set of artifact names — and each was defeated by a file that
+  looked like something else, most recently `AGENT.md`, `prompt.txt` and an extensionless `setup`.
+  Naming what may be *skipped* puts the burden of enumeration on us.
 - **A target can no longer stop the review.** A symlink loop, an unreadable file and a FIFO each
   used to end it — the FIFO by blocking forever, with no exception and no timeout. All three now
-  complete and record the fact; an unreadable file is exit 2, never exit 3. **So is any file with a
-  code extension that went unread for any of the four reasons** — that half was missing until a
-  second review, so eight NUL bytes in a comment, or padding past `--max-file-bytes`, still bought
-  `0 candidates, exit 0`. An ordinary binary asset does not: exiting 2 on `binary` alone would fire
-  on nearly every real target, and a signal that is always on is H-1's habit in a new place.
+  complete and record the fact; an unreadable file is exit 2, never exit 3. **So is any file that
+  went unread for any of the four reasons unless its extension is a known binary asset** — that
+  half was missing until a second review, so eight NUL bytes in a comment, or padding past
+  `--max-file-bytes`, still bought `0 candidates, exit 0`. An ordinary binary asset does not:
+  exiting 2 on `binary` alone would fire on nearly every real target, and a signal that is always
+  on is H-1's habit in a new place.
 - **G-3 actually redacts.** `\b` could not match inside `DB_PASSWORD`, JSON's quote broke the
   separator, and redaction ran *after* truncation so a cut credential escaped the length floor. A
   second review found four more: URL userinfo (`scheme://user:pass@host`, which names no credential
@@ -70,8 +75,10 @@ this file describes:
   Alias resolution closed those; a second review then measured eleven more walking past the
   denylists, among them `yaml.load_all` and `yaml.unsafe_load_all`, which contradict "safe_load
   only" as directly as the three that *were* listed. Imports are now checked against
-  `ALLOWED_IMPORTS` and `yaml` members against `ALLOWED_YAML_ATTRS`. The `os` table stays a
-  denylist and says so where it is defined.
+  `ALLOWED_IMPORTS`, `yaml` members against `ALLOWED_YAML_ATTRS`, and `os` members against
+  `ALLOWED_OS_ATTRS` — the last inverted by a third review, after four more spellings walked past
+  the table whose own comment had said for two milestones that it could not be enumerated with
+  confidence.
 
 Four things were raised during M3.5 and all four are settled in
 `.claude/TASKS_M3.5.md`, none of them by leaving them alone:
@@ -352,8 +359,8 @@ past it — nine such spellings were measured exiting 0, on a file containing `o
 `__import__`. It resolves names through the module's own imports before testing them, and checks
 what remains against allowlists rather than denylists — the denylists survived M3.5 and let eleven
 further spellings through, which is P3 arriving where the file had already admitted it would.
-`tests/test_self_check.py`, which did not exist until M3.5, carries all twenty. `shell=True` is a
-structure question, and a grep here
+`tests/test_self_check.py`, which did not exist until M3.5, carries all twenty-four.
+`shell=True` is a structure question, and a grep here
 would be the exact mistake the catalog is designed not to make. The crude grep-shaped check inside
 `check.sh` is a separate backstop; both must pass and neither replaces the other.
 
