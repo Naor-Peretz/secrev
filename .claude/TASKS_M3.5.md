@@ -900,3 +900,52 @@ real lines rather than from invented ones.
 - **Redaction's remaining tail** — `Cookie: session=`, and any key naming a
   credential in a vocabulary the list does not carry — is the structural limit
   of redacting by key name, stated rather than chased.
+
+## The fourth review, 2026-09-18 — a commit message claimed a fix that did not exist
+
+Two findings. The first is the worst shape available to this project, because the false statement
+was in the previous commit's own message.
+
+- **`pwd=` and `MYSQL_ROOT_PW=` leaked, and the commit message said they were fixed.** `pwd` had
+  been added only to `_CLI_CREDENTIAL`, the space-separated flag form (`--pwd X`); `pw` was never
+  added at all. Neither reached `_SECRET_ASSIGNMENT`'s key list, so `pwd="…"` and `MYSQL_ROOT_PW=…`
+  went through untouched.
+  **The probe that cleared them failed by the coincidence this repository had already documented and
+  named.** It used a 28-character value, and `=` is inside `_LONG_OPAQUE`'s alphabet, so
+  `pwd=<28 chars>` reached exactly 32 characters and the *generic* rule caught it. That is the same
+  accident as `passphrase=correct-horse-battery` two reviews earlier — the one
+  `test_a_short_passphrase_is_redacted_by_the_key_rule_not_by_luck` exists to pin, in the very
+  module the probe was exercising. A green check whose greenness comes from somewhere other than its
+  subject is the F-class, and this time it produced a false claim in permanent history.
+  Fixed by adding `pwd` and `pw` to the key alternation, with tests naming the two strings that
+  commit message cited, a value short enough that the generic rule cannot reach them, and an
+  assertion that `len(...) < 32` so the coincidence cannot return unnoticed. A polarity control
+  holds `the pwd command prints a directory` unchanged, since `pwd` is also an ordinary command and
+  the separator is what distinguishes a key from a word.
+  **The history cannot be corrected.** `3906c51` and `f5dc0eb` are pushed; the claim is corrected
+  here, in the following commit message, and in the PR description, rather than by a force-push.
+- **`_AGENT_ARTIFACTS` was a denylist, written in the pass that inverted two others.** The third
+  review closed a NUL-in-`SKILL.md` evasion by adding names to a set — the polarity P3 refuses, and
+  the same pass had just inverted the `os` and `yaml` tables for that reason. A fourth review walked
+  past it three ways in one attempt: `AGENT.md` (singular, a real convention for several tools),
+  `prompt.txt`, and `setup` with no extension at all. Each cost a rename.
+  **Inverted.** An unread file counts as `unread_code` *unless* its extension is in
+  `_BINARY_ASSETS`, so the burden of enumeration moved from the target to us. It stays a pure
+  function of the path, which is what lets it cover the oversized case the third pass wrote down as
+  an accepted residue — a residue that was only ever a statement that padding is free, since
+  `setup` at 5 MB never opens and no test needing its bytes could reach it.
+  `has_shebang` is **removed** from `FileEntry`, and `_AGENT_ARTIFACTS` with it. Both are subsumed:
+  a file with a shebang either has no extension (not exempt) or a code extension (not exempt). A
+  field added one day earlier, carrying a comment claiming it closes an evasion that a different
+  mechanism now closes, is a debt rather than an asset.
+  The test is parametrised over `SKILL.md`, `AGENT.md`, `prompt.txt` and `notes.mdc`, and **none of
+  those names appears anywhere in the source** — they pass because their extensions are not
+  exempted, so a fifth spelling needs no code change. That is what the inversion buys, and it is
+  the difference between this fix and the one it replaces.
+
+**Accepted as structural, the reviewer agreeing:** `Cookie: session=`, a credential in a tuple
+position (`auth = ("admin", "x")`), and triple-quoted values. All three are the limit of redacting
+by key name rather than by shape.
+
+**Still open and correctly placed:** ledger flooding is M7's; whether `src/secrev` should be *held*
+to importing no process module is a `STACK.md` §2.1 amendment.

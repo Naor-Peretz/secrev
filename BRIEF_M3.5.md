@@ -138,13 +138,17 @@ checks that looked like they were working.
       disagree about scope". One held six names and the other fourteen — missing `.git`,
       `.venv-audit` and all five tool caches. Broken deliberately rather than repaired: what we skip
       linting *our* code and what we skip reviewing *someone else's target* are different questions.
-- [x] **A3 — No byte count and no missing extension removes a file from review.** *(Reopened twice.
+- [x] **A3 — Nothing about a file's name or size removes it from review.** *(Reopened three times,
+      and each reopening moved the evasion further from the thing the box originally named.
       First: one NUL stopped working in M3.5 and eight did not, because the target picks the ratio,
       so the answer is the exit code and a `coverage_gaps` line rather than a different threshold.
-      Then a third review moved the evasion off the byte count entirely — `install` with a shebang
-      and no extension, and a `SKILL.md` with a NUL in an HTML comment, were both still exit 0,
-      because the test for "is this code" was the extension. `_is_code` now asks three questions.
-      See `.claude/TASKS_M3.5.md`.)* A runnable `install.sh` carrying a
+      Then a third review moved it off the byte count entirely — `install` with a shebang and no
+      extension, and a `SKILL.md` with a NUL in an HTML comment, were both still exit 0, because
+      the test for "is this code" was the extension. That fix added a shebang check and a set of
+      artifact names, **which was itself a denylist**, and a fourth review walked past it with
+      `AGENT.md`, `prompt.txt` and a 5 MB `setup`. `_is_code` now asks one inverted question: an
+      unread file counts unless its extension is a known binary asset, so the burden of
+      enumeration is ours. See `.claude/TASKS_M3.5.md`.)* A runnable `install.sh` carrying a
       NUL in a comment produces the same candidate as one without it. Evidence: a fixture pair, and
       the sweep finding the same rule in both —
       `test_a_nul_in_a_comment_does_not_hide_a_script_from_the_sweep`, which failed first as

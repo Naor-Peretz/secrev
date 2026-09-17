@@ -293,27 +293,95 @@ _NOT_CODE = frozenset({"ini", "json", "markdown", "text", "toml", "yaml"})
 # failure as not reporting it, reached from the other side.
 _GAP_LIST_LIMIT = 5
 
-# Files that are an agentic artifact by *name*, whatever their extension says.
+# Extensions whose files are assets rather than content a reviewer reads. The
+# *only* thing that exempts an unread file from `unread_code`.
 #
-# The extension test calls these markdown or JSON, which `_NOT_CODE` treats as
-# carrying no entry points — true of documentation and false of these. A third
-# review put a NUL inside an HTML comment in a `SKILL.md` and removed two
-# candidates from the review at exit 0, and the instruction layer is where this
-# tool's own subject lives (P8): prose that reaches an agent's context is
-# behaviour-defining and is reviewed as such.
+# **This is the inversion, and it replaces a list of names.** The third review
+# closed a NUL-in-`SKILL.md` evasion by adding an `_AGENT_ARTIFACTS` set — which
+# is a denylist, the polarity P3 refuses, and it was written in the same pass
+# that inverted the `os` and `yaml` tables for exactly that reason. A fourth
+# review then walked past it three ways in one attempt: `AGENT.md` (singular,
+# a real convention for several tools), `prompt.txt`, and `setup` with no
+# extension at all. Each cost the attacker a rename.
 #
-# Matched on the lowercased basename because `STACK.md` §4 makes case a finding
-# class rather than portability — `.CLAUDE.md` and `claude.md` are one file on
-# macOS and two on Linux.
-_AGENT_ARTIFACTS = frozenset(
+# Naming what may be *skipped* moves the burden here. An unread file is a gap
+# unless we have said its extension carries no reviewable content, so the next
+# evasion is not a new name — it is a name we chose to exempt.
+#
+# Still a pure function of the path, which is what lets it cover the oversized
+# case the previous pass wrote down as an accepted residue. That residue was
+# only ever a statement that padding is free: `setup` at 5 MB never opens, so
+# any test needing its bytes could not reach it. This one needs none.
+#
+# Over-flagging is the deliberate direction (P4, P6): a stripped binary named
+# `mytool` with no extension is reported as unread code, and that costs a
+# reviewer one line to dismiss. The reverse costs a silent gap.
+_BINARY_ASSETS = frozenset(
     {
-        "skill.md",
-        "agents.md",
-        "claude.md",
-        "hooks.json",
-        ".mcp.json",
-        "mcp.json",
-        "claude_desktop_config.json",
+        # images
+        ".png",
+        ".jpg",
+        ".jpeg",
+        ".gif",
+        ".webp",
+        ".bmp",
+        ".ico",
+        ".tiff",
+        ".tif",
+        # fonts
+        ".woff",
+        ".woff2",
+        ".ttf",
+        ".otf",
+        ".eot",
+        # audio and video
+        ".mp3",
+        ".wav",
+        ".ogg",
+        ".flac",
+        ".mp4",
+        ".m4a",
+        ".mov",
+        ".avi",
+        ".webm",
+        # archives, and images of filesystems
+        ".zip",
+        ".gz",
+        ".tgz",
+        ".bz2",
+        ".xz",
+        ".zst",
+        ".7z",
+        ".rar",
+        ".tar",
+        ".iso",
+        ".img",
+        ".dmg",
+        ".pkg",
+        ".deb",
+        ".rpm",
+        # compiled output and opaque data
+        ".so",
+        ".dylib",
+        ".dll",
+        ".exe",
+        ".o",
+        ".a",
+        ".lib",
+        ".class",
+        ".jar",
+        ".wasm",
+        ".pyc",
+        ".pyo",
+        ".whl",
+        ".bin",
+        ".dat",
+        ".db",
+        ".sqlite",
+        ".sqlite3",
+        ".pdf",
+        ".pack",
+        ".idx",
     }
 )
 
@@ -321,18 +389,24 @@ _AGENT_ARTIFACTS = frozenset(
 def _is_code(entry: FileEntry) -> bool:
     """Whether a reviewer should care that this file went unread.
 
-    Three tests, in order of confidence. The extension is the cheap one. A
-    shebang is the file declaring itself executable regardless of its name, and
-    is the case the extension test cannot reach. The artifact names are the case
-    *both* miss, because their extension is real and says `markdown` or `json`.
+    One test, inverted: **everything counts unless its extension is a known
+    asset.** The three predecessors of this function each asked whether the file
+    *looked* like code — by extension, then by shebang, then by a list of
+    artifact names — and each was defeated by a file that looked like something
+    else. A question of the form "is this on my list of dangerous things" has an
+    answer the target chooses.
+
+    The basename is lowercased because `STACK.md` §4 makes case a finding class
+    rather than portability: `.PNG` and `.png` are one file on macOS and two on
+    Linux, and the exemption must not depend on which.
+
+    A file with no extension is not exempt, which is the `setup` and `install`
+    case; a dotfile's leading dot is part of its name, so `.env` has the suffix
+    `.env` and is not exempt either.
     """
-    language = language_of(entry.path)
-    if language is not None and language not in _NOT_CODE:
-        return True
-    if entry.has_shebang:
-        return True
     name = entry.path.rsplit("/", 1)[-1].lower()
-    return name in _AGENT_ARTIFACTS or name.endswith(".mdc")
+    suffix = name[name.rfind(".") :] if "." in name else ""
+    return suffix not in _BINARY_ASSETS
 
 
 # Present in the tree, and not read. One line each rather than one combined

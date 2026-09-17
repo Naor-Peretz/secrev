@@ -47,6 +47,41 @@ def test_keys_that_name_a_credential_without_saying_password() -> None:
         assert VALUE not in redact(line), line
 
 
+def test_the_abbreviated_password_keys_are_redacted() -> None:
+    """`pwd` and `pw`, and the reason this test names them literally.
+
+    A previous commit message claimed both were fixed. They were not: `pwd` had
+    been added only to the command-line flag rule (`--pwd X`), and `pw` not at
+    all, so `pwd="..."` and `MYSQL_ROOT_PW=...` went through untouched.
+
+    **The probe that cleared them failed the way this module already documents.**
+    It used a 28-character value, and `=` is inside the long-opaque alphabet, so
+    `pwd=<28 chars>` reached exactly 32 and the *generic* rule caught it — the
+    same coincidence the test directly below was written to pin. A claim in a
+    commit message is exactly as good as the check behind it, and that check was
+    green for a reason unrelated to its subject.
+
+    The two strings are the ones that message cited, verbatim, with a value
+    short enough that the generic rule cannot reach them.
+    """
+    short = "abc12345"
+    assert len(f"MYSQL_ROOT_PW={short}") < 32
+    for line in (f'pwd="{short}"', f"MYSQL_ROOT_PW={short}", f"pw={short}"):
+        assert short not in redact(line), line
+
+
+def test_an_abbreviated_key_without_a_separator_is_left_alone() -> None:
+    """The polarity control for the line above.
+
+    `pwd` is also an ordinary shell command, and `pw` is two characters. Both
+    sit inside `[A-Za-z0-9_.-]*`, so the guard against eating prose is the
+    separator: a key names a credential only when something is being assigned
+    to it.
+    """
+    line = "the pwd command prints a directory"
+    assert redact(line) == line
+
+
 def test_a_short_passphrase_is_redacted_by_the_key_rule_not_by_luck() -> None:
     """The case that *appeared* to pass, which is worse than one that failed.
 

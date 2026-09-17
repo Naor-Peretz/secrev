@@ -94,7 +94,7 @@ _REDACTED = "[REDACTED]"
 _SECRET_ASSIGNMENT = re.compile(
     r"""(?ix)
     (?P<key>  [A-Za-z0-9_.-]*
-              (?: token | password | passwd | passphrase | pgpass
+              (?: token | password | passwd | passphrase | pgpass | pwd | pw
                 | secret | api[_-]?key | private[_-]?key
                 | credential | authorization | bearer )
               [A-Za-z0-9_.-]* )
