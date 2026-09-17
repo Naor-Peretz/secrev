@@ -949,3 +949,46 @@ by key name rather than by shape.
 
 **Still open and correctly placed:** ledger flooding is M7's; whether `src/secrev` should be *held*
 to importing no process module is a `STACK.md` §2.1 amendment.
+
+## The fifth review, 2026-09-18 — F1 was closed on its sites, like the rest
+
+A fifth review found that the fix for the fourth had itself been applied to the occurrences that
+were demonstrated. `952fd8e` corrected two sentences in `CLAUDE.md` and left the same wording in
+the code — including in the line printed to `stderr`, which is the only one a user sees, and which
+was printed beside `setup`, `prompt.txt` and `AGENT.md`, none of which has a code extension.
+
+**Three mechanisms, not one phrase.** Searching the whole tree rather than the named sites found
+that `inventory.py`'s module docstring still stated "Binary — a NUL byte in the first 8 KiB", the
+rule a `STACK.md` §5 amendment replaced in this milestone; and that two comments in
+`self_check.py` referred to `BANNED_OS_PREFIXES` and `BANNED_OS_NAMES`, constants deleted when that
+table became an allowlist. A docstring is the worst placement of the three after a printed string:
+it is read first, and by someone who has come to change the thing it describes.
+
+**F1 was reopened and re-closed against the class**, on the precedent of A3, C3, D1, E1 and E3.
+
+**The method, now in `CLAUDE.md`.** The reviewer proposed searching the old mechanism name after any
+replacement. The refinement worth recording is that the *list of names must be derived, not
+remembered* — a remembered list is a denylist, and this milestone's own history is four rounds of
+those failing. `git log -p <base>..HEAD` over the branch's commits yields it; `git diff <base>...HEAD`
+does not, because a net diff cannot see an identifier introduced and removed inside the branch, and
+`_AGENT_ARTIFACTS` and `has_shebang` were precisely that. My first attempt used the net diff and
+missed both — the two the reviewer had named.
+
+**Raised, not decided: can this be enforced in a gate?** It is mechanism, so it is a real design
+question and does not belong in the margin of an already-long milestone. Three candidate shapes,
+recorded so the question is not lost:
+
+1. **A replacements registry** — a data file of `old name → new name, when, why`, with an assertion
+   that every occurrence of an old name sits inside a block marked historical. Honest and simple to
+   check; its cost is that the registry is itself a list someone must remember to append to, which
+   is the failure mode this whole rule exists to answer.
+2. **Derive from git in the assertion** — no registry. The check computes removed identifiers from
+   the branch's commits and fails on any unmarked occurrence in the working tree. Nothing to forget;
+   its cost is that it needs a base ref, so it covers one branch's replacements rather than the
+   project's whole history, and it would need a convention for marking prose as historical anyway.
+3. **Mark historical prose explicitly** — a convention (a leading `Was:`, or a marker comment) with
+   an assertion that any deleted identifier appears only inside such a block. The lightest to
+   implement and the easiest to drift, since nothing makes the marker appear.
+
+All three need the same missing piece: a machine-readable way to say "this sentence is a record,
+not an instruction". That is the decision, and it is the owner's.

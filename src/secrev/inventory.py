@@ -30,8 +30,16 @@ The rules, and what each one is actually defending against:
   Exclusions — applied, and recorded as applied. A reader cannot tell an empty
   `.git/` from a skipped one unless told.
 
-  Binary — a NUL byte in the first 8 KiB, never the extension. Inventoried,
-  not swept.
+  Binary — more than 5% non-text bytes in the first 8 KiB, never the extension.
+  Inventoried, not swept, and named in `coverage_gaps` so a skipped file is
+  stated rather than absent.
+
+  This said "a NUL byte in the first 8 KiB" until a fifth reading, which is the
+  rule a `STACK.md` §5 amendment replaced in this same milestone — after one
+  byte in a comment was shown to remove a whole file from review. A docstring
+  is where a reader goes to learn what a module decides, so a superseded rule
+  stated here is worse than one stated anywhere else in the file: it is read
+  first and by someone who has come to change the thing it describes.
 """
 
 from __future__ import annotations

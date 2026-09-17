@@ -317,6 +317,19 @@ checks that looked like they were working.
 - [x] **F1 — Every document claim in §1F is true or gone**, including the README status block, the
       README AST claim, `inventory.py`'s "recorded as applied", `excerpt()`'s ordering argument, and
       `catalog.py`'s ReDoS scoping.
+      *(Reopened and re-closed 2026-09-18. It had been closed on five sites found by one sweep —
+      the same shape as A3, C3, D1, E1 and E3, and the box most exposed to it, since its subject is
+      documents. A fifth review found three mechanisms whose replacement left claims standing: the
+      `stderr` line still said "have a code extension" while listing files that have none;
+      `inventory.py`'s module docstring still stated the NUL rule a `STACK.md` §5 amendment had
+      replaced; and two comments in `self_check.py` pointed at `BANNED_OS_PREFIXES` and
+      `BANNED_OS_NAMES`, constants that no longer exist.
+      **Re-closed against the class, with the search as the evidence.** The candidate names are
+      derived rather than remembered — `git log -p` over the branch, not `git diff`, because a net
+      diff cannot see an identifier introduced *and* removed inside the branch, which is exactly
+      what `_AGENT_ARTIFACTS` and `has_shebang` were. Every hit for all five replaced identifiers
+      and for the concept words was read and sorted: false, true-for-the-old-reason, or historical.
+      The method is written into `CLAUDE.md` so the next replacement inherits it.)*
       All five done — four landed with their own tasks (`excerpt()` in -001, `catalog.py` in -007,
       the README AST claim in -009, and `inventory.py`'s claim became true when -003 wired
       `exclusions_applied` in), and the README status block here.

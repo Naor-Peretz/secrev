@@ -401,22 +401,32 @@ def _incomplete(result: Recon) -> int:
     never that it is absent.
     """
     unreadable = result.inventory["unreadable"]
-    # Files with a code extension that nothing read, for any reason. Added after
-    # a second review showed that `unreadable` alone left two evasions at exit 0:
-    # eight NUL bytes in a comment classified a runnable `install.sh` as binary,
-    # and padding it past `--max-file-bytes` did the same, both with
-    # `0 candidates, exit 0` and no line in `coverage_gaps` naming the file.
+    # Files that nothing read, for any reason, and whose extension is not a
+    # known binary asset. Added after a second review showed that `unreadable`
+    # alone left two evasions at exit 0: eight NUL bytes in a comment classified
+    # a runnable `install.sh` as binary, and padding it past `--max-file-bytes`
+    # did the same, both with `0 candidates, exit 0` and no line in
+    # `coverage_gaps` naming the file.
     #
     # The docstring above already said why that is wrong — "exit 0 here would be
     # a clean review of a tree the tool could not fully see" — and the code
     # applied the reasoning to one of the four ways a file goes unread.
+    #
+    # **This comment said "files with a code extension" until a fifth reading.**
+    # That was true of the first version and false after the fourth review
+    # inverted the test — and the phrasing survived into the message printed to
+    # stderr below, which is worse: it named the mechanism that had just been
+    # defeated, on a line listing `setup`, `prompt.txt` and `AGENT.md`, none of
+    # which has a code extension. A correction applied to the documentation and
+    # not to the string beside it is the same half-fix this milestone keeps
+    # finding, one layer in.
     unread_code = result.inventory["unread_code"]
     if not unreadable and not unread_code:
         return EXIT_OK
 
     for count, what, paths in (
         (len(unreadable), "could not be read and were not reviewed", unreadable),
-        (len(unread_code), "have a code extension and were never read", unread_code),
+        (len(unread_code), "were never read and are not a known binary asset", unread_code),
     ):
         if not paths:
             continue

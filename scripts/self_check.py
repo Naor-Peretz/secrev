@@ -70,8 +70,10 @@ _SHELL_BINARIES = ("sh", "bash", "zsh", "dash", "ksh", "csh", "tcsh", "fish")
 # pseudo-terminal helper for process execution, a persistent-mapping module that
 # deserialises the same way `pickle` does, and the async API's shell variant.
 # Each is answered by one more row, and the next one is answered by the row
-# after that — the denylist treadmill P3 exists to refuse, and which the comment
-# above `BANNED_OS_PREFIXES` already admitted this file was on.
+# after that — the denylist treadmill P3 exists to refuse, and which the `os`
+# table's own comment already admitted this file was on. That table is now
+# `ALLOWED_OS_ATTRS` below, which is where the admission was finally acted on
+# rather than repeated.
 #
 # Note while editing this paragraph that the self-application guard reads it and
 # cannot tell a module *named as a finding* from one being imported. It refused
@@ -238,8 +240,8 @@ class Visitor(ast.NodeVisitor):
 
         `run = os.system` binds `system` under a name no table can match, and
         `run(cmd)` then reaches `visit_Call` as a bare `ast.Name` whose id is in
-        no list. Resolving it here means the existing `BANNED_OS_NAMES` row does
-        the work, rather than a new row for every spelling of the rebinding.
+        no list. Resolving it here means `ALLOWED_OS_ATTRS` does the work,
+        rather than a new entry for every spelling of the rebinding.
 
         Only `name = <dotted>`. A tuple target, a subscript, or a call on the
         right is left alone: `_dotted` returns "" for anything that is not a

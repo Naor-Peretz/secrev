@@ -208,6 +208,21 @@ What costs time every session, and how it goes instead:
 - **Branch names.** `m2/surfaces` itself matches the protected token, so `git push -u origin
   m2/surfaces` is refused. Use `git push -u origin HEAD` and `gh pr create` without `--head`.
   (An open finding in `TASKS_M2.md`: the guard should match only a path segment.)
+- **After replacing a mechanism, search the old name across the whole tree** — not only the diff,
+  and not only `src/`. Derive the candidates rather than recalling them: `git log -p <base>..HEAD`
+  and grep for removed definitions. A net `git diff` cannot see an identifier introduced *and*
+  removed inside the same branch, which is what `_AGENT_ARTIFACTS` and `has_shebang` were — the two
+  a reviewer had to find by hand. Then read every hit and sort it into three:
+  **false** (states the superseded rule — `inventory.py`'s docstring still gave the NUL rule after
+  §5 replaced it); **true for the old reason** (the claim holds, but its explanation names a
+  mechanism that is gone — no symptom, nothing red, and the hardest of the three to find: a test
+  comment said `big.js` "has a code extension", which is true of that file and is the rule the code
+  stopped using); and **historical** (records what the rule was and why it changed, which is right
+  and must not be "fixed"). Order the work by who reads it: a **printed string** first, because it
+  is the only one read beside the output it describes, so a stale one contradicts itself on screen;
+  then **product-code comments**, read by whoever comes to change the mechanism; then **test
+  comments**, read when a test fails — the moment someone is hunting for the contract and most
+  ready to believe what is written there.
 - **Goldens are regenerated, never repaired**: generate into the scratchpad, diff against the
   committed file, explain every changed line, then copy.
 - **Test values that must look secret must not be credential-shaped.** `gitleaks` exempts only

@@ -782,11 +782,16 @@ def test_the_size_bound_moves_with_the_flag(
     # `EXIT_USAGE`, and this assertion was `EXIT_OK` until a second review.
     #
     # It is not the subject of this test — the subject is that the flag moves
-    # the bound, which the two candidate lists below still carry. But `big.js`
-    # has a code extension and nothing read it, which is precisely the state
-    # DoD box A3 was reopened over: a target that pads a file past the bound
-    # must not get a clean run. The old value encoded the contract the fix
+    # the bound, which the two candidate lists below still carry. But nothing
+    # read `big.js` and `.js` is not a known binary asset, which is precisely
+    # the state DoD box A3 was reopened over: a target that pads a file past the
+    # bound must not get a clean run. The old value encoded the contract the fix
     # replaced, so it changes here rather than the behaviour changing back.
+    #
+    # The reason is stated as the rule that actually applies. This comment said
+    # "`big.js` has a code extension", which is true of this file and is the
+    # *superseded* test — a comment that explains a passing assertion by a rule
+    # the code no longer uses teaches the wrong one to whoever reads it next.
     assert (
         run(
             [

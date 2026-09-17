@@ -620,10 +620,15 @@ def recon(
             # threshold the reviewer can raise with `--max-file-bytes`, where
             # the others are a permission and a kind of file (STACK.md §5).
             "too_large": unread["too_large"],
-            # The four lists above, filtered to what has a code extension. It is
-            # what `cli._incomplete` keys the exit code on, and it is in the
-            # artifact rather than derived there so that the number a reader
-            # sees and the number the exit code was computed from are the same.
+            # The four lists above, filtered to what is *not* a known binary
+            # asset. It is what `cli._incomplete` keys the exit code on, and it
+            # is in the artifact rather than derived there so that the number a
+            # reader sees and the number the exit code was computed from are the
+            # same.
+            #
+            # This said "filtered to what has a code extension" until a fifth
+            # reading, which was the rule before `_is_code` was inverted and is
+            # the one `AGENT.md` and an extensionless `setup` defeated.
             "unread_code": unread_code,
             "symlinks": [
                 {
