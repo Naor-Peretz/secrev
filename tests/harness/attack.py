@@ -751,16 +751,24 @@ def test_documentation_architect_still_points_at_stack_md() -> None:
 # ------------------------------------------------------------ current milestone
 
 
-def test_milestone_marker_is_m3_5() -> None:
-    """M3 is closed, so the marker moves again — to `M3.5`, a hardening pass
-    inserted between M3 and M4 rather than a renumbering.
+def test_milestone_marker_is_m4() -> None:
+    """M3.5 is closed and merged as PR #15, so the marker moves to `M4`.
 
-    The dotted token is new and it broke an assertion by construction: the DoD
-    check below matched `M(\\d+)` and raised "not a milestone token" on `M3.5`.
-    That was the guard behaving correctly — refusing a state it could not reason
-    about (H-9) — so the harness's notion of a milestone was widened rather than
-    the check weakened. Found before the marker moved, which is the only time
-    finding it is cheap.
+    **Moved last, and that order is the whole content of this assertion.**
+    `BRIEF_M4.md` and the M4 case in `scope-guard.sh` landed first, with three
+    assertions above exercising that case, and only then this file. Moving the
+    marker first write-locks the scoped tree against a milestone nobody has
+    scoped — `scope-guard.sh` ends in `refuse_no_rules`, so every write to
+    `src/` would be refused until the brief existed (H-6). That is not a
+    hypothetical: it is what happened between M1 closing and `BRIEF_M2.md`
+    being written, and the remedy is to write the brief, never to move the
+    marker back to buy write access.
+
+    The dotted token that preceded this one was new and broke an assertion by
+    construction: the DoD check below matched `M(\\d+)` and raised "not a
+    milestone token" on `M3.5`. That was the guard behaving correctly — refusing
+    a state it could not reason about (H-9) — so the harness's notion of a
+    milestone was widened rather than the check weakened.
 
     It read M1 while BRIEF_M0.md sat unbuilt beside it, and TASK-011 pulled it
     back; leaving it at M0 after M0 closed would have refused every write to
@@ -768,14 +776,15 @@ def test_milestone_marker_is_m3_5() -> None:
     harness's only notion of where the project is and it is wrong in both
     directions if nobody moves it.
 
-    The M2 move was made before scope-guard.sh had M2 rules, so H-6 correctly
-    refused every write to the scoped tree until BRIEF_M2.md existed — the
-    guard saying the project claimed a milestone nobody had scoped. This move
-    was made the other way round: the M3 branch and its assertions landed
-    first, and only then the marker. Either order is survivable; only one of
-    them is survivable without a window in which nothing can be written.
+    Both orders have now been tried. The M2 move was made before
+    `scope-guard.sh` had M2 rules, and H-6 correctly refused every write to the
+    scoped tree until `BRIEF_M2.md` existed — the guard saying the project
+    claimed a milestone nobody had scoped. M3, M3.5 and this one were made the
+    other way round: brief and rules first, marker last. Either order is
+    survivable; only one is survivable without a window in which nothing can be
+    written.
     """
-    assert (REPO / ".claude" / "MILESTONE").read_text(encoding="utf-8").strip() == "M3.5"
+    assert (REPO / ".claude" / "MILESTONE").read_text(encoding="utf-8").strip() == "M4"
 
 
 def _unticked(brief: str) -> list[str]:
@@ -1068,6 +1077,69 @@ def test_m3_5_does_not_object_to_its_own_subject() -> None:
     rc, out = scope_at("M3.5", "scripts/self_check.py", "import ast\n\nast.parse(src)\n")
     assert rc == PASS_THROUGH and not asks(out), (
         f"M3.5 must not object to the AST in the file it hardens: {out}"
+    )
+
+
+def test_m4_permits_the_source_it_builds() -> None:
+    """M4 is the structural source (BRIEF_M4.md §1): src/ for `structure.py`,
+    the `Parser` interface and the CLI subcommand; scripts/ because
+    `determinism_check.py` must compare the structure block as it already
+    compares the other two; `structure/` for the rule data; and tests/golden/
+    for the goldens that make NFR-3 checkable rather than aspirational."""
+    for relative in (
+        "src/secrev/structure.py",
+        "src/secrev/cli.py",
+        "scripts/determinism_check.py",
+        "structure/_structure.yaml",
+        "tests/golden/hits.jsonl",
+    ):
+        rc, out = scope_at("M4", relative, "x = 1\n")
+        assert rc == PASS_THROUGH and not asks(out), (
+            f"M4 must be able to write {relative}, got rc={rc}"
+        )
+
+
+def test_m4_refuses_the_layers_it_does_not_own() -> None:
+    """Answered by name, which is the D-1 lesson M3 paid a failed assertion for.
+
+    `patterns/` is the interesting one: it was *permitted* under M3.5 for a
+    single rewrite and is refused here, so this is a deliberate narrowing rather
+    than a branch nobody updated. BRIEF_M4.md §1 says no pattern is added — a
+    structural rule wanting a pattern that does not exist is a finding about the
+    catalog, not a pack edited inside the milestone that would benefit from it.
+
+    `surfaces/` is refused while `src/secrev/structure.py` is permitted above,
+    for the reason M3.5 already records about its own remit: writing a source is
+    in scope, reaching into another source's data is not (D-11)."""
+    for relative, expected in (
+        ("surfaces/_surfaces.yaml", "reachability class"),
+        ("patterns/python.yaml", "M4 adds no patterns"),
+        ("threat-models/_agentic-core.md", "threat models are M3"),
+    ):
+        with milestone_tree("M4") as tmp:
+            path = str(Path(tmp) / relative)
+            rc, _, err = run_hook(
+                "scope-guard.sh", write_payload(path, "x\n"), project_dir=Path(tmp)
+            )
+        assert rc == BLOCK, f"M4 must refuse {relative}, got rc={rc}"
+        assert expected in err, f"M4's refusal must give its own reason: {err}"
+        assert "no rules permitting this write" not in err, (
+            f"M4 has rules; it must not refuse as though it had none: {err}"
+        )
+
+
+def test_m4_does_not_object_to_the_ast_it_owns() -> None:
+    """The heuristic that flags `import ast` names M4 as the answer in its own
+    message. Firing it *under* M4 would be the guard contradicting itself, and
+    the same shape as M2 objecting to surfaces or M3.5 objecting to the AST in
+    the file it hardens: it does not stop the work, it moves it somewhere the
+    guard cannot see, and costs every other check in that file its credibility.
+
+    Scoped rather than removed — the objection is still right for M1, M2 and
+    M3, and each of those is asserted elsewhere in this file."""
+    rc, out = scope_at("M4", "src/secrev/structure.py", "import ast\n\nast.parse(src)\n")
+    assert rc == PASS_THROUGH and not asks(out), (
+        f"M4 must not object to the AST that is its entire subject: {out}"
     )
 
 

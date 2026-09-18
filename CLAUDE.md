@@ -11,7 +11,7 @@ seven kinds in `_surfaces.yaml`. Both gates are green and every stage has someth
 including the artifact half of the determinism stage, which compares real `recon.json` and **both
 blocks** of `hits.jsonl`.
 
-**M3 is closed and merged as PR #14**; M2 as PR #13. The
+**M3.5 is closed and merged as PR #15**; M3 as PR #14, M2 as PR #13. The
 owner's decisions are in `.claude/TASKS_M3.md`, which is the ledger — read it before touching M3.
 `threat-models/` ships four files: `_agentic-core.md` (PRD §8.1's eight sections, `CORE-01`…
 `CORE-27`), `skill.md` and `mcp-server.md` (§8.2's six sections each, `SKILL-01`…`SKILL-10` and
@@ -24,15 +24,22 @@ true because the question-id pin is data (`tests/golden/question_ids.json`) rath
 with the pin in a test module, adding an archetype would have edited a script and AC-4 would have
 failed on its own terms.
 
-**The marker now reads `M3.5`** — a hardening pass inserted between M3 and M4 by owner decision,
+**M3.5 was a hardening pass inserted between M3 and M4** by owner decision,
 after an external review found that a hostile target can hide code from the tool, hang it, or make
 it leak secrets into the ledger. `BRIEF_M3.5.md` scopes it. Rules landed before the marker, so there
 was no window in which the scoped tree was write-locked (H-6).
 
-**M3.5's work is complete — all fifteen Definition-of-done boxes — and the marker stays at `M3.5`
-until `BRIEF_M4.md` and its scope-guard rules exist.** Moving it first write-locks the scoped tree
-with no rules to permit anything (H-6). What changed, because most of it is behaviour the rest of
-this file describes:
+**M3.5 is closed and merged** — all fifteen Definition-of-done boxes, and **six external review
+rounds after the first commit**, five of which found the same shape: a fix applied to the case that
+had been demonstrated rather than to the class behind it. A3, C3, D1, E1 and E3 were each reopened
+and re-closed at least once for that reason; A3 three times. `CLAUDE.md`'s own rule about searching
+a replaced mechanism's old name across the whole tree came out of the last two rounds, and was
+itself run narrowly the first time.
+
+The marker now reads `M4`, moved **after** `BRIEF_M4.md` and the M4 case in `scope-guard.sh`
+existed and had assertions exercising them. Moving it first write-locks the scoped tree with no
+rules to permit anything (H-6). What M3.5 changed, because most of it is behaviour the rest of this
+file describes:
 
 - **Two new flags.** `--exclude NAMES` *replaces* the default exclusion set (`--exclude ""` skips
   nothing); `--max-file-bytes N` bounds what is read, default 5 MiB. Both are on `recon`, `sweep`
@@ -123,9 +130,10 @@ exits 0 on its placeholder path by design — a green conclusion alone would hav
 advertised install pipes a fetched script into a shell, which is `net.fetch_exec`, one of the nine
 patterns this tool ships.
 
-### The current milestone is M3.5
+### The current milestone is M4
 
-`.claude/MILESTONE` reads `M3.5`, and **M0, M1, M2 and M3 are closed** — every box in the Definition of
+`.claude/MILESTONE` reads `M4` — the structural source, `BRIEF_M4.md`. **M0, M1, M2, M3 and M3.5 are
+closed**, the last merged as PR #15. Every box in the Definition of
 done of `BRIEF_M0.md`, `BRIEF_M1.md` and `BRIEF_M2.md` is ticked, with per-task receipts in
 `.claude/receipts.md` and the ledgers in `.claude/TASKS_M0.md`, `.claude/TASKS_M1.md` and
 `.claude/TASKS_M2.md`. One obligation was carried across a milestone boundary rather than done, by
