@@ -227,6 +227,15 @@ and applies here identically; see §6 Q5.
       `fd2d00f`, and three assertions in `attack.py` exercising the new case (120 -> 123).
 - [x] **G2 — The marker moves to `M4` only after G1**, never before (H-6). Evidence: the ordering
       within `fd2d00f` — brief, then rules, then assertions, then `.claude/MILESTONE` last.
+- [x] **G3 — `structure/` is protected and scoped in the change that creates it**, as `surfaces/`
+      was in M2 and `threat-models/` in M3 — H-4 in `STACK.md` §8, `PROTECTED` in `bash_guard.py`,
+      and `is_scoped_path`. It needs an entry of its own only because Q1 put the rule file in a
+      directory of its own; under the PRD's original tree `patterns/` would have covered it, which
+      is a consequence of that decision worth naming rather than discovering. **The M4 scope case
+      now answers `structure/` by name**: it ended in a catch-all permit, so
+      `test_m4_permits_the_source_it_builds` had been green for a directory `is_scoped_path` had
+      never heard of. A permit assertion cannot tell "allowed by name" from "allowed by silence";
+      `test_scope_guard_covers_structure` is the refusal that can. 125 -> 129 assertions.
 - [ ] Both gates green; self-application clean; every golden regenerated deliberately and every
       changed line explained.
 

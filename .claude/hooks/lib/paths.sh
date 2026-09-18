@@ -47,6 +47,12 @@ is_scoped_path() {
       # The surface kinds (M2, TASKS_M2.md C-1): data like the catalog, and
       # scoped like it — self-application does not apply, milestone scope does.
       surfaces/*|*/surfaces/*) return 0 ;;
+      # The structural rules (M4, BRIEF_M4.md §6 Q1). Third data directory on
+      # the same terms, and absent from is_self_application_path for the same
+      # reason patterns/ is: a rule that asks about `eval` names `eval`, and
+      # running the self-application check over the question would refuse the
+      # tool for describing what it exists to find.
+      structure/*|*/structure/*) return 0 ;;
       # The threat models (M3, TASKS_M3.md D-1). Prose rather than data, and
       # read by the reviewing agent rather than by a script — so the mechanism
       # differs from patterns/ and surfaces/ while the failure mode does not: a

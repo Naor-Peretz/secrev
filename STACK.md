@@ -445,9 +445,17 @@ It is in scope for AC-10, and the rules below are binding on it.
 - **H-3 — Guards cover every tool that can write, not every tool that usually writes.**
   `Write|Edit|MultiEdit` alone leaves `Bash` as an open path. Under P7 a write is an execution
   primitive regardless of which tool performed it.
-- **H-4 — Protected paths are `src/`, `patterns/`, `surfaces/`, `scripts/`, `threat-models/`,
-  `tests/golden/` and `.claude/`.** `threat-models/` joined in M3 (`TASKS_M3.md` D-1), in the
-  change that created it.
+- **H-4 — Protected paths are `src/`, `patterns/`, `surfaces/`, `structure/`, `scripts/`,
+  `threat-models/`, `tests/golden/` and `.claude/`.** `threat-models/` joined in M3
+  (`TASKS_M3.md` D-1), in the change that created it.
+
+  **`structure/` joined in M4** (`BRIEF_M4.md` §6 Q1), likewise in the change that created it and
+  on the same argument as `patterns/` and `surfaces/`: the structural rules are the tool's input.
+  Their parameters decide which calls count as sinks and which functions count as validating, so an
+  unreviewed edit is a structural check that stops firing while every run still reports success. It
+  needs its own entry only because the owner placed the file in a directory of its own rather than
+  under `patterns/`, correcting the §7 tree — had it landed where the PRD tree put it, `patterns/`
+  would already have covered it.
   Its case is not identical to the two below it and the difference is stated rather than glossed:
   the catalog and the kinds are data a script reads, while an overlay is prose a reviewing agent
   reads. The failure mode is what transfers — a mandatory question deleted from an overlay is a

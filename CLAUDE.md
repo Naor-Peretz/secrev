@@ -209,6 +209,7 @@ deterministic output is silent under `determinism-guard.sh` until it is added.
 What costs time every session, and how it goes instead:
 
 - **Staging protected paths.** `bash-guard.sh` refuses `git add` naming `src/`, `patterns/`,
+  `structure/`,
   `surfaces/`, `scripts/` or `.claude/`. The owner stages those with `! git add …`; then commit
   with no pathspec. Never route around it (`git add -A`, `commit -a`, assembling the path).
 - **Commit messages and PR bodies.** A command naming a protected path *and* containing a newline
@@ -239,8 +240,8 @@ What costs time every session, and how it goes instead:
   committed file, explain every changed line, then copy.
 - **Test values that must look secret must not be credential-shaped.** `gitleaks` exempts only
   `tests/fixtures/`, and `.gitleaks.toml` is not widened to make a test pass.
-- **Fixture directories are never named `src`, `patterns`, `surfaces` or `scripts`** — the guards
-  would treat them as protected.
+- **Fixture directories are never named `src`, `patterns`, `surfaces`, `structure` or `scripts`**
+  — the guards would treat them as protected.
 - **GitHub comments and PR bodies** posted for the owner end with
   `🤖 Posted by Claude Code on behalf of @Naor-Peretz`.
 
@@ -259,7 +260,8 @@ directory index orders by a hash of the name; it is kept as a cross-filesystem c
 labelled as not being the control.
 
 **The Bash bypass is narrowed, not closed.** `bash-guard.sh` is wired as a `PreToolUse` matcher on
-`Bash`, and a write to `src/`, `patterns/`, `surfaces/`, `scripts/` or `.claude/` through a shell is
+`Bash`, and a write to `src/`, `patterns/`, `surfaces/`, `structure/`, `scripts/` or `.claude/`
+through a shell is
 refused. It is a guardrail against mistakes: the trigger is a test over path spellings, so a glob, a
 variable or a `cd` defeats it, and the file says so in its own KNOWN LIMIT. It also over-matches in
 the other direction — a bare word equal to a protected name, such as the subcommand `secrev
@@ -448,7 +450,7 @@ them, no tool that can write to a protected path is unwatched (H-3).
 
 | Hook | Event | Effect |
 |---|---|---|
-| `bash-guard.sh` | PreToolUse Bash | **Refuses** a Bash command touching `src/`, `patterns/`, `surfaces/`, `scripts/` or `.claude/` unless it reads (allowlisted command) or runs an existing script (`sh <x.sh>`, `python3 <x.py>`, no flags). Every shell operator refuses — chaining carries a write past the command that was checked |
+| `bash-guard.sh` | PreToolUse Bash | **Refuses** a Bash command touching `src/`, `patterns/`, `surfaces/`, `structure/`, `scripts/` or `.claude/` unless it reads (allowlisted command) or runs an existing script (`sh <x.sh>`, `python3 <x.py>`, no flags). Every shell operator refuses — chaining carries a write past the command that was checked |
 | `self-application-guard.sh` | PreToolUse Write/Edit | **Blocks** a write that would put `eval`, `exec`, `pickle`, `shell=True`, `yaml.load`, `Loader=`, or a network client into Python under `src/` or `scripts/` |
 | `scope-guard.sh` | PreToolUse Write/Edit | **Asks** when a write reaches past the milestone in `.claude/MILESTONE`; **refuses** when that milestone has no rules (H-6) |
 | `spec-guard.sh` | PreToolUse Write/Edit | **Asks** before any edit to the PRD, `STACK.md`, or a brief, restating precedence |
@@ -612,11 +614,12 @@ stays there.
   `python -c`, `dd` is not a closeable list. Reaching for another verb to block means the polarity
   is wrong — which is P3 applied to our own tooling, and this project's founding finding was a
   denylist bypass.
-- **H-4** Protected paths are `src/`, `patterns/`, `surfaces/`, `scripts/`, `threat-models/`,
-  `tests/golden/` and `.claude/` — `patterns/` and `surfaces/` especially, since they are the
-  tool's input and an unreviewed rule or surface kind is a check that silently disappears (a kind
-  decides which entry points enter the ledger at all). `surfaces/` joined in M2 and
-  `threat-models/` in M3, each in the change that created it. `tests/golden/` joined in M3: the
+- **H-4** Protected paths are `src/`, `patterns/`, `surfaces/`, `structure/`, `scripts/`,
+  `threat-models/`, `tests/golden/` and `.claude/` — the three data directories especially, since
+  they are the tool's input and an unreviewed rule, surface kind or structural parameter is a check
+  that silently disappears (a kind decides which entry points enter the ledger at all; a structural
+  parameter decides which calls count as sinks). `surfaces/` joined in M2,
+  `threat-models/` in M3 and `structure/` in M4, each in the change that created it. `tests/golden/` joined in M3: the
   question-id pin had to be data rather than Python for AC-4 to stay true, and a pin editable
   without review is protection one step from what it protects. The artifact goldens inherit it,
   which is right — a golden edited without review is a comparison that stops comparing. `.claude/`

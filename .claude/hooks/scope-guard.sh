@@ -256,12 +256,17 @@ case "$MILESTONE" in
           echo "does not exist is a finding about the catalog, recorded in the"
           echo "ledger — not a pack edited inside the milestone that would benefit."
           echo
-          echo "If BRIEF_M4.md §6 Q1 resolves toward the PRD's §7 tree, the rule"
-          echo "file lands at patterns/_structure.yaml and this branch is wrong."
-          echo "Change it when the owner answers, not to get a write through."
+          echo "Q1 is answered: the rule file is structure/_structure.yaml, not"
+          echo "patterns/_structure.yaml, so this branch stays right. It said to"
+          echo "change it only when the owner answered — they did, the other way."
         } >&2
         exit 2
         ;;
+      # Answered by name, not by falling through to the permit below. A branch
+      # written before a directory exists permits that directory by silence,
+      # which is the D-1 lesson M3 paid a failed assertion for — and structure/
+      # is precisely a directory that did not exist when this case was written.
+      *structure/*) exit 0 ;;
       *threat-models/*)
         {
           echo "BLOCKED — the threat models are M3's, and closed."

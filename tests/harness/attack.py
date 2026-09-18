@@ -414,6 +414,26 @@ def test_bash_permits_reading_the_surface_kinds() -> None:
     assert bash("cat surfaces/_surfaces.yaml") == PASS_THROUGH
 
 
+def test_bash_refuses_writing_the_structural_rules() -> None:
+    """H-4 as amended in M4. The parameters in `_structure.yaml` decide which
+    calls count as sinks and which functions count as validating, so an
+    unreviewed edit turns a structural check off while every run still reports
+    success — the same argument that protects `patterns/` and `surfaces/`."""
+    assert bash("echo x | tee structure/_structure.yaml") == BLOCK
+
+
+def test_bash_permits_reading_the_structural_rules() -> None:
+    assert bash("cat structure/_structure.yaml") == PASS_THROUGH
+
+
+def test_bash_does_not_protect_a_file_merely_named_structure() -> None:
+    """The negative, and it matters more here than for `surfaces`: "structure"
+    is an ordinary English word, so protecting it as a *directory* rather than
+    as a token is what keeps `build/structure.txt` writable. `structure.py`
+    under src/ is protected by `src`, not by this name."""
+    assert bash("echo x > build/structure.txt") == PASS_THROUGH
+
+
 def test_bash_does_not_protect_a_file_merely_named_surfaces() -> None:
     """The negative. `surfaces` is protected as a directory, not as a word:
     `src/secrev/surfaces.py` must not read as the data directory, and neither
@@ -1451,6 +1471,23 @@ def test_m2_permits_the_surface_kinds() -> None:
     """...and the milestone that owns the surface source may write its data."""
     rc, out = scope_at("M2", "surfaces/_surfaces.yaml", 'version: "2026.09.1"\n')
     assert rc == PASS_THROUGH and not asks(out), "surfaces/ is M2's remit"
+
+
+def test_scope_guard_covers_structure() -> None:
+    """structure/ is in the scoped tree (M4, BRIEF_M4.md §6 Q1), on the same
+    terms as surfaces/ and patterns/.
+
+    This is the assertion that carries the weight, and the permit case is the
+    one that does not. `test_m4_permits_the_source_it_builds` already listed
+    `structure/_structure.yaml` and was **green before the directory was scoped
+    at all** — the M4 branch ended in a catch-all permit, so it answered for a
+    directory `is_scoped_path` had never heard of. A permit assertion cannot
+    tell "allowed by name" from "allowed by silence"; only a refusal under a
+    milestone with no business there can, because that needs the path to reach
+    the guard in the first place.
+    """
+    rc, _ = scope_at("M0", "structure/_structure.yaml", 'version: "2026.09.1"\n')
+    assert rc == BLOCK, f"structure/ is outside M0's remit, got rc={rc}"
 
 
 def test_protected_paths_have_one_definition() -> None:
