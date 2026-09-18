@@ -1288,6 +1288,44 @@ def test_every_anchored_glob_has_a_relative_sibling() -> None:
     assert not offenders, f"anchored-only globs: {offenders}"
 
 
+def test_every_shell_script_is_posix_sh() -> None:
+    """STACK.md §1 binds POSIX `sh`, never `bash`, and §8 holds the harness to
+    the tool's own standards. Nothing checked it until M4.
+
+    Found during the M4 skills pass, and the shape is the point: thirteen of
+    fourteen shell scripts were `#!/bin/sh`, and the one that was not is the
+    only one this project did not write — a vendored script under
+    `.claude/skills/`. The rule held everywhere someone typed it out and broke
+    where code arrived from outside, which is the case a control exists for and
+    the case a habit does not cover.
+
+    Scanned across the whole repository rather than `.claude/hooks/`, because
+    scoping it to where the violation was found is how this project keeps
+    re-finding the same class one directory over.
+
+    **Only files that carry a shebang are judged**, and the first draft did not
+    make that distinction: it failed on `.claude/hooks/lib/paths.sh`, which has
+    no shebang because it is sourced by the guards rather than executed, and a
+    sourced file naming an interpreter would be the wrong thing to write. A
+    control that fires on a correct file is worse than none, because it is
+    routed around rather than fixed. A missing shebang is therefore not an
+    offence here; `#!/usr/bin/env bash` and every other spelling still is,
+    because the test compares against the one permitted line rather than
+    listing interpreters to reject (H-2).
+    """
+    skipped = {".git", ".venv", ".venv-audit", "node_modules"}
+    offenders = []
+    for script in sorted(REPO.rglob("*.sh")):
+        if skipped.intersection(script.relative_to(REPO).parts):
+            continue
+        first = script.read_text(encoding="utf-8").splitlines()[:1]
+        if not first or not first[0].startswith("#!"):
+            continue
+        if first[0].strip() != "#!/bin/sh":
+            offenders.append(f"{script.relative_to(REPO)} — {first[0].strip()}")
+    assert not offenders, f"non-POSIX shebangs (STACK.md §1): {offenders}"
+
+
 def test_glob_does_not_overmatch_a_similar_name() -> None:
     """Inverted from the assertion that recorded the over-match in TASK-009.
 

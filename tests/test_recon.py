@@ -22,7 +22,33 @@ GOLDEN = ROOT / "tests" / "golden" / "recon.json"
 
 
 def test_matches_the_golden_byte_for_byte() -> None:
-    assert to_json(recon(FIXTURES)) == GOLDEN.read_text(encoding="utf-8")
+    """`read_bytes`, because the name of this test is a claim. `read_text`
+    opens in universal-newline mode and translates CRLF back to LF, so on a
+    clone with `core.autocrlf` on it compares a golden it has just silently
+    repaired — and there is no `.gitattributes` here pinning the checkout."""
+    assert to_json(recon(FIXTURES)).encode("utf-8") == GOLDEN.read_bytes()
+
+
+def test_the_old_text_comparison_would_have_passed_on_a_crlf_golden(tmp_path: Path) -> None:
+    """The control for the test above (H-8), and it is the reason the switch to
+    `read_bytes` is a measurement rather than a preference.
+
+    Every golden comparison in this suite used `read_text`, and all of them were
+    green — on a checkout where the goldens happen to be LF. There is no
+    `.gitattributes` here, so a clone with `core.autocrlf` on gets CRLF goldens,
+    and `read_text` translates them straight back on the way in. The comparison
+    then reports byte-identity between a string and a file that does not contain
+    those bytes, under a test named `byte_for_byte`.
+
+    Both assertions matter. The first is the defect, still reproducible; without
+    it the second proves only that two different things differ.
+    """
+    produced = to_json(recon(FIXTURES))
+    mangled = tmp_path / "recon.json"
+    mangled.write_bytes(produced.replace("\n", "\r\n").encode("utf-8"))
+
+    assert produced == mangled.read_text(encoding="utf-8")
+    assert produced.encode("utf-8") != mangled.read_bytes()
 
 
 def test_two_runs_are_byte_identical() -> None:

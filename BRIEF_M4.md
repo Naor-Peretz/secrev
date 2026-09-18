@@ -39,6 +39,15 @@ language is a **recorded coverage gap** (FR-3.8), never silence.
 | tree-sitter, or any second language | `STACK.md` §7. Adding it later must not touch rule logic — that is what the `Parser` interface is for, and an unused interface with one implementation is the correct v1 state | v2 |
 | Cross-function dataflow | FR-3.7 is explicit: FR-3.6 operates **within a function body**. Tainted input reaching a sink through intermediate calls stays invisible, and the report's caveats section says so until it ships | v2 |
 | Severity, triage, or deciding whether a hit is real | A structural candidate is a question, exactly as a pattern hit is (FR-3.2). Nothing here concludes | M7+ |
+| Re-windowing the **pattern** source from `lines-20` to `block-20` | It moves every id already in `hits.jsonl` and expires every verification recorded against one (FR-4.6). Doing that in the milestone that also adds a source means a moved id has two possible causes and no way to tell them apart | Its own milestone |
+
+**That last row is a correction, and it is mine.** Four places said the pattern window moves to
+`block-20` *in M4* — `STACK.md` §5, `BRIEF_M1.md` §4, `src/secrev/sweep.py` and
+`tests/test_sweep.py`, the last two carrying it since M1 with a test guarding it. This brief was
+written without noticing any of them, so the milestone shipped a scope omission in the same commit
+that scoped it. The owner's decision is that the migration is **not M4's**; all four sites are
+corrected in this branch, and M4 gives `block-20` to structural records only, which re-identifies
+nothing because those records are new.
 
 **No new patterns and no new surface kinds.** If a structural rule wants a pattern that does not
 exist, that is a finding about the catalog, recorded — not a pack edited here.
@@ -127,6 +136,11 @@ and applies here identically; see §6 Q5.
 - [ ] **D1 — Records carry `source: structure`** and join the one ledger as a third block, replacing
       only their own (M2's Q1 answer).
 - [ ] **D2 — `structure.py` imports no other source.** Evidence: the import list.
+- [ ] **D3 — Records carry `window_spec: block-20`**, and the window is the enclosing function or
+      block rather than ±20 lines. The name is not new — `STACK.md` §5 has held it since M1 for
+      exactly this span (§6 Q2). Using `lines-20` here would make two differently-shaped windows
+      comparable, which is the defect C-2 exists to prevent; inventing a third name would
+      contradict §5.
 - [ ] **E1 — Every language present with no structural coverage is a `coverage_gaps` line**
       (FR-3.8). Python-only is a stated position, and silence about the rest is the false assurance
       this project exists to prevent.
@@ -137,10 +151,65 @@ and applies here identically; see §6 Q5.
 - [ ] **F2 — Every document claim this milestone makes is true or gone**, searched with
       `git grep -n "<old name>"` from the root, no pathspec — the rule `CLAUDE.md` carries, applied
       to this milestone's own mechanism names.
-- [ ] **G1 — `scope-guard.sh` has M4 rules**, and the `ast` objection does not fire on the milestone
+- [x] **F3 — `.claude/skills/` is read, and every checkable claim in it is true or gone.** Its own
+      box rather than part of F2, because the anchor is different: **P8** makes prose reaching an
+      agent's context behaviour-defining, so a false sentence in a skill is a defect in the reviewer
+      rather than a documentation lapse. Nine files; **five have never been read at all**, and three
+      of the four that were carried false claims — two of them the same M1-era error about the
+      candidate id, word for word, in files loaded into every session as instruction. Scope is
+      **checkable** claims — paths, commands, field names, the id tuple — not prose quality. Every
+      sweep in M3.5, F1's included, stopped at the repository's own documents, which is why this is
+      still open after six review rounds.
+
+      **Done. Nine files read, seven defects in six of them**, and one of the seven was a defect in
+      the codebase that a skill had been right about all along:
+
+      1. **`testing-contract` and `pattern-author` both cited `STACK.md` §8** for a testing rule.
+         §8 is Harness discipline; §9 is Testing. The same wrong number in two files is a class.
+      2. **`testing-contract`'s example called `run_sweep(FIXTURES, workspace=tmp_path)`** — no such
+         function, no such parameter. The sources return text; the CLI writes.
+      3. **The suite did not follow `testing-contract`'s own `read_bytes` rule.** Five golden
+         comparisons used `read_text`, three of them in tests named `..._byte_for_byte`.
+         `read_text` opens in universal-newline mode, so with no `.gitattributes` a clone with
+         `core.autocrlf` on compares against a golden it has just silently repaired. All five are
+         now byte comparisons, and
+         `test_the_old_text_comparison_would_have_passed_on_a_crlf_golden` is the control that
+         measures the defect rather than asserting it. **The skill was right and the code was
+         wrong** — the first hit in this sweep that went that direction.
+      4. **`eval-harness` attributed a false-positive-rate metric to PRD §12.2**, which has none.
+         The absence is deliberate: `precision: low` is first-class and `BRIEF_M1.md` §4 forbids
+         tuning toward precision, so the skill named an eval target that pushes the trade this
+         project refuses. Replaced with §12.2's actual metrics.
+      5. **`secrev-invariants` named `SKILL.md` as one of the three files that defeated
+         code-detection.** The ledger records `AGENT.md`, `prompt.txt` and an extensionless
+         `setup`; `SKILL.md` was a test parameter. It also conflated three *attempts* with three
+         *files*.
+      6. **`debugging` said the gate has five stages.** It has nine.
+      7. **`strategic-compact` ships `suggest-compact.sh` with `#!/bin/bash`** against §1 and §8 —
+         the only non-POSIX shebang in fourteen shell scripts, and the only one this project did
+         not write. Nothing checked shebangs anywhere, so §1's rule had no control behind it;
+         `test_every_shell_script_is_posix_sh` is that control (123 -> 124 assertions), measured
+         red on a planted probe and then green, and narrowed after its first draft fired on
+         `paths.sh`, which correctly has no shebang because it is sourced.
+
+      **`compile` and `marshal` were enforced by `scripts/self_check.py` citing "STACK.md §2.1"
+      while §2.1 listed neither** — found because `secrev-invariants` repeated them as if it were
+      quoting. Corrected in §2.1 through spec-guard: the rules were never in dispute, but two
+      places attributing them to a paragraph that did not say them is how a rule becomes
+      unfalsifiable.
+
+      **One defect is recorded and deliberately not repaired.** `suggest-compact.sh`'s counter
+      cannot work: `$$` is the script's own pid, a hook is a fresh process every time, so the
+      counter file is renamed on every invocation and neither threshold is ever reached. Its
+      `SKILL.md` described that behaviour in three numbered points. The behaviour claim is
+      corrected and the logic is left alone — it is vendored third-party content, it is not wired
+      into `.claude/settings.json`, and rewriting it is not this milestone's business.
+- [x] **G1 — `scope-guard.sh` has M4 rules**, and the `ast` objection does not fire on the milestone
       that owns the AST. A guard that objects to the work it exists to permit teaches people to
-      click through it, which is the reasoning M2 already recorded for `surfaces`.
-- [ ] **G2 — The marker moves to `M4` only after G1**, never before (H-6).
+      click through it, which is the reasoning M2 already recorded for `surfaces`. Evidence:
+      `fd2d00f`, and three assertions in `attack.py` exercising the new case (120 -> 123).
+- [x] **G2 — The marker moves to `M4` only after G1**, never before (H-6). Evidence: the ordering
+      within `fd2d00f` — brief, then rules, then assertions, then `.claude/MILESTONE` last.
 - [ ] Both gates green; self-application clean; every golden regenerated deliberately and every
       changed line explained.
 
@@ -166,46 +235,80 @@ candidate is resolved anyway, so a false positive costs a paragraph and a miss i
 
 ---
 
-## 6. Raised before implementation, for the owner
+## 6. Decided before implementation, and what is still open
 
-Named, not resolved (`BRIEF_M1.md` §8).
+Q1–Q4 were raised here unresolved (`BRIEF_M1.md` §8) and the owner has since settled all four. The
+answers are recorded with their reasons, because a decision whose reason is lost is one that gets
+reverted by the next person who finds it inconvenient.
 
-**Q1 — Where does `_structure.yaml` live?** The PRD's §7 tree puts it at `patterns/_structure.yaml`.
-M2 set the opposite precedent: surface kinds went to `surfaces/` of their own, decided in
-`TASKS_M2.md` C-1, because they are a different question with different semantics under the same
-loader discipline. Structural rules are a third such question. Following the PRD tree puts three
-unrelated schemas in one directory that `catalog.py` owns; following M2's precedent contradicts the
-PRD tree. **Either way it is a document correction, not a code decision.**
+**Q1 — Where does `_structure.yaml` live? → `structure/`, and the PRD tree is corrected.** Not
+`patterns/`. M2's precedent holds: a different question with different semantics gets its own
+directory under the same loader discipline, which is why surface kinds went to `surfaces/`
+(`TASKS_M2.md` C-1). Putting a third unrelated schema under a directory `catalog.py` owns would
+make `patterns/` mean "rule files" rather than "the pattern catalog", and `catalog.py` refuses
+unknown ids for a living. Because the PRD's §7 tree said `patterns/_structure.yaml`, this is a
+**document correction** and was made as one, through spec-guard: §7 now shows `surfaces/` and
+`structure/` beside `patterns/`. The §7 tree had never caught up with M2 either — `surfaces/` was
+missing from it — so the correction closes both.
 
-**Q2 — What window does a structural candidate carry?** `lines-20` on pattern records, `decl-20` on
-surface records, both ±20 lines under names that keep them incomparable (`STACK.md` §5, M2's C-2). A
-structural finding's natural span is the **function body** — which is what makes it structural. A
-third name (`body`?) is a `STACK.md` §5 amendment, and choosing `lines-20` instead would make two
-different spans comparable, which is the exact defect C-2 exists to prevent.
+**Q2 — What window does a structural candidate carry? → `block-20`.** Not a new name: `STACK.md` §5
+has named this spec since M1 — *"`lines-20` for the untightened form, `block-20` once a parser
+tightens it to the enclosing function or block"*. The question was asked as though a third name had
+to be invented, which it did not; the answer was already binding text, and proposing `body` would
+have contradicted it. **No §5 amendment is needed for the name.** What §5 did need is the
+correction below.
 
-**Q3 — Where does the `Parser` interface live?** `STACK.md` §7 requires it but does not place it. Its
-own module keeps `structure.py` free of parsing concerns; inside `structure.py` avoids a module with
-one class and one implementation. The test that matters is Q3's own premise: *adding tree-sitter
-later must not require touching rule logic.*
+One consequence, recorded now rather than discovered later: when the pattern source is eventually
+re-windowed, pattern and structural records will *share* the name `block-20`. That is correct, not a
+C-2 violation. C-2 keeps differently-shaped spans from being compared; two spans of the same shape
+sharing a name is what the name is for. Ids stay distinct regardless, because `rule_id` is in the
+tuple and the `structure.` namespace is closed against the others.
 
-**Q4 — Does `recon.json` gain a structural coverage-gap list of its own?** `_SURFACE_GAPS` is fixed
-text in `recon.py`, deliberately not derived from the kinds, because recon is a peer of the surface
-source and does not import it (P11). The same reasoning says structural gaps are fixed text too —
-but there will then be two such blocks, and a reader should be told which source each belongs to.
+**Q3 — Where does the `Parser` interface live? → `src/secrev/parser.py`, its own module.** The
+objection to a module holding one class and one implementation is real and is outweighed by Q3's own
+premise: adding tree-sitter must not touch rule logic. An interface living inside its only consumer
+is an interface that can be reached around without anyone noticing, and the reaching-around is
+exactly the failure the interface exists to prevent. A one-class module makes the seam visible in
+the tree.
 
-**Q5 — Carried from M3.5, none of them resolved there.**
+**Q4 — Does `recon.json` gain a structural coverage-gap list of its own? → Yes, `_STRUCTURE_GAPS`,
+with each line prefixed `structure: `.** Fixed text in `recon.py`, not derived from the rules, for
+the same P11 reason `_SURFACE_GAPS` is: recon is a peer of the source and does not import it. With
+two blocks now, a reader must be able to tell which source a gap belongs to, and the prefix does
+that in the artifact rather than in a convention someone has to know.
+
+**A parser that cannot parse is a gap line and exit 2**, never a skipped file and exit 0. A Python
+file that fails to parse is not "no candidates here" — it is a file this source did not review, and
+H-1 says the two states must not collapse. This is the same polarity M3.5 spent four rounds
+arriving at for unread files: the artifact records what went unexamined, and the exit code keys on
+it.
+
+**Q5 — Carried from M3.5. Two have answers; three are still open and are not blocking.**
+
+Answered:
+
+- **`.claude/skills/` gets a pass, and it is F3 above** — its own box, anchored in P8, not folded
+  into F1. The reason is in the box.
+- **The stale-mechanism rule stays prose for now, with a fourth enforcement shape proposed.** Three
+  shapes are in `.claude/TASKS_M3.5.md`; the owner has added a fourth — a lint requiring a
+  deprecated name, once it is on a derived list, to appear only on a line carrying a record marker,
+  so "historical" becomes machine-readable and everything else becomes a failure. Its stated limit
+  is the one that matters and is recorded with it: **it cannot catch a claim that is true for the
+  old reason and phrased without the old name** — the `big.js` comment, which no name-based search
+  reaches. That class stays a reading problem. Not scheduled into M4; it is harness work and this
+  milestone is a source.
+
+Still open, and each is named here so it is not mistaken for settled:
 
 - The **single-read architecture**. Three consumers re-read every file after `inventory` already
   read it; the decisions are carried forward, the read is not, so a file replaced between them is a
   TOCTOU window. `structure.py` makes it four. Closing it means the bytes travel on the entry,
-  which holds a tree in memory — an architecture decision, not a hardening patch.
+  which holds a tree in memory — an architecture decision, not a hardening patch. **It is not in
+  M4's deliverables**: it touches `inventory.py`, `sweep.py`, `surfaces.py` and `recon.py`, four
+  files this brief's §2 does not list, so admitting it is a brief edit rather than an
+  implementation detail. M4 adds the fourth consumer and records that it did.
 - Whether `src/secrev` is **held** to importing no process module — a `STACK.md` §2.1 amendment.
+  §2.1 forbids a shell *string*, not the module, and `self_check.py` needs `subprocess` in
+  `ALLOWED_IMPORTS` to pass its own control test. The stricter reading is defensible and is the
+  owner's to take.
 - The **HARNESS-CI approval gate**, an open M2 task.
-- A deliberate pass over **`.claude/skills/`**: five of nine were never read, and three of the four
-  that were carried false claims — two of them M1-era errors about the candidate id, in files loaded
-  into every session as instruction.
-- Whether `.claude/skills/` belongs inside **F1's scope** or a box of its own. Every sweep in M3.5,
-  F1's included, stopped at the repository's own documents.
-- **Enforcing the stale-mechanism rule in a gate.** Three candidate shapes are in
-  `.claude/TASKS_M3.5.md`; all three need the same missing piece — a machine-readable way to say
-  *"this sentence is a record, not an instruction"*.
