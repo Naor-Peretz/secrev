@@ -254,6 +254,30 @@ def test_determinism_guard_speaks_on_surfaces_before_it_exists() -> None:
     )
 
 
+def test_determinism_guard_speaks_on_structure_before_it_exists() -> None:
+    """BRIEF_M4.md C2, and the same argument as surfaces.py one milestone on.
+
+    Both files are named, and `parser.py` is the one worth stating a reason for.
+    It looks like a loader and is not: it fixes the order nodes are visited in,
+    and an order that is not a property of the input reaches the output exactly
+    as `os.walk`'s does. Leaving it out would put the guard on the module that
+    *emits* records while leaving the module that *orders* them unwatched, which
+    is the split that made `catalog.py` the wrong analogy.
+    """
+    for name in ("structure.py", "parser.py"):
+        rc, out, _ = run_hook(
+            "determinism-guard.sh", write_payload(str(REPO / "src" / "secrev" / name), "")
+        )
+        assert rc == PASS_THROUGH, (
+            f"got rc={rc} for {name}. rc=2 means the determinism check it re-ran failed — "
+            f"read the determinism stage of the gate, not this assertion."
+        )
+        assert name in out and "NFR-3" in out, (
+            f"touching {name} must restate the determinism rules — is_nfr3_path "
+            f"in .claude/hooks/lib/paths.sh does not name it"
+        )
+
+
 # ----------------------------------------------------------------- plan-review
 
 

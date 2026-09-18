@@ -157,7 +157,10 @@ and applies here identically; see §6 Q5.
       rather than a documentation lapse. Nine files; **five have never been read at all**, and three
       of the four that were carried false claims — two of them the same M1-era error about the
       candidate id, word for word, in files loaded into every session as instruction. Scope is
-      **checkable** claims — paths, commands, field names, the id tuple — not prose quality. Every
+      **checkable** claims — paths, commands, field names, the id tuple — not prose quality. Read
+      as `.claude/skills/`, corrected mid-pass to **everything under `.claude/` that reaches an
+      agent's context**: skills, agents, commands, and the strings a hook prints. See the scope
+      note below for why the narrow reading was itself the defect. Every
       sweep in M3.5, F1's included, stopped at the repository's own documents, which is why this is
       still open after six review rounds.
 
@@ -197,6 +200,20 @@ and applies here identically; see §6 Q5.
       quoting. Corrected in §2.1 through spec-guard: the rules were never in dispute, but two
       places attributing them to a paragraph that did not say them is how a rule becomes
       unfalsifiable.
+
+      **F3 was scoped wrongly, and widening it found the worst defect of the pass.** The box said
+      `.claude/skills/` because that is where the previous round's defects were — which is
+      detection deciding scope, **P11 applied to our own process**, in the milestone whose whole
+      subject is P11. `.claude/agents/`, `.claude/commands/` and the hooks' printed strings were
+      never in it. Widening to everything under `.claude/` that reaches an agent's context found
+      the M1-era **wrong candidate id** `(relative_path, line, rule_id, ordinal)` alive in four
+      more places after six review rounds and a dedicated pass: `determinism-guard.sh` printed it
+      **to the user** beside the NFR-3 checklist, `python-reviewer.md` prescribed it four bullets
+      below its own rule forbidding a line number in a hash input, `gate-resolver.md` gave it as
+      the thing to "fix" `ids.py` *to*, and `commit.md` used it as the model of a good commit
+      message. Found by grepping the tuple itself rather than the files — the M3.5 repair had been
+      applied to the two files someone happened to open. Three sites remain and are correct: two
+      historical records and record *sort* order, where `line` genuinely belongs.
 
       **One defect is recorded and deliberately not repaired.** `suggest-compact.sh`'s counter
       cannot work: `$$` is the script's own pid, a hook is a fresh process every time, so the

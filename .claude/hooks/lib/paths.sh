@@ -65,6 +65,18 @@ is_scoped_path() {
 # surfaces.py is here before it exists (TASK-M2-001). It is a third consumer of
 # the walk and a third generator of ids in hits.jsonl, and a guard that starts
 # watching after the first write has already missed the write that matters.
+#
+# structure.py and parser.py are here on the same terms (M4, BRIEF_M4.md C2),
+# both before either file exists. structure.py is the fourth consumer of the
+# walk and the third generator of ids. parser.py is less obvious and is here
+# deliberately: it decides the order nodes are visited in, and a traversal order
+# that is not a property of the input reaches the output exactly as os.walk's
+# does. It is the inventory.py of the AST, not the catalog.py of it.
+#
+# The rule *loader* is deliberately absent, matching catalog.py and kinds.py,
+# which are also absent. Rule order does reach record order — but that is fixed
+# by sorting at the point records are emitted, which is structure.py's job and
+# is where the guard should fire.
 is_nfr3_path() {
     case "$1" in
       src/secrev/ids.py|*/src/secrev/ids.py) return 0 ;;
@@ -73,6 +85,8 @@ is_nfr3_path() {
       src/secrev/recon.py|*/src/secrev/recon.py) return 0 ;;
       src/secrev/surfaces.py|*/src/secrev/surfaces.py) return 0 ;;
       src/secrev/ledger.py|*/src/secrev/ledger.py) return 0 ;;
+      src/secrev/structure.py|*/src/secrev/structure.py) return 0 ;;
+      src/secrev/parser.py|*/src/secrev/parser.py) return 0 ;;
       *) return 1 ;;
     esac
 }
