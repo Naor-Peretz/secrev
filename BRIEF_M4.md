@@ -84,6 +84,30 @@ rules, which is P11 in the small, exactly what `BRIEF_M3.md` warned this milesto
 **Where it stops short is stated rather than implied:** a rule of a genuinely new *shape* needs
 Python. That limit belongs in the file, not in a reviewer's head.
 
+**The `Parser` returns a vocabulary, not a syntax tree** — taken during
+implementation, recorded here because it is the decision that determines whether §7's interface is
+real. `parse()` could have returned an `ast.Module` for the rules to walk; they would then be
+written against CPython node types, and the honest answer to Q3's own premise — *adding a second
+language must not touch rule logic* — would be "it would mean rewriting all of it". So the seam
+carries `Unit` → `Function` → `Call` / `Assignment` / `MembershipTest` / `Return`, in terms every
+language has.
+
+This is **not** the AST description language §3 refuses below, and the two are close enough to be
+worth separating. That refusal is about putting *rule logic in data* — a language in which a new
+rule shape is describable without code, which would be designed around the four rules we already
+have. This is a fixed vocabulary in code, scoped to exactly what those four ask, with no ambition
+to describe a fifth. Two consequences are enforced rather than asserted: `ast` is imported by
+`parser.py` alone (`tests/test_parser.py`), and no `ast` node is reachable from a parsed unit —
+without both, the interface is a comment and `ALLOWED_IMPORTS` admitting `ast` package-wide would
+be a widening with nothing holding the other end.
+
+Two further positions the implementation had to take, both refusing a silent gap rather than
+following the requirement literally. **Top-level code is a `Function` named `<module>`**: FR-3.7
+scopes the rules to a function body, and read strictly that exempts every top-level script, which
+is most of what an agentic artifact is. **A nested definition is its own body**, so a sink inside a
+helper is never reported against the enclosing function — a record pointing at a body that does not
+contain the call is worse than no record.
+
 **The four rules (FR-3.6), each a question and not a verdict:**
 
 1. **Order-of-operations** — a permission-setting call following, rather than fused with, the
