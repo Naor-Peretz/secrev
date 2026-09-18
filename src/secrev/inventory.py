@@ -30,8 +30,16 @@ The rules, and what each one is actually defending against:
   Exclusions — applied, and recorded as applied. A reader cannot tell an empty
   `.git/` from a skipped one unless told.
 
-  Binary — a NUL byte in the first 8 KiB, never the extension. Inventoried,
-  not swept.
+  Binary — more than 5% non-text bytes in the first 8 KiB, never the extension.
+  Inventoried, not swept, and named in `coverage_gaps` so a skipped file is
+  stated rather than absent.
+
+  This said "a NUL byte in the first 8 KiB" until a fifth reading, which is the
+  rule a `STACK.md` §5 amendment replaced in this same milestone — after one
+  byte in a comment was shown to remove a whole file from review. A docstring
+  is where a reader goes to learn what a module decides, so a superseded rule
+  stated here is worse than one stated anywhere else in the file: it is read
+  first and by someone who has come to change the thing it describes.
 """
 
 from __future__ import annotations
@@ -70,6 +78,30 @@ EXCLUDED_DIRS = frozenset(
 )
 
 BINARY_SNIFF_BYTES = 8192
+
+# STACK.md §5. A file larger than this is inventoried, recorded as skipped, and
+# never read.
+#
+# Not a defence against superlinear time. That sentence stood here while three
+# patterns besides `log.sensitive` were still quadratic, on the strength of a
+# timing check that measured one pattern with `re.search` — which returns at the
+# first match, where `sweep.py` uses `finditer` and pays the retry at every
+# start position. The claim was true of the rule that had been demonstrated and
+# false of the catalog. `tests/test_catalog_timing.py` now measures every
+# pattern and every surface kind under the model the sweep actually uses.
+#
+# What this bounds is what a *hostile file* can cost once the rules are linear.
+# Measured after the four remaining bounds landed: the whole catalog costs about
+# 2.5 ms/KiB against a crafted single line, so 5 MiB is roughly 13 seconds — not
+# the 8 the earlier note gave, which was derived from the same defective
+# measurement.
+#
+# 5 MiB because the bound's own cost is a coverage gap. Real source is rarely
+# this large and minified bundles can be, so a tighter cap would hide exactly
+# the shipped artifact a reviewer most needs to open. A file past it is recorded
+# in `too_large`, named in `coverage_gaps`, and — when its extension says code —
+# makes the run exit 2 rather than reporting a clean review.
+MAX_FILE_BYTES = 5 * 1024 * 1024
 
 # Extension to language. One map, owned here, because two consumers need the
 # identical answer and a second copy would drift: `recon.py` reports
@@ -209,6 +241,46 @@ class FileEntry:
     escapes_root: bool
     sha256: str | None
 
+    # False when the file is there and the tool was not permitted to read it.
+    #
+    # Recorded rather than skipped, and rather than raised. Raising was the
+    # M3.5 finding: one `chmod 000` file ended the walk, so a target could hide
+    # an entire tree behind a single unreadable file. Skipping silently would
+    # be worse — "I did not read this file" and "I read it and found nothing"
+    # are different states, and collapsing them is the H-1 failure this project
+    # exists to notice, turned on the tool instead of on the harness.
+    #
+    # `sha256` is None and `is_binary` is False on such an entry, because both
+    # would otherwise be claims about bytes nobody saw.
+    is_readable: bool = True
+
+    # False for a FIFO, socket, device or anything else that is not a regular
+    # file. Its own field rather than a second meaning for `is_readable`:
+    # "permission denied" and "not a regular file" are different facts, and a
+    # reviewer reading `recon.json` needs to tell them apart. M3.5-002's
+    # receipt said this case would reuse `is_readable`; that was wrong, and the
+    # Definition of done asks specifically for "not-a-regular-file".
+    #
+    # This is the field that stops a target hanging the review. Opening a FIFO
+    # with no writer blocks forever — nothing raised, nothing timed out — so
+    # `_file_entry`'s `except OSError` could never reach it. The check has to
+    # happen *before* the read, not around it.
+    is_regular: bool = True
+
+    # False when the file exceeds the size bound and was therefore not read.
+    #
+    # Its own field rather than folded into the two above, for the reason
+    # M3.5-006 set out when `is_regular` was split from `is_readable`:
+    # "permission denied", "not a regular file" and "too large to read" are
+    # three different facts, and a reviewer needs to know which one applies
+    # before deciding what to do about it. One is a mode they might change,
+    # one is a thing with no content, and this one is a threshold they can
+    # raise with `--max-file-bytes`.
+    #
+    # `size` is real on such an entry — it comes from `lstat`, which needs no
+    # read — but `sha256` is None, because the bytes were never seen.
+    is_within_size_bound: bool = True
+
     # The name the OS actually reported, native separators, NOT normalised —
     # the only string that will reopen the file.
     #
@@ -224,6 +296,8 @@ class FileEntry:
     # — while on APFS, which matches either form, the same code silently works.
     # A defect that fails only on the platform without the forgiving filesystem
     # is the kind cross-platform CI is for.
+    # The name the OS actually reported, native separators, NOT normalised —
+    # the only string that will reopen the file.
     os_path: str = field(default="", compare=False)
 
 
@@ -234,8 +308,56 @@ def normalise_path(value: str) -> str:
     return unicodedata.normalize("NFC", value.replace(os.sep, "/"))
 
 
+# Below this, a byte is a C0 control and is non-text unless named below.
+_PRINTABLE_FLOOR = 0x20
+
+# C0 controls that occur in ordinary text, and so are not evidence of a binary
+# file: tab, newline, vertical tab, form feed, carriage return, escape, and the
+# file/group/record separators U+001C-U+001E. A rule counting every control
+# byte would call a CRLF file full of tabs binary.
+#
+# The separators are here because `split_lines` already says so. It
+# deliberately does *not* break on U+001C-U+001E, which is a statement that
+# they occur inside real text — so if this set disagreed, the line splitter and
+# the binary detector would hold two different definitions of "text" and drift
+# apart, the failure `glob_to_regex` and `language_of` are centralised to
+# prevent. Omitting them was caught by `tests/test_lines.py`, and only by its
+# smallest fixture: six bytes carrying one separator is 16.7% non-text, while
+# the sibling tests' ~33-byte files were 3% and passed. A proportion rule is
+# size-sensitive, and small files are where it bites.
+_TEXT_CONTROLS = frozenset({0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x1B, 0x1C, 0x1D, 0x1E})
+
+# STACK.md §5. Strictly exceeding, so exactly 5% is text — a threshold written
+# as "5%" and implemented as `>=` moves the line silently, and every text file
+# in the fixture tree measures 0.00%, so nothing else would notice.
+NON_TEXT_LIMIT = 0.05
+
+
 def is_binary(data: bytes) -> bool:
-    return b"\x00" in data[:BINARY_SNIFF_BYTES]
+    """Binary when non-text bytes exceed 5% of the first 8 KiB (STACK.md §5).
+
+    This was `b"\\x00" in data[:8192]` until M3.5, and that was a one-byte
+    scope evasion: binary means "not swept and not read by the surface source",
+    so a target that put a single NUL in a comment in `install.sh` removed the
+    whole file from review. P11 says detection must not decide scope, and one
+    byte chosen by the target decided it — after which the review reported
+    nothing found there rather than reporting that it had not looked.
+
+    The threshold was measured, not chosen. Every text file in the fixture tree
+    is 0.00% non-text; the smallest committed binary is 8.51%; a real PNG
+    header run is 90.28%; the crafted `install.sh` is 3.33%. 5% sits in the
+    empty gap, which is why no fixture changes classification.
+
+    Still a pure function of the first 8 KiB, so NFR-3 holds: the answer cannot
+    vary by machine, and no file's `sha256` changes hands between the text and
+    bytes branches of `content_sha256` as a result of this change.
+    """
+    window = data[:BINARY_SNIFF_BYTES]
+    if not window:
+        # An empty file is text. It has no content to be binary.
+        return False
+    non_text = sum(1 for byte in window if byte < _PRINTABLE_FLOOR and byte not in _TEXT_CONTROLS)
+    return non_text / len(window) > NON_TEXT_LIMIT
 
 
 def content_sha256(raw: bytes) -> str:
@@ -262,7 +384,18 @@ def _escapes(root: Path, link: Path) -> bool:
         target = link.parent / target
     try:
         resolved = target.resolve()
-    except OSError:
+    except (OSError, RuntimeError):
+        # `RuntimeError` is not a kind of `OSError`. On CPython 3.12 a symlink
+        # loop raises `RuntimeError("Symlink loop from ...")`, and
+        # `isinstance(that, OSError)` is False — checked against the
+        # interpreter, not taken from a report — so `except OSError` alone let
+        # it travel to `cli._run`'s generic handler and become exit 3: a fact
+        # about the target reported as a bug in this tool (M3.5 C2).
+        #
+        # The polarity is deliberately unchanged. A link that cannot be
+        # resolved is recorded as leaving the tree, which makes it a question
+        # rather than a silence (P9); assuming it stays inside would be a guess
+        # in the direction that produces no candidate.
         return True
     return not resolved.is_relative_to(root.resolve())
 
@@ -280,9 +413,79 @@ def _symlink_entry(root: Path, link: Path) -> FileEntry:
     )
 
 
-def _file_entry(root: Path, path: Path) -> FileEntry:
-    raw = path.read_bytes()
+def _file_entry(root: Path, path: Path, max_bytes: int | None = None) -> FileEntry:
     relative = str(path.relative_to(root))
+
+    # Tested before the read, never around it. Opening a FIFO with no writer
+    # blocks forever: nothing is raised and nothing times out, so no `except`
+    # clause can reach it, and one named pipe in a target hangs the review
+    # indefinitely. `is_file()` stats, and stat never opens.
+    #
+    # Symlinks are routed to `_symlink_entry` before this, so on a path that
+    # reaches here `is_file()` is exactly `S_ISREG`. It also returns False for
+    # a path that cannot be stat'd at all, which folds "cannot stat" into "not
+    # a regular file" — said plainly because it is a real conflation, and
+    # tolerable only because `os.walk` just listed this entry, so the directory
+    # was readable a moment ago.
+    #
+    # `size` is 0 rather than `lstat().st_size`: a FIFO's size is not a length
+    # of content, and reporting one would be a number with nothing behind it.
+    if not path.is_file():
+        return FileEntry(
+            path=normalise_path(relative),
+            size=0,
+            is_binary=False,
+            is_symlink=False,
+            symlink_target=None,
+            escapes_root=False,
+            sha256=None,
+            is_regular=False,
+            os_path=relative,
+        )
+
+    # Before the read, like the regular-file test above it. `lstat` gives the
+    # size without opening anything, so an oversized file costs a stat rather
+    # than however long reading it would have taken — which is the entire point
+    # of the bound.
+    size = path.lstat().st_size
+    if size > (MAX_FILE_BYTES if max_bytes is None else max_bytes):
+        return FileEntry(
+            path=normalise_path(relative),
+            size=size,
+            is_binary=False,
+            is_symlink=False,
+            symlink_target=None,
+            escapes_root=False,
+            sha256=None,
+            is_within_size_bound=False,
+            os_path=relative,
+        )
+
+    try:
+        raw = path.read_bytes()
+    except OSError:
+        # The file is there and this process may not read it. Recorded —
+        # neither raised nor skipped.
+        #
+        # Raising was the M3.5 finding: `PermissionError` left `walk()` and
+        # ended the review of every other file, so a target could hide an
+        # entire tree behind one `chmod 000`. Skipping would report the file as
+        # absent, which is the same lie told more quietly.
+        #
+        # `size` comes from `lstat`, which needs no read. Nothing else is
+        # claimed: no hash, and not binary, because either would be an
+        # assertion about bytes nobody saw.
+        return FileEntry(
+            path=normalise_path(relative),
+            size=path.lstat().st_size,
+            is_binary=False,
+            is_symlink=False,
+            symlink_target=None,
+            escapes_root=False,
+            sha256=None,
+            is_readable=False,
+            os_path=relative,
+        )
     return FileEntry(
         path=normalise_path(relative),
         size=len(raw),
@@ -295,17 +498,23 @@ def _file_entry(root: Path, path: Path) -> FileEntry:
     )
 
 
-def exclusions_applied(root: Path) -> list[str]:
+def exclusions_applied(root: Path, excluded: frozenset[str] | None = None) -> list[str]:
     """Which excluded directories were actually present, sorted.
 
     Recorded rather than silent (STACK.md §5): "no findings under node_modules"
     and "node_modules was never read" are different statements, and a report
     that cannot distinguish them is claiming coverage it does not have.
+
+    `excluded` is a parameter rather than a constant read directly, so a caller
+    can narrow the set (M3.5 A2). Reporting what was skipped tells a reviewer a
+    gap exists; being able to override it is what lets them close it.
     """
+    names = EXCLUDED_DIRS if excluded is None else excluded
+
     found: set[str] = set()
     for current, dirnames, _ in os.walk(root):
         for name in list(dirnames):
-            if name in EXCLUDED_DIRS:
+            if name in names:
                 found.add(f"{name}/")
                 dirnames.remove(name)
         del current
@@ -334,12 +543,29 @@ class NormalisationCollision(ValueError):
     """
 
 
-def walk(root: Path) -> list[FileEntry]:
+def walk(
+    root: Path,
+    excluded: frozenset[str] | None = None,
+    max_bytes: int | None = None,
+) -> list[FileEntry]:
     """Every file under `root`, sorted on the POSIX path string.
 
     Raises rather than returning an empty list when the root is unusable. An
     empty inventory and an unreadable target must not look the same (H-1).
+
+    `excluded` is a parameter so a caller can narrow the set (M3.5 A2).
+    Reporting what was skipped tells a reviewer that a gap exists; being able
+    to override it is what lets them close it. `None` means `EXCLUDED_DIRS`,
+    which is what `STACK.md` §5 fixes — spelled as `None` rather than as the
+    constant so that `sweep`, `surfaces` and `recon` can thread the argument
+    through without importing it, since a default naming an unimported constant
+    is a `NameError` at definition time.
+
+    Overriding is a decision the caller makes and `recon.json` records, because
+    the applied set is reported rather than assumed.
     """
+    names = EXCLUDED_DIRS if excluded is None else excluded
+
     if not root.exists():
         raise FileNotFoundError(f"target root does not exist: {root}")
     if not root.is_dir():
@@ -353,7 +579,7 @@ def walk(root: Path) -> list[FileEntry]:
         # A symlinked directory is recorded and not entered: following it
         # would read outside the closure and could loop.
         for name in list(dirnames):
-            if name in EXCLUDED_DIRS:
+            if name in names:
                 dirnames.remove(name)
             elif (here / name).is_symlink():
                 dirnames.remove(name)
@@ -364,7 +590,7 @@ def walk(root: Path) -> list[FileEntry]:
             if path.is_symlink():
                 entries.append(_symlink_entry(root, path))
             else:
-                entries.append(_file_entry(root, path))
+                entries.append(_file_entry(root, path, max_bytes))
 
     # Collect, then sort. Never emit in traversal order (STACK.md §5).
     ordered = sorted(entries, key=lambda entry: entry.path)

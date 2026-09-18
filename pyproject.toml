@@ -48,7 +48,7 @@ python_files = ["test_*.py"]
 # --- mypy -----------------------------------------------------------------
 [tool.mypy]
 python_version = "3.11"
-files = ["src/secrev"]
+files = ["src/secrev", "scripts"]
 strict = true
 warn_unreachable = true
 # The catalog is loaded from YAML at runtime; yaml has no stubs bundled.
@@ -61,8 +61,21 @@ ignore_missing_imports = true
 target-version = "py311"
 src = ["src", "tests"]
 line-length = 100
-# STACK.md §5 — these are excluded from the reviewed target too; keep the two
-# lists identical so the linter and the scanner never disagree about scope.
+# What ruff skips when linting *this* repository. Deliberately **not** tied to
+# `inventory.EXCLUDED_DIRS`, which is what the scanner skips when reviewing
+# *someone else's* target (M3.5 A2).
+#
+# They answer different questions, and the M3.5 review found that conflating
+# them is the root cause of A2: `dist/` is our build output and a reviewed
+# target's shipped artifact, so the directory it is safe to ignore here is the
+# one most worth opening there.
+#
+# The comment this replaces asked that "the two lists [be] identical so the
+# linter and the scanner never disagree about scope". They were never
+# identical — this list holds six names and `EXCLUDED_DIRS` holds fourteen,
+# missing `.git`, `.venv-audit` and all five tool caches. An instruction to
+# maintain an invariant that was already false by eight entries is why the
+# coupling is broken here rather than repaired.
 extend-exclude = [".venv", "venv", "__pycache__", "dist", "build", "node_modules"]
 
 [tool.ruff.lint]

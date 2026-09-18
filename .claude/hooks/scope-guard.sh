@@ -171,6 +171,51 @@ case "$MILESTONE" in
     esac
     ;;
 
+  # M3.5 is the hardening pass (BRIEF_M3.5.md): the reviewer against a hostile
+  # target. Its remit is the machinery — src/ for the walk, the ledger, recon
+  # and the CLI; scripts/ for self_check.py, which P3 makes a finding as it
+  # stands; and patterns/ for exactly one rewrite, log.sensitive, which is
+  # quadratic on a crafted line.
+  #
+  # patterns/ is permitted here and was refused under M2. That is a real
+  # widening, and it is bounded by the brief rather than by this guard:
+  # BRIEF_M3.5.md §2 says no pattern is added and no question changes. A guard
+  # cannot check that; a reviewer can, and the positive/negative fixture pair
+  # every pattern ships is what catches a changed rule.
+  #
+  # surfaces/ and threat-models/ are refused by name rather than by omission.
+  # That is the D-1 lesson from M3, which cost a failed assertion to learn: a
+  # branch written before a directory existed answers "permit" for it silently,
+  # so every scoped directory is answered here explicitly.
+  M3.5)
+    case "$path" in
+      *surfaces/*)
+        {
+          echo "BLOCKED — M3.5 hardens the machinery; it adds no reachability classes."
+          echo "$path is in surfaces/, and a surface kind decides which entry points"
+          echo "enter the ledger at all (P11, NFR-6). New kinds are M8."
+          echo
+          echo "Fixing how the surface source *reads* files is in remit —"
+          echo "src/secrev/surfaces.py is permitted. Changing what it looks for is not."
+        } >&2
+        exit 2
+        ;;
+      *threat-models/*)
+        {
+          echo "BLOCKED — M3.5 hardens the machinery; the threat models are M3's, and closed."
+          echo "$path is in threat-models/, whose overlays decide which questions"
+          echo "every later review of an archetype asks (BRIEF_M3.md §1)."
+          echo
+          echo "A milestone editing them is how a question disappears with nothing"
+          echo "reporting it. If an overlay is genuinely wrong, that is an M3"
+          echo "correction and belongs in its own commit."
+        } >&2
+        exit 2
+        ;;
+      *) exit 0 ;;
+    esac
+    ;;
+
   # M0 is harness repair (BRIEF_M0.md). Its own §2 edits scripts/check.sh, so
   # scripts/ is inside its remit; src/ and patterns/ are the tool and its
   # catalog, which M0 has no business touching. H-6 asks a guard to know what
@@ -208,8 +253,20 @@ printf '%s' "$body" | grep -qE 'dedup|deduplicat|seen_locations|\(file,[[:space:
 printf '%s' "$body" | grep -qE '\bmultiline\b|re\.MULTILINE|re\.DOTALL' \
   && note "introduces multi-line matching — BRIEF §4 forbids it in M1; cross-line reasoning is a structural rule (M4) by definition."
 
-printf '%s' "$body" | grep -qE '^import ast|^from ast |ast\.parse' \
-  && note "uses the AST — that is structure.py, M4. The ledger format has to settle first."
+# Skipped under scripts/, where `scripts/self_check.py` has been AST-based
+# since M0 — deliberately, because `shell=True` is a structure question and a
+# grep there would be the exact mistake the catalog is designed not to make
+# (CLAUDE.md records the reasoning). Objecting to it under M3.5, whose remit
+# includes hardening that very file, is the shape that teaches people to click
+# through a guard — the same reason M2 does not fire the surfaces heuristic on
+# the milestone that owns surfaces.
+case "$path" in
+  scripts/*|*/scripts/*) ;;
+  *)
+    printf '%s' "$body" | grep -qE '^import ast|^from ast |ast\.parse' \
+      && note "uses the AST — that is structure.py, M4. The ledger format has to settle first."
+    ;;
+esac
 
 # Skipped under M2, where this is the milestone's entire subject. A guard that
 # objects to the work it exists to permit teaches people to click through it,

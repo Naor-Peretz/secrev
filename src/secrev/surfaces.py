@@ -70,10 +70,18 @@ def _file_hits(entry: FileEntry, text: str, kinds: tuple[Kind, ...], version: st
     # wrong against the rule — `tests/test_surfaces.py` asserts the order itself.
     found.sort(key=lambda item: (item[0], item[1]))
 
-    matches = [
-        Match(rule_id=rule_id, line=index + 1, window=window(lines, index))
-        for index, rule_id, _ in found
-    ]
+    # One window per line, shared by every match on it — the same change
+    # `sweep.py` carries, and for the same reason. A peer source pays the same
+    # cost, so it gets the same fix rather than waiting to be measured
+    # separately.
+    windows: dict[int, str] = {}
+    matches: list[Match] = []
+    for index, rule_id, _ in found:
+        text_window = windows.get(index)
+        if text_window is None:
+            text_window = window(lines, index)
+            windows[index] = text_window
+        matches.append(Match(rule_id=rule_id, line=index + 1, window=text_window))
     identifiers = assign(entry.path, matches)
 
     hits: list[Hit] = []
@@ -98,16 +106,40 @@ def _file_hits(entry: FileEntry, text: str, kinds: tuple[Kind, ...], version: st
     return hits
 
 
-def surfaces(root: Path, kinds: Kinds) -> list[Hit]:
+def surfaces(
+    root: Path,
+    kinds: Kinds,
+    excluded: frozenset[str] | None = None,
+    max_bytes: int | None = None,
+) -> list[Hit]:
     """Every surface candidate in `root`, in a deterministic order.
+
+    `excluded` is threaded to `inventory.walk`; `None` means the default set
+    (M3.5 A2). A peer source must skip exactly what the pattern source skips,
+    or an override would change scope for one and not the other.
 
     Binary files are inventoried but never read, and symlinks are never
     followed (`STACK.md` §5) — exactly as in the pattern source. A symlink
     escaping the root is a closure question, not a surface (TASKS_M2.md Q7).
     """
     hits: list[Hit] = []
-    for entry in walk(root):
-        if entry.is_binary or entry.is_symlink:
+    for entry in walk(root, excluded, max_bytes):
+        # `inventory` already tried; this does not try again (M3.5 C2 — the
+        # second read is what raised out of the run). A peer source must skip
+        # exactly what the pattern source skips, or the two disagree about
+        # scope and only one of them says so.
+        #
+        # The same carried-forward window `sweep.py` describes applies here, and
+        # for the same reason: what is carried forward is the decision, not the
+        # read. See the note there; a peer source inherits the limit as well as
+        # the rule.
+        if (
+            entry.is_binary
+            or entry.is_symlink
+            or not entry.is_readable
+            or not entry.is_regular
+            or not entry.is_within_size_bound
+        ):
             continue
         applicable = tuple(kind for kind in kinds.kinds if kind.applies(entry.path))
         if not applicable:

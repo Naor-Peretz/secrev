@@ -40,13 +40,16 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
+import tempfile
 from collections.abc import Callable
 from datetime import UTC, datetime
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
 from secrev.catalog import Catalog, CatalogError, load
+from secrev.inventory import MAX_FILE_BYTES
 from secrev.kinds import Kinds, SurfaceKindError
 from secrev.kinds import load_file as load_kinds
 from secrev.ledger import DECL_WINDOW_SPEC, WINDOW_SPEC, to_jsonl
@@ -171,7 +174,11 @@ def write_run_json(directory: Path, command: str, entry: dict[str, str]) -> None
         "started_at": datetime.now(UTC).isoformat(timespec="seconds"),
     }
     ordered = {name: document[name] for name in COMMANDS if name in document}
-    path.write_text(json.dumps(ordered, indent=2, sort_keys=False) + "\n", encoding="utf-8")
+    # Atomic for the same reason as the ledger (M3.5 E4): this file is
+    # read-modify-write too, so a truncating write loses the entries every
+    # *earlier* command left — the versions behind blocks this run never
+    # touched. The one artifact NFR-3 exempts is still an artifact.
+    _atomic_write(path, json.dumps(ordered, indent=2, sort_keys=False) + "\n")
 
 
 def merge_ledger(existing: str, source: str, block: str) -> str:
@@ -218,11 +225,57 @@ def merge_ledger(existing: str, source: str, block: str) -> str:
     return "".join(chunk for name in SOURCES for chunk in blocks[name])
 
 
+def _atomic_write(path: Path, payload: str) -> None:
+    """Write `payload` to `path`, so that `path` is never partly written.
+
+    `write_text` truncates and then writes, so a run interrupted between those
+    two steps leaves the file empty or half-written. That is worst for the
+    ledger: `merge_ledger` goes to deliberate lengths to keep the other
+    source's block byte for byte — never parsed, never re-serialised — and a
+    truncating write destroys exactly what that care protects. The surface
+    block would be lost by a failure in the pattern block's write, with nothing
+    saying so.
+
+    The temporary file is created **in the destination directory**, because
+    `os.replace` is atomic only within one filesystem; a temp in `/tmp` would
+    silently degrade to a copy across a mount boundary. It is removed if the
+    replace fails, so a failure leaves no second copy of content G-3 spent its
+    effort making safe to write down.
+
+    `NamedTemporaryFile` creates at 0o600, so artifacts inherit a private mode
+    rather than the umask's. For a directory holding `match_excerpt` values
+    that is the right default, and it matches the 0o700 the workspace gets.
+    """
+    handle = tempfile.NamedTemporaryFile(  # noqa: SIM115 - closed by the with below
+        mode="w",
+        encoding="utf-8",
+        dir=path.parent,
+        prefix=f".{path.name}.",
+        suffix=".tmp",
+        delete=False,
+    )
+    temporary = Path(handle.name)
+    try:
+        with handle:
+            handle.write(payload)
+        # `os.replace`, not `Path.replace` (PTH105). Two reasons: it is the
+        # atomic-rename primitive and reads as one here, where the whole point
+        # is atomicity rather than path manipulation; and it is the seam
+        # `test_an_interrupted_ledger_write_leaves_the_previous_ledger` patches
+        # to fail the final step. Routing through `Path.replace` would make
+        # that test depend on which primitive pathlib happens to call
+        # internally — a test that passes for a reason no longer stated.
+        os.replace(temporary, path)  # noqa: PTH105
+    except OSError:
+        temporary.unlink(missing_ok=True)
+        raise
+
+
 def _emit(directory: Path, name: str, payload: str) -> None:
     """Both destinations. §7's third checklist item requires the workspace
     file; §3 requires the redirect to produce a valid one. They are not
     alternatives."""
-    (directory / name).write_text(payload, encoding="utf-8")
+    _atomic_write(directory / name, payload)
     sys.stdout.write(payload)
 
 
@@ -230,7 +283,14 @@ def _write_block(directory: Path, source: str, block: str) -> None:
     """The ledger in the workspace gains this run's block. The merge runs
     before anything is written, so a ledger that is refused is left exactly as
     it was. stdout is the caller's last step, after `run.json`, so a run that
-    fails to record itself has not already delivered its output."""
+    fails to record itself has not already delivered its output.
+
+    The write is atomic (M3.5 E4). Refusing before writing was only half the
+    property: the merge protected a ledger this tool could not *read*, while a
+    `write_text` truncating mid-run destroyed one it could — including the
+    other source's block, which `merge_ledger` keeps byte for byte precisely so
+    that it survives.
+    """
     path = directory / "hits.jsonl"
     try:
         existing = path.read_text(encoding="utf-8") if path.is_file() else ""
@@ -240,29 +300,171 @@ def _write_block(directory: Path, source: str, block: str) -> None:
             "replace a block in a ledger it cannot read. Move the file aside or "
             "choose another --workspace"
         ) from exc
-    path.write_text(merge_ledger(existing, source, block), encoding="utf-8")
+    _atomic_write(path, merge_ledger(existing, source, block))
 
 
-def _prepare(target: Path, workspace: Path) -> tuple[Path, Recon]:
-    result = recon(target)
+def _positive_int(value: str) -> int:
+    """`--max-file-bytes`, refusing zero and below.
+
+    Validated here rather than in `main` so that argparse raises and exits 2
+    itself. That keeps every usage error on one path — the same reasoning that
+    chose `type=int` over a converter of our own — and avoids a second
+    mechanism that could drift out of agreement with argparse's.
+
+    A bound of zero or less would exclude every file, reporting an empty review
+    as a complete one, which is the silent loss of scope this milestone exists
+    to close.
+    """
+    number = int(value)
+    if number <= 0:
+        raise argparse.ArgumentTypeError("must be a positive number of bytes")
+    return number
+
+
+def _parse_exclude(value: str | None) -> frozenset[str] | None:
+    """`--exclude` as a set of directory names, or `None` for the default set.
+
+    **Replacing rather than subtracting** (M3.5 A2). A subtractive flag would
+    need the caller to already know the fourteen default names to predict what
+    a run will do, and `recon.json` reports the applied set either way — so the
+    simpler, more honest spelling is the one where what you pass is what is
+    skipped.
+
+    `--exclude ""` skips nothing, which is the case A2 exists for: reviewing a
+    target's `dist/` rather than trusting it. Empty names are dropped so that a
+    trailing comma is not a directory called "".
+    """
+    if value is None:
+        return None
+    return frozenset(name.strip() for name in value.split(",") if name.strip())
+
+
+def _prepare(
+    target: Path,
+    workspace: Path,
+    excluded: frozenset[str] | None = None,
+    max_bytes: int | None = None,
+) -> tuple[Path, Recon]:
+    result = recon(target, excluded, max_bytes)
     directory = workspace_for(target, workspace, result.target["version"])
     directory.mkdir(parents=True, exist_ok=True)
+
+    # 0o700 on every level, not only the leaf (M3.5 E4). The workspace holds
+    # `match_excerpt` values — the one field G-3 spends its effort making safe
+    # to write down — so it is not left at whatever the umask gives. On the
+    # machine this was found on that was 0o775: group-writable as well as
+    # world-readable.
+    #
+    # Walked rather than passed as `mode=`, because both obvious spellings look
+    # right and are not. `mkdir(parents=True, mode=0o700)` applies the mode to
+    # the final directory only, leaving `~/.security-review/` at the default;
+    # and `exist_ok=True` leaves an existing directory's mode untouched, which
+    # is every run after the first.
+    # Walked downward from the base rather than upward from the leaf: this
+    # terminates by construction, needs no filesystem-root guard, and fails
+    # loudly through `relative_to` if the base is somehow not an ancestor —
+    # where walking up would quietly chmod its way toward `/`.
+    base = workspace.resolve()
+    base.chmod(0o700)
+    level = base
+    for part in directory.relative_to(base).parts:
+        level = level / part
+        level.chmod(0o700)
+
     sys.stderr.write(f"workspace: {directory}\n")
     return directory, result
 
 
-def run_recon(target: Path, workspace: Path, catalog: Catalog) -> int:
-    directory, result = _prepare(target, workspace)
+def _incomplete(result: Recon) -> int:
+    """The exit code for a target this tool was not permitted to read in full.
+
+    **Not 3.** A file the tool may not open is a fact about the target, not a
+    bug in the tool, and `STACK.md` §3 reserves 3 for an internal error — so
+    reporting it as 3 sends whoever reads the exit code to the wrong codebase.
+    That is what happened before M3.5: `PermissionError` reached `_run`'s
+    generic handler.
+
+    **Not 0 either.** Content that should have been reviewed was not, and "I
+    did not read this" must not be reported as "I read it and found nothing"
+    (H-1). Exit 0 here would be a clean review of a tree the tool could not
+    fully see.
+
+    §3's parenthetical for 2 — "bad arguments, malformed catalog, missing
+    target" — does not name this case. It is read as illustrative rather than
+    exhaustive, on the precedent `inventory.NormalisationCollision` already
+    set: it is a `ValueError` so that `cli` reports exit 2, because "the tool
+    worked and the target cannot be reviewed as it stands" is a fact about the
+    input. This is the same statement about a different fact.
+
+    The artifacts are written before this is consulted, and they are complete
+    for everything that could be read. The code says the review is *partial*,
+    never that it is absent.
+    """
+    unreadable = result.inventory["unreadable"]
+    # Files that nothing read, for any reason, and whose extension is not a
+    # known binary asset. Added after a second review showed that `unreadable`
+    # alone left two evasions at exit 0: eight NUL bytes in a comment classified
+    # a runnable `install.sh` as binary, and padding it past `--max-file-bytes`
+    # did the same, both with `0 candidates, exit 0` and no line in
+    # `coverage_gaps` naming the file.
+    #
+    # The docstring above already said why that is wrong — "exit 0 here would be
+    # a clean review of a tree the tool could not fully see" — and the code
+    # applied the reasoning to one of the four ways a file goes unread.
+    #
+    # **This comment said "files with a code extension" until a fifth reading.**
+    # That was true of the first version and false after the fourth review
+    # inverted the test — and the phrasing survived into the message printed to
+    # stderr below, which is worse: it named the mechanism that had just been
+    # defeated, on a line listing `setup`, `prompt.txt` and `AGENT.md`, none of
+    # which has a code extension. A correction applied to the documentation and
+    # not to the string beside it is the same half-fix this milestone keeps
+    # finding, one layer in.
+    unread_code = result.inventory["unread_code"]
+    if not unreadable and not unread_code:
+        return EXIT_OK
+
+    for count, what, paths in (
+        (len(unreadable), "could not be read and were not reviewed", unreadable),
+        (len(unread_code), "were never read and are not a known binary asset", unread_code),
+    ):
+        if not paths:
+            continue
+        # Named rather than repeated: the count is a display choice, and a
+        # message that truncates must say how much it left out or it is a third
+        # way of reporting a partial answer as a whole one.
+        limit = 5
+        shown = ", ".join(paths[:limit])
+        if count > limit:
+            shown += f", and {count - limit} more"
+        sys.stderr.write(f"{count} file(s) {what}: {shown}\n")
+    return EXIT_USAGE
+
+
+def run_recon(
+    target: Path,
+    workspace: Path,
+    catalog: Catalog,
+    excluded: frozenset[str] | None = None,
+    max_bytes: int | None = None,
+) -> int:
+    directory, result = _prepare(target, workspace, excluded, max_bytes)
     _emit(directory, "recon.json", to_json(result))
     write_run_json(
         directory, "recon", {"catalog_version": catalog.version, "window_spec": WINDOW_SPEC}
     )
-    return EXIT_OK
+    return _incomplete(result)
 
 
-def run_sweep(target: Path, workspace: Path, catalog: Catalog) -> int:
-    directory, _ = _prepare(target, workspace)
-    hits = sweep(target, catalog)
+def run_sweep(
+    target: Path,
+    workspace: Path,
+    catalog: Catalog,
+    excluded: frozenset[str] | None = None,
+    max_bytes: int | None = None,
+) -> int:
+    directory, result = _prepare(target, workspace, excluded, max_bytes)
+    hits = sweep(target, catalog, excluded, max_bytes)
     block = to_jsonl(hits)
     _write_block(directory, "pattern", block)
     write_run_json(
@@ -270,12 +472,18 @@ def run_sweep(target: Path, workspace: Path, catalog: Catalog) -> int:
     )
     sys.stdout.write(block)
     sys.stderr.write(f"{len(hits)} candidates, all unresolved\n")
-    return EXIT_OK
+    return _incomplete(result)
 
 
-def run_surfaces(target: Path, workspace: Path, kinds: Kinds) -> int:
-    directory, _ = _prepare(target, workspace)
-    hits = surfaces(target, kinds)
+def run_surfaces(
+    target: Path,
+    workspace: Path,
+    kinds: Kinds,
+    excluded: frozenset[str] | None = None,
+    max_bytes: int | None = None,
+) -> int:
+    directory, result = _prepare(target, workspace, excluded, max_bytes)
+    hits = surfaces(target, kinds, excluded, max_bytes)
     block = to_jsonl(hits)
     _write_block(directory, "surface", block)
     write_run_json(
@@ -283,7 +491,7 @@ def run_surfaces(target: Path, workspace: Path, kinds: Kinds) -> int:
     )
     sys.stdout.write(block)
     sys.stderr.write(f"{len(hits)} surface candidates, all unresolved\n")
-    return EXIT_OK
+    return _incomplete(result)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -304,6 +512,26 @@ def build_parser() -> argparse.ArgumentParser:
             "--workspace",
             default=None,
             help=f"output root; default {DEFAULT_WORKSPACE}, never the target",
+        )
+        sub.add_argument(
+            "--exclude",
+            default=None,
+            metavar="NAMES",
+            help=(
+                "comma-separated directory names to skip, replacing the default "
+                'set; --exclude "" skips nothing'
+            ),
+        )
+        # `type=int` rather than a converter of our own: argparse already
+        # refuses a non-integer and exits 2, which is exactly `STACK.md` §3's
+        # usage-error code. Writing a second converter would duplicate that and
+        # risk disagreeing with it.
+        sub.add_argument(
+            "--max-file-bytes",
+            type=_positive_int,
+            default=None,
+            metavar="N",
+            help=f"skip files larger than N bytes; default {MAX_FILE_BYTES}",
         )
         # The surface source never sees the catalog: it is a peer of the
         # pattern source, not a stage after it (P11, TASKS_M2.md Q2).
@@ -332,6 +560,12 @@ def main(argv: list[str] | None = None) -> int:
         return EXIT_USAGE
 
     workspace = Path(args.workspace) if args.workspace else DEFAULT_WORKSPACE
+    # `None` when the flag is absent, which every source reads as the default
+    # set. What was actually applied is reported in `recon.json`, so an
+    # override is visible in the artifact rather than only in the invocation.
+    excluded = _parse_exclude(args.exclude)
+
+    max_bytes = args.max_file_bytes
 
     if args.subcommand == "surfaces":
         try:
@@ -340,7 +574,7 @@ def main(argv: list[str] | None = None) -> int:
             # Exit 2, naming the kind, for the catalog's reason below.
             sys.stderr.write(f"surface kinds: {exc}\n")
             return EXIT_USAGE
-        return _run(lambda: run_surfaces(target, workspace, kinds))
+        return _run(lambda: run_surfaces(target, workspace, kinds, excluded, max_bytes))
 
     try:
         catalog = resolve_catalog(args.catalog)
@@ -353,8 +587,8 @@ def main(argv: list[str] | None = None) -> int:
         return EXIT_USAGE
 
     if args.subcommand == "recon":
-        return _run(lambda: run_recon(target, workspace, catalog))
-    return _run(lambda: run_sweep(target, workspace, catalog))
+        return _run(lambda: run_recon(target, workspace, catalog, excluded, max_bytes))
+    return _run(lambda: run_sweep(target, workspace, catalog, excluded, max_bytes))
 
 
 def _run(command: Callable[[], int]) -> int:

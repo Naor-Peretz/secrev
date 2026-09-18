@@ -824,6 +824,7 @@ Each milestone ships something usable on its own; nothing is a big-bang dependen
 | M1 | `recon.sh` + `sweep.py` + `patterns/_base.yaml` + `python.yaml` | Immediate value even driven by hand |
 | M2 | `surfaces.py` — the cheapest of the three sources and the one that bounds the others (P11) | Review scope stops being decided by the catalog |
 | M3 | `_agentic-core.md` + `skill.md` + `mcp-server.md` + `_classifier.md` | The reusable intellectual asset, aimed at the artifacts actually encountered |
+| M3.5 | Hardening the reviewer against a hostile target: redaction, containment, liveness, input bounds | A target cannot hide code from the review, stop it, or make it leak |
 | M4 | `structure.py` + `_structure.yaml` covering FR-3.6 | The checks that matter most stop depending on syntax |
 | M5 | `closure.py` + `patterns/_instruction.yaml` + `_manifest.yaml` | The layers that make agentic review real rather than ordinary code review |
 | M6 | `SKILL.md` enforcing phase order and gates | The procedure becomes real |

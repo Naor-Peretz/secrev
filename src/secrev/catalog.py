@@ -24,16 +24,34 @@ supplies. A tool that flags that construct in other people's code and then
 performs it is not credible (`STACK.md` §2.1), so `tests/test_catalog.py`
 asserts a tagged document is refused rather than acted on.
 
-**Known and unmitigated: a catalog regex is untrusted input to the engine.**
-Nothing here bounds backtracking, and stdlib `re` offers no timeout, so a
-pattern written with nested quantifiers can be made to take superlinear time
-against crafted target content. In M1 the shipped catalog is reviewed like any
-other file in this repository, but `--catalog` accepts an arbitrary path, so
-the exposure is real for a caller who points it at something they did not
-write. It is recorded rather than half-fixed: the obvious mitigation is a
-denylist over regex shapes, and P3 says a denylist is a finding until proven
-otherwise. A real answer is a bounded engine or a subprocess timeout, and both
-are larger than this milestone.
+**A catalog regex is untrusted input to the engine**, and until M3.5 this
+paragraph described that risk wrongly in the two ways that mattered.
+
+It said superlinear time required "a pattern written with nested quantifiers".
+It does not. `log.sensitive` had a single `*` and no nesting, and was quadratic
+anyway, because the cost is not inner backtracking but the **outer scan**:
+`re.search` retries the whole pattern from every position, so a line offering K
+matching start positions, each consuming N characters, costs O(N*K). Naming
+nested quantifiers as the precondition is why reading the shipped pack did not
+catch it — reviewers were looking for the wrong shape.
+
+It also scoped the exposure to "a caller who points `--catalog` at something
+they did not write". The quadratic pattern was in the pack this tool ships, so
+the exposure was every caller's, and that sentence is what made the shipped
+catalog look like the safe side of the boundary.
+
+Measured before being rewritten: 185.72 ms on a 9,600-byte crafted line, 11.4 s
+on 76,800, extrapolating to roughly 48 minutes on 1 MB. `log.sensitive` now
+bounds its repetition, which makes it linear; `patterns/_base.yaml` carries the
+measurements and the two candidate fixes that were rejected for losing findings.
+
+**What remains unmitigated is the general case.** Nothing here bounds
+backtracking, and stdlib `re` offers no timeout, so an arbitrary `--catalog`
+can still be made to take superlinear time. It stays recorded rather than
+half-fixed: the obvious mitigation is a denylist over regex shapes, and P3 says
+a denylist is a finding until proven otherwise. The real answers are a bounded
+engine, a subprocess timeout, or input bounds on what is scanned — the last of
+these is a `STACK.md` §5 amendment raised in `BRIEF_M3.5.md` §6.
 """
 
 from __future__ import annotations

@@ -44,7 +44,11 @@ WINDOW_SPEC = "lines-20"
 # pattern window that happens to cover the same lines.
 DECL_WINDOW_SPEC = "decl-20"
 
-# §5: "the matched span with a small margin, truncated to 200 chars".
+# `BRIEF_M1.md` §5: "the matched span with a small margin, truncated to 200
+# chars". Cited wrongly as `STACK.md` §5 until M3.5 — §5 there fixes traversal,
+# hashing and the window, and says nothing about excerpts. The number was right
+# and the attribution was not, which is the quieter half of the F1 finding: a
+# citation nobody can follow is one nobody checks.
 EXCERPT_MARGIN = 24
 EXCERPT_LIMIT = 200
 
@@ -56,14 +60,80 @@ _REDACTED = "[REDACTED]"
 # under-redaction copies a live secret into an artifact that gets committed,
 # pasted into an issue, and read by people who were never meant to have it.
 # The asymmetry decides the polarity.
+#
+# M3.5 widened this after an external review defeated it three ways, all of
+# them the commonest spellings a credential actually has:
+#
+#   * The key was anchored with `\b`, which cannot match between `_` and `P`.
+#     `DB_PASSWORD=` and `OPENAI_API_KEY=` therefore never matched at all. The
+#     key now absorbs the identifier it sits inside, on either side.
+#   * The separator allowed no closing quote, so `{"password": "..."}` — JSON,
+#     the commonest serialised form — went through untouched.
+#   * `Authorization: Bearer <token>` redacted the word `Bearer` and left the
+#     token, so the scheme is now part of the separator rather than the value.
+#
+# The two rules were assumed to cover for each other. They do not: none of
+# those values is long enough to reach `_LONG_OPAQUE`'s floor, so when the key
+# rule missed, nothing caught it.
+# A second review widened it again, and the three misses were all the key list
+# being a list:
+#
+#   * `PGPASS=` and `passphrase=` name a credential and matched no alternative.
+#     `passphrase` *appeared* to redact, which is worse than an outright miss:
+#     `_LONG_OPAQUE` happened to cover `passphrase=correct-horse-battery`
+#     because `=` is in its alphabet and the whole string reached 32 characters.
+#     One character shorter and it leaked. A rule that passes its own probe by
+#     coincidence is the F1 failure in miniature.
+#   * `private_key =` likewise, and its value — a 26-character PEM head — sits
+#     below `_LONG_OPAQUE`'s floor, so nothing else caught it either.
+#
+# The value shape was also wrong for a quoted string. `[^\s"',)]` stops at a
+# space, so `password='hunter2 with space'` redacted up to the space and printed
+# the rest. A quoted value now runs to its closing quote, which is what a quote
+# means; an unquoted one keeps the old shape, where a space really does end it.
 _SECRET_ASSIGNMENT = re.compile(
     r"""(?ix)
-    \b (?P<key> token | password | passwd | secret | api[_-]?key
-              | credential | authorization | bearer )
-    \s* (?P<sep> [=:] \s* ) (?P<quote> ["']? ) (?P<value> [^\s"',)]{4,} )
+    (?P<key>  [A-Za-z0-9_.-]*
+              (?: token | password | passwd | passphrase | pgpass | pwd | pw
+                | secret | api[_-]?key | private[_-]?key
+                | credential | authorization | bearer )
+              [A-Za-z0-9_.-]* )
+    (?P<sep>  ["']? \s* [=:] \s* (?: bearer \s+ )? )
+    (?: (?P<quote> ["'] ) (?P<quoted> [^"'\n]{4,} )
+      | (?P<bare>  [^\s"',)]{4,} ) )
     """
 )
 _LONG_OPAQUE = re.compile(r"(?<![A-Za-z0-9+/=_-])[A-Za-z0-9+/=_-]{32,}(?![A-Za-z0-9+/=_-])")
+
+# `scheme://user:password@host`, the commonest place a live credential is
+# written without a key naming it. `_SECRET_ASSIGNMENT` cannot see it — there is
+# no credential word anywhere in `postgres://admin:hunter2@db/app` — and the
+# password is usually far too short for `_LONG_OPAQUE`. The user half is kept:
+# it is not the secret, and a connection string with both halves gone tells a
+# reader nothing about which account was involved.
+_URL_CREDENTIAL = re.compile(r"(?i)\b([a-z][a-z0-9+.\-]*://)([^\s:/@]*):([^\s/@]{1,})@")
+
+# A credential passed as a command-line argument, where the separator is a space
+# rather than `=` or `:`. `_SECRET_ASSIGNMENT` cannot see it — there is no
+# separator character to anchor on — and these are among the commonest shapes in
+# exactly the kind of file this tool reads: install scripts, CI steps, docker
+# invocations. `-p` is included despite being two characters because it is
+# `mysql`'s and `docker login`'s spelling; it is anchored to a word boundary and
+# requires a value, so a bare `-p` flag with no argument does not match.
+_CLI_CREDENTIAL = re.compile(
+    r"""(?ix)
+    (?P<flag> (?:^|\s)
+              (?: --? (?: password | passwd | pass | pwd | token | secret
+                        | api[_-]?key | auth | credential )
+                | -p )
+              \s+ )
+    (?P<value> [^\s]{4,} )
+    """
+)
+
+# The alphabet `_LONG_OPAQUE` measures. An excerpt boundary landing inside a
+# run of these is what `_widen_to_run_boundaries` exists to prevent.
+_RUN_CHARS = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=_-")
 
 
 @dataclass(frozen=True)
@@ -106,26 +176,80 @@ def to_jsonl(hits: list[Hit]) -> str:
     return "".join(json.dumps(asdict(hit), ensure_ascii=False) + "\n" for hit in hits)
 
 
+def _mask_assignment(match: re.Match[str]) -> str:
+    """Replace the value, keep everything that says what the value was.
+
+    The key, the separator and the opening quote are re-emitted so the excerpt
+    still reads as an assignment — `password='[REDACTED]'` tells a reviewer what
+    was found, where `[REDACTED]` alone tells them only that something was.
+
+    No closing quote is added. A quoted value matches up to but not including
+    it, so the original closing quote is still in the text after the span this
+    replaces; emitting one here would double it.
+    """
+    quote = match.group("quote") or ""
+    return f"{match.group('key')}{match.group('sep')}{quote}{_REDACTED}"
+
+
 def redact(text: str) -> str:
-    """G-3: anything resembling a credential, before it reaches the ledger."""
-    text = _SECRET_ASSIGNMENT.sub(
-        lambda m: f"{m.group('key')}{m.group('sep')}{m.group('quote')}{_REDACTED}", text
-    )
+    """G-3: anything resembling a credential, before it reaches the ledger.
+
+    URL userinfo first. It is the one shape with no credential word anywhere in
+    it, so neither rule below can see it: `postgres://admin:hunter2@db` names no
+    key, and the password is far too short for `_LONG_OPAQUE`'s floor.
+    """
+    text = _URL_CREDENTIAL.sub(lambda m: f"{m.group(1)}{m.group(2)}:{_REDACTED}@", text)
+    # The flag is kept and the value replaced, for `_mask_assignment`'s reason:
+    # `--password [REDACTED]` tells a reviewer what was found where a bare
+    # marker tells them only that something was.
+    text = _CLI_CREDENTIAL.sub(lambda m: f"{m.group('flag')}{_REDACTED}", text)
+    text = _SECRET_ASSIGNMENT.sub(_mask_assignment, text)
     return _LONG_OPAQUE.sub(_REDACTED, text)
 
 
-def excerpt(line: str, start: int, end: int) -> str:
-    """The matched span with a small margin, truncated, then redacted.
+def _widen_to_run_boundaries(line: str, left: int, right: int) -> tuple[int, int]:
+    """Push both edges outward until neither sits inside a credential-shaped run.
 
-    Redaction runs last so it cannot be defeated by the truncation splitting a
-    secret in half — a truncated secret is still most of a secret.
+    A run cut at the boundary is a run the redactor can no longer measure:
+    `_LONG_OPAQUE` keys on length, so half a token is not a shorter finding, it
+    is no finding. Widening is linear in the line and bounded by it.
+    """
+    while left > 0 and line[left - 1] in _RUN_CHARS:
+        left -= 1
+    while right < len(line) and line[right] in _RUN_CHARS:
+        right += 1
+    return left, right
+
+
+def excerpt(line: str, start: int, end: int) -> str:
+    """The matched span with a small margin, redacted, then truncated to 200.
+
+    **Redaction runs before truncation** — the reverse of what this function
+    did until M3.5, and the reverse of what its own docstring claimed. The old
+    argument was that "redaction runs last so it cannot be defeated by the
+    truncation splitting a secret in half". That has the causality backwards:
+    redacting last means redacting text a cut has already shortened, and
+    `_LONG_OPAQUE` measures length. A 40-character credential cut to 20 drops
+    below the floor and stops being redactable at all. PRD G-3 says a
+    credential is "never reproduced", and twenty characters of one is a
+    reproduction.
+
+    Two things cut, not one. The 200-character cap is the obvious edge; the
+    ±24 margin is the same defect in different clothes, and it bites sooner,
+    because a credential sitting just past the margin is clipped to a handful
+    of characters before the redactor ever sees it. Both edges are widened
+    first, so what reaches `redact` contains whole runs or none.
+
+    Truncating after redaction can clip the `[REDACTED]` marker itself. That
+    is cosmetic — the secret is already gone, and a short marker is not one.
     """
     left = max(0, start - EXCERPT_MARGIN)
     right = min(len(line), end + EXCERPT_MARGIN)
-    span = line[left:right].strip()
+    left, right = _widen_to_run_boundaries(line, left, right)
+    span = redact(line[left:right].strip())
     if len(span) > EXCERPT_LIMIT:
         span = span[:EXCERPT_LIMIT]
-    return redact(span)
+    return span
 
 
 def window(lines: list[str], index: int) -> str:

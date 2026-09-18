@@ -20,7 +20,29 @@
 # Patterns are questions, not verdicts (FR-3.2). Nothing below concludes
 # anything; each one names a region and asks something a reader must answer.
 
-version: "2026.09.1"
+# Bumped from 2026.09.1 in M3.5, when `log.sensitive` gained its `{0,400}`
+# bound. FR-4.6 makes `catalog_version` an invalidation trigger, and the rule
+# genuinely matches differently on real targets now — a credential keyword more
+# than 400 characters into one call is no longer seen. Leaving the version
+# unchanged would assert that verifications recorded against the old rule still
+# hold, which is the staleness the field exists to prevent. Every record in
+# `tests/golden/hits.jsonl` carries this string, so a bump is visible there and
+# nowhere else: the candidate ids do not move, because `window_sha256` is over
+# window text and takes no account of the catalog.
+#
+# Bumped again to 2026.09.3 after a second external review measured three more
+# patterns quadratic — `net.fetch_exec` here, `exec.shell_true` and
+# `path.traversal` in `python.yaml`, plus `deser.unsafe`'s lookahead. All four
+# now carry the same `{0,400}` bound, and all four match differently on real
+# targets, which FR-4.6 makes an invalidation trigger exactly as before.
+#
+# Worth recording *why* one bump was not enough. M3.5 fixed the pattern that
+# had been demonstrated rather than the shape that caused it, and the C3 timing
+# check measured that one pattern with `re.search` — which returns at the first
+# match, so it measured a single scan where `sweep.py`'s `finditer` performs
+# one per start position. A check built around the example it was written from
+# confirms the example.
+version: "2026.09.3"
 
 patterns:
   - id: net.bind_all
@@ -41,8 +63,23 @@ patterns:
 
   - id: net.fetch_exec
     layer: [code]
+    # `{0,400}` for the reason `log.sensitive` carries below, and this entry
+    # exists because that fix was applied to the pattern that was *demonstrated*
+    # rather than to the shape. Three more patterns had it, and the review that
+    # found them measured what the M3.5 check did not.
+    #
+    # The M3.5 timing check used `re.search`, which returns at the first match.
+    # `sweep.py` uses `finditer` (D-6: two hits on one line stay two hits), so
+    # every start position is tried and the real cost is K starts times N
+    # characters. Measured under `finditer`: 0.164 s on 20 KB and 0.618 s on
+    # 40 KB — 3.8x for 2x the input, which is quadratic.
+    #
+    # Residue, stated: a pipe more than 400 characters after `curl` is no longer
+    # seen. That is a bound on the rule where §5 asks for a bound on the scan,
+    # taken deliberately because the alternative is a live hang in a shipped
+    # pattern.
     regex: |-
-      (?:curl|wget)\b[^|\n]*\|\s*(?:sudo\s+)?(?:ba|z|da|k)?sh\b|urlretrieve\s*\(
+      (?:curl|wget)\b[^|\n]{0,400}\|\s*(?:sudo\s+)?(?:ba|z|da|k)?sh\b|urlretrieve\s*\(
     precision: high
     default_severity_hint: high
     question: >-
@@ -54,8 +91,37 @@ patterns:
 
   - id: log.sensitive
     layer: [code]
+    # The `{0,400}` is load-bearing and was `*` until M3.5, where it was a
+    # quadratic hang in the shipped catalog — not in a user-supplied one.
+    #
+    # The cost is not inner backtracking. `[^)\n]` has no nested quantifier;
+    # the blowup is the *outer* scan. `re.search` retries from every position,
+    # a line of `print(` repeated offers thousands of matching starts, and `(`
+    # is not excluded — so each start consumed to end of line. K starts times N
+    # characters is O(N^2). Measured: 185.72 ms on 9,600 bytes, and 11.4 s on
+    # 76,800, which extrapolates to roughly 48 minutes on a 1 MB line.
+    #
+    # Two other fixes were measured and rejected, both because they lose
+    # findings rather than time:
+    #   * `[^()\n]*` is linear but stops at the first inner `(`, so
+    #     `print(sanitize(password))` and every other nested call goes unseen.
+    #     All seven fixtures agreed with it, which is why fixtures alone could
+    #     not have caught the regression.
+    #   * `[^)\n]*+` (possessive) is worse: it never gives back, so it swallows
+    #     the keyword it exists to find and misses two shipped positives.
+    #
+    # Bounding the repetition keeps `(` permitted, so nested calls still match,
+    # and caps each start at 400 characters — O(N*400), linear. 400 rather than
+    # 120 or 200 because those were measured losing a keyword 150 and 300
+    # characters into a call, and this rule is `precision: low` by design with
+    # recall that matters (BRIEF_M3.5.md §5).
+    #
+    # The residue, stated rather than discovered: a credential keyword more
+    # than 400 characters into a single call is no longer seen. That is a bound
+    # on the rule, where §5 asks for a bound on the scan, and it is taken
+    # deliberately because the alternative is a live hang in a shipped pattern.
     regex: |-
-      (?:log(?:ger|ging)?\.\w+|print|console\.\w+|echo)\s*[(\s][^)\n]*\b(?:token|password|passwd|secret|cookie|api[_-]?key|credential|authorization)\b
+      (?:log(?:ger|ging)?\.\w+|print|console\.\w+|echo)\s*[(\s][^)\n]{0,400}\b(?:token|password|passwd|secret|cookie|api[_-]?key|credential|authorization)\b
     flags: [i]
     precision: low
     default_severity_hint: low

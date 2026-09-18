@@ -227,8 +227,72 @@ unachievable without fixing the following explicitly:
   meant to review. The cost is that a cache family nobody has met yet is inventoried until
   someone adds it — which is visible in the output rather than silent, and is the direction this
   project prefers to be wrong in.
-- **Binary files** — detected by NUL byte in the first 8 KiB; recorded in the inventory, not
-  swept. Never guessed at by extension alone.
+- **Binary files** — detected by the *proportion* of non-text bytes in the first 8 KiB, not by the
+  presence of a single NUL; recorded in the inventory, not swept. Never guessed at by extension
+  alone.
+
+  **This read "detected by NUL byte in the first 8 KiB" until M3.5, and that rule was a
+  scope-evasion hole.** A target placing one NUL in a comment in `install.sh` removed the file from
+  the pattern sweep and the surface source entirely — one byte, chosen by the target, and the file
+  is never reviewed. P11 says detection must not decide scope; this let a single byte decide it,
+  and the review reported no findings there rather than reporting that it had not looked.
+
+  **The rule.** A byte is *non-text* when it is a C0 control other than tab, newline, vertical tab,
+  form feed, carriage return, escape, or the file/group/record separators U+001C–U+001E
+  (`\t \n \v \f \r \x1b \x1c \x1d \x1e`). A file is binary when non-text bytes exceed **5%** of the
+  first 8 KiB. It remains a pure function of those bytes, so NFR-3 is untouched and the
+  classification cannot vary by machine.
+
+  The separators are in that list because `split_lines` already treats them as text: it
+  deliberately does not break on U+001C–U+001E. Two definitions of "text" in one codebase drift,
+  so the line splitter and the binary detector share one.
+
+  **Why 5% — measured, not chosen.** Every text file in this repository's fixture tree measures
+  **0.00%** non-text. The smallest committed binary measures **8.51%**, and a real PNG header run
+  **90.28%**. A crafted `install.sh` hiding one NUL in a comment measures **1.75%–3.33%** — the
+  ratio depends on the file's length, which is why it is given as a range rather than as one figure
+  no reader could reproduce. The separation between real text and real binaries is total, and 5% is
+  placed in the empty band between the highest text file and the lowest binary, with margin on both
+  sides. The measurements are recorded here with the number because a bound that exists only in
+  code is one nobody agreed to.
+
+  **A known edge, stated rather than discovered twice.** The rule is a proportion, so it is
+  size-sensitive: in a very small file one legitimately non-text byte is a large fraction. A ten-byte
+  file containing one 0x01 is 10% and classifies as binary. This is accepted — a ten-byte file hides
+  very little, and it stays listed in `recon.json`'s `binary` array either way — but anything that
+  later depends on small-file classification should set a minimum window rather than assume the
+  proportion alone carries it.
+
+  **What it costs a target.** Evading review now requires more than 5% of the first 8 KiB to be
+  control bytes — on a full window, upwards of 400 of them — while the file still functions as
+  whatever it claims to be. That is a real tax rather than a single byte, and it cannot be paid
+  invisibly: the file stays listed in `recon.json`'s `binary` array either way, so the reviewer
+  sees a file that was inventoried and not swept.
+- **A file-size bound — `--max-file-bytes`, default 5 MiB.** A file larger than the bound is
+  inventoried, recorded as skipped, and not swept. **Proposed in M3.5 and not yet implemented**;
+  raised here before it exists in code, because a limit that appears only in code is one nobody
+  agreed to.
+
+  **Not a defence against superlinear time, which no longer exists.** M3.5 removed the quadratic
+  `log.sensitive`, and the shipped catalog is now linear in every shape measured: crafted
+  many-line input at ~1.7 ms/KiB, a single 4 MB line at the same per-byte cost, and ordinary
+  minified source ~25× cheaper at ~0.067 ms/KiB. The bound exists so that a *hostile file* cannot
+  consume unbounded time — 9.6 MB of crafted lines measured 14 seconds — not to rescue a rule that
+  blows up.
+
+  **No line-length bound, deliberately.** It was raised alongside this one and the measurements
+  argue against it: one enormous line costs no more per byte than many small ones, so a line cap
+  buys nothing the file cap does not, while adding a second limit to reason about and a second way
+  to truncate a file silently.
+
+  **5 MiB because the cost of the bound is a coverage gap.** Real source is rarely that large;
+  minified bundles can be. A cap tight enough to exclude a genuine bundle would hide exactly the
+  shipped artifact `dist/` already tempts a reviewer to skip, and this project's whole subject is
+  not hiding code. At ~1.7 ms/KiB worst case, 5 MiB bounds a hostile file at roughly 8 seconds.
+
+  **Skipping is recorded, never silent.** The path appears in `recon.json` beside `unreadable` and
+  `not_regular`, for the reason those exist: a file absent from every list reads as reviewed and
+  clean. A size cap that quietly drops a file would recreate the exact evasion A3 and C1 closed.
 - **Symlinks** — never followed. Recorded as symlinks with their target. A symlink pointing
   outside the target tree is itself a candidate (a closure question, per P9).
 - **No timestamps or absolute paths in deterministic outputs.** Paths are relative to the target

@@ -12,7 +12,7 @@ Deliberate shapes, each covering one rule in `STACK.md` §5:
 | `naïve-café.py` | Non-ASCII filename — NFC normalisation (§9 requires at least one) |
 | `crlf_module.py` | CRLF line endings — normalised to LF before hashing |
 | `pkg/deep/nested.py` | Nesting, so traversal order is not trivially sorted |
-| `assets/blob.bin` | A NUL byte in the first 8 KiB — binary by content, not extension |
+| `assets/blob.bin` | 8.51% non-text bytes in the first 8 KiB — binary by content. `.bin` also exempts it from `unread_code`, so it does not make the run exit 2 |
 | `node_modules/` | An excluded directory that is present, so the exclusion is recorded |
 | `skills/quiet/SKILL.md` | AC-9a: an entry point **no pattern matches**. The surface source must still enter it (P11); `tests/test_surfaces.py` asserts both halves, so a pattern that later matches it by coincidence turns the test red rather than passing it |
 | `mcp/server.py` | `surface.mcp_tool`: one decorated tool, which is a surface, beside a `call_tool(` call site, which is not |

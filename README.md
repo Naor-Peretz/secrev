@@ -4,10 +4,15 @@ Security review of *agentic artifacts* — skills, MCP servers, subagents, hooks
 agent configs, plugins, and the CLI tools around them. A Python command-line
 tool, backing a Claude Code skill.
 
-> **Status: early, and not usable yet.** The walk and the candidate-identity
-> scheme exist; the catalog, the sweep and the `secrev` command itself do not.
-> The commands below are the decided interface, not a working one. Nothing here
-> is published to PyPI.
+> **Status: early, and half-built.** `recon`, `sweep` and `surfaces` run — the
+> walk, the candidate-identity scheme, the pattern catalog and the surface
+> source all exist, and the threat-model layer ships as prose. `structure`,
+> `verify` and `report` do not exist yet, so the commands below are the decided
+> interface with half of it implemented. Nothing here is published to PyPI.
+>
+> This block said the catalog, the sweep and the `secrev` command "do not"
+> exist until M3.5. They had existed since M1. A status line is the first thing
+> read and the last thing updated, which is exactly why it gets checked here.
 
 ## The thesis is method, not detection
 
@@ -65,11 +70,20 @@ normalised before hashing and line numbers are reported against the original.
 No timestamps and no absolute paths appear in deterministic output.
 
 **It is reviewed by its own rules.** The codebase may not contain `eval`,
-`exec`, `pickle`, `shell=True`, a subprocess shell string, a runtime network
-call, or a write outside the workspace — `yaml.safe_load` only, never
-`yaml.load`. A scanner that flags `yaml.load` and then calls it is not credible,
-so a gate stage enforces this against the source with an AST walk rather than a
-grep. `PyYAML` is the only runtime dependency.
+`exec`, `pickle`, `shell=True`, a subprocess shell string, or a runtime network
+call — `yaml.safe_load` only, never `yaml.load`. A scanner that flags
+`yaml.load` and then calls it is not credible, so a gate stage enforces those
+against the source with an AST walk rather than a grep, resolving import
+aliases so the check tests what a name refers to rather than how it happened to
+be spelled.
+
+Writes outside the workspace are a rule as well, and **the AST stage does not
+check them.** This paragraph claimed it did until M3.5, which was the more
+expensive kind of wrong: a check nobody looked for because the documentation
+said it was already there. Whether a write lands inside the workspace is a
+dataflow question rather than a name test, so what holds the rule instead is
+structural — `cli.py` is the only module that writes at all, and every other
+module returns data. `PyYAML` is the only runtime dependency.
 
 ## Development
 
