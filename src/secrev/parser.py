@@ -95,6 +95,13 @@ class Argument:
     # The dotted name for `name` and `call`, empty otherwise. `os.path.join`,
     # not `join` — a rule matching bare `join` would fire on any object's.
     name: str
+    # For `literal`, what kind of literal: "bool", "string", "number", "bytes"
+    # or "none"; empty for everything else. Rule 2 needs it and `kind` alone
+    # cannot answer it — a function returning `"no"` is a lookup and one
+    # returning `False` is a gate, and telling them apart is the difference
+    # between that rule meaning what its docstring says and firing on any
+    # function that returns a constant.
+    literal_type: str
     # Every identifier appearing anywhere inside the value, in source order.
     # Rule 3 needs this: "does this path argument derive from a parameter" is a
     # question about names, not about the shape they are wrapped in.
@@ -300,13 +307,35 @@ def _looks_stringy(node: ast.expr) -> bool:
     return False
 
 
+def _literal_type(value: object) -> str:
+    """What kind of literal, in words every language has.
+
+    `bool` is tested before `int` because in Python `True` is an `int`, and a
+    boolean reported as a number would make rule 2 — which asks whether a
+    function's returns are booleans — silently never fire.
+    """
+    if isinstance(value, bool):
+        return "bool"
+    if isinstance(value, str):
+        return "string"
+    if isinstance(value, bytes):
+        return "bytes"
+    if isinstance(value, int | float | complex):
+        return "number"
+    if value is None:
+        return "none"
+    return "other"
+
+
 def _argument(node: ast.expr) -> Argument:
+    literal_type = ""
     if _is_interpolated(node):
         kind = "interpolated"
         name = ""
     elif isinstance(node, ast.Constant):
         kind = "literal"
         name = ""
+        literal_type = _literal_type(node.value)
     elif isinstance(node, ast.Call):
         kind = "call"
         name = _dotted(node.func)
@@ -316,7 +345,13 @@ def _argument(node: ast.expr) -> Argument:
     else:
         kind = "other"
         name = ""
-    return Argument(kind=kind, name=name, names=_names_in(node), calls=_calls_in(node))
+    return Argument(
+        kind=kind,
+        name=name,
+        literal_type=literal_type,
+        names=_names_in(node),
+        calls=_calls_in(node),
+    )
 
 
 def _literal_collection_size(node: ast.expr) -> int | None:

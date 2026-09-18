@@ -44,6 +44,7 @@ import os
 import sys
 import tempfile
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
@@ -52,8 +53,11 @@ from secrev.catalog import Catalog, CatalogError, load
 from secrev.inventory import MAX_FILE_BYTES
 from secrev.kinds import Kinds, SurfaceKindError
 from secrev.kinds import load_file as load_kinds
-from secrev.ledger import DECL_WINDOW_SPEC, WINDOW_SPEC, to_jsonl
-from secrev.recon import Recon, recon, slug, to_json
+from secrev.ledger import BLOCK_WINDOW_SPEC, DECL_WINDOW_SPEC, WINDOW_SPEC, to_jsonl
+from secrev.recon import GAP_LIST_LIMIT, Recon, recon, slug, to_json
+from secrev.structure import SHAPES, structure
+from secrev.structure_rules import StructureRuleError, StructureRules
+from secrev.structure_rules import load_file as load_rules
 from secrev.surfaces import surfaces
 from secrev.sweep import sweep
 
@@ -66,10 +70,10 @@ DEFAULT_WORKSPACE = Path.home() / ".security-review"
 
 # The blocks of `hits.jsonl`, in file order (Q1). A record whose `source` is
 # not named here was not written by this tool.
-SOURCES = ("pattern", "surface")
+SOURCES = ("pattern", "surface", "structure")
 
 # The entries of `run.json`, in file order.
-COMMANDS = ("recon", "sweep", "surfaces")
+COMMANDS = ("recon", "sweep", "surfaces", "structure")
 
 _ROOT = Path(__file__).resolve().parent.parent.parent
 
@@ -111,6 +115,18 @@ def resolve_catalog(argument: str | None) -> Catalog:
 
 def resolve_kinds(argument: str | None) -> Kinds:
     return load_kinds(Path(argument) if argument else _ROOT / "surfaces" / "_surfaces.yaml")
+
+
+def resolve_rules(argument: str | None) -> StructureRules:
+    """The structural rules, with the shape specifications the analyses declare.
+
+    `SHAPES` is passed in rather than imported by the loader, so
+    `structure_rules.py` holds no rule logic and no rule name — the same
+    separation `catalog.py` keeps from what a pattern means.
+    """
+    return load_rules(
+        Path(argument) if argument else _ROOT / "structure" / "_structure.yaml", SHAPES
+    )
 
 
 def workspace_for(root: Path, base: Path, target_version: str) -> Path:
@@ -347,7 +363,6 @@ def _prepare(
 ) -> tuple[Path, Recon]:
     result = recon(target, excluded, max_bytes)
     directory = workspace_for(target, workspace, result.target["version"])
-    directory.mkdir(parents=True, exist_ok=True)
 
     # 0o700 on every level, not only the leaf (M3.5 E4). The workspace holds
     # `match_excerpt` values — the one field G-3 spends its effort making safe
@@ -364,11 +379,27 @@ def _prepare(
     # terminates by construction, needs no filesystem-root guard, and fails
     # loudly through `relative_to` if the base is somehow not an ancestor —
     # where walking up would quietly chmod its way toward `/`.
+    # **Created at 0o700 and then confirmed, rather than created and repaired.**
+    # This was `mkdir(parents=True, exist_ok=True)` followed by the chmod walk
+    # below, which leaves every level world-readable between the two calls —
+    # and the M4 structural source found it in this file, on the milestone that
+    # shipped the rule (`structure.permission_after_creation`, F1). M3.5's E4
+    # fixed the mode these directories end up with; it did not close the window
+    # they pass through, and the comment above was written while looking
+    # straight at it.
+    #
+    # `mode=` is safe here in a way it is not on `parents=True`: umask can only
+    # *clear* bits, and 0o700 has no group or other bits to clear, so the
+    # directory is never briefly readable. The chmod stays for levels that
+    # already existed — `exist_ok=True` leaves their mode alone, and those are
+    # not directories this run created, so there is no window we opened.
     base = workspace.resolve()
+    base.mkdir(mode=0o700, parents=True, exist_ok=True)
     base.chmod(0o700)
     level = base
     for part in directory.relative_to(base).parts:
         level = level / part
+        level.mkdir(mode=0o700, exist_ok=True)
         level.chmod(0o700)
 
     sys.stderr.write(f"workspace: {directory}\n")
@@ -433,10 +464,14 @@ def _incomplete(result: Recon) -> int:
         # Named rather than repeated: the count is a display choice, and a
         # message that truncates must say how much it left out or it is a third
         # way of reporting a partial answer as a whole one.
-        limit = 5
-        shown = ", ".join(paths[:limit])
-        if count > limit:
-            shown += f", and {count - limit} more"
+        #
+        # `recon.GAP_LIST_LIMIT`, not a local `5`. It was a local until M4,
+        # when a third site would have made three definitions of one display
+        # rule — and a truncation that disagrees with the artifact's own
+        # truncation is a reader comparing two lists that were cut differently.
+        shown = ", ".join(paths[:GAP_LIST_LIMIT])
+        if count > GAP_LIST_LIMIT:
+            shown += f", and {count - GAP_LIST_LIMIT} more"
         sys.stderr.write(f"{count} file(s) {what}: {shown}\n")
     return EXIT_USAGE
 
@@ -494,6 +529,50 @@ def run_surfaces(
     return _incomplete(result)
 
 
+def run_structure(
+    target: Path,
+    workspace: Path,
+    rules: StructureRules,
+    excluded: frozenset[str] | None = None,
+    max_bytes: int | None = None,
+) -> int:
+    """The structural block, and the files this source could not read.
+
+    **A file that would not parse makes the run exit 2**, even when the rest of
+    the tree produced candidates and even when `recon` found nothing else
+    wrong. It is not "no candidates here": it is a file this source never
+    reviewed, and collapsing the two is H-1 — the same polarity M3.5 spent four
+    review rounds arriving at for files that went unread.
+
+    The names go to stderr and the block still goes to stdout, so
+    `secrev structure target > hits.jsonl` yields a valid file whichever way the
+    exit code lands (`STACK.md` §3).
+    """
+    directory, result = _prepare(target, workspace, excluded, max_bytes)
+    produced = structure(target, rules, excluded, max_bytes)
+    block = to_jsonl(produced.hits)
+    _write_block(directory, "structure", block)
+    write_run_json(
+        directory,
+        "structure",
+        {"rules_version": rules.version, "window_spec": BLOCK_WINDOW_SPEC},
+    )
+    sys.stdout.write(block)
+    sys.stderr.write(f"{len(produced.hits)} structural candidates, all unresolved\n")
+
+    incomplete = _incomplete(result)
+    if produced.unparsed:
+        shown = ", ".join(produced.unparsed[:GAP_LIST_LIMIT])
+        if len(produced.unparsed) > GAP_LIST_LIMIT:
+            shown += f", and {len(produced.unparsed) - GAP_LIST_LIMIT} more"
+        sys.stderr.write(
+            f"{len(produced.unparsed)} file(s) did not parse and were not reviewed "
+            f"by this source: {shown}\n"
+        )
+        return EXIT_USAGE
+    return incomplete
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="secrev", description="Security review of agentic artifacts."
@@ -504,6 +583,7 @@ def build_parser() -> argparse.ArgumentParser:
         ("recon", "inventory a target and emit recon.json"),
         ("sweep", "run the pattern catalog and emit its block of hits.jsonl"),
         ("surfaces", "enumerate reachable entry points and emit their block of hits.jsonl"),
+        ("structure", "run the structural rules and emit their block of hits.jsonl"),
     )
     for name, help_text in commands:
         sub = subparsers.add_parser(name, help=help_text)
@@ -533,13 +613,20 @@ def build_parser() -> argparse.ArgumentParser:
             metavar="N",
             help=f"skip files larger than N bytes; default {MAX_FILE_BYTES}",
         )
-        # The surface source never sees the catalog: it is a peer of the
-        # pattern source, not a stage after it (P11, TASKS_M2.md Q2).
+        # Neither peer source ever sees the catalog: they are peers of the
+        # pattern source, not stages after it (P11, D-11, TASKS_M2.md Q2). Each
+        # takes its own ruleset flag and nothing else's.
         if name == "surfaces":
             sub.add_argument(
                 "--kinds",
                 default=None,
                 help="surface kinds file; default is the shipped surfaces/_surfaces.yaml",
+            )
+        elif name == "structure":
+            sub.add_argument(
+                "--rules",
+                default=None,
+                help="structural rules file; default is the shipped structure/_structure.yaml",
             )
         else:
             sub.add_argument(
@@ -548,6 +635,68 @@ def build_parser() -> argparse.ArgumentParser:
                 help="catalog file or directory of .yaml packs; default is the shipped patterns/",
             )
     return parser
+
+
+@dataclass(frozen=True)
+class _PeerSource:
+    """A candidate source that loads its own ruleset and never sees the catalog.
+
+    The surface and structural sources are symmetric — a flag, a loader, an
+    error type, a label for the message, and a runner — so they are described
+    once rather than branched on twice. The table is not only tidier: it is the
+    shape D-11 asserts, and a fourth source added as another `if` in `main`
+    would be the first place the peer relationship stopped being visible.
+
+    The pattern source is deliberately absent. It is a peer too, but it is the
+    one `recon` also needs a catalog for, so its resolution sits on the path
+    both commands share.
+    """
+
+    flag: str
+    load: Callable[[str | None], object]
+    error: type[Exception]
+    label: str
+    run: Callable[..., int]
+
+
+_PEER_SOURCES: dict[str, _PeerSource] = {
+    "surfaces": _PeerSource(
+        flag="kinds",
+        load=resolve_kinds,
+        error=SurfaceKindError,
+        label="surface kinds",
+        run=run_surfaces,
+    ),
+    "structure": _PeerSource(
+        flag="rules",
+        load=resolve_rules,
+        error=StructureRuleError,
+        label="structural rules",
+        run=run_structure,
+    ),
+}
+
+
+def _run_peer_source(
+    args: argparse.Namespace,
+    target: Path,
+    workspace: Path,
+    excluded: frozenset[str] | None,
+    max_bytes: int | None,
+) -> int:
+    """Load a peer source's ruleset and run it.
+
+    A schema violation is exit 2 and the message names the offending rule, for
+    the same reason the catalog's does: "invalid rules" sends a reader to a file
+    with no starting point (§4).
+    """
+    source = _PEER_SOURCES[args.subcommand]
+    try:
+        ruleset = source.load(getattr(args, source.flag))
+    except source.error as exc:
+        sys.stderr.write(f"{source.label}: {exc}\n")
+        return EXIT_USAGE
+    return _run(lambda: source.run(target, workspace, ruleset, excluded, max_bytes))
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -567,14 +716,8 @@ def main(argv: list[str] | None = None) -> int:
 
     max_bytes = args.max_file_bytes
 
-    if args.subcommand == "surfaces":
-        try:
-            kinds = resolve_kinds(args.kinds)
-        except SurfaceKindError as exc:
-            # Exit 2, naming the kind, for the catalog's reason below.
-            sys.stderr.write(f"surface kinds: {exc}\n")
-            return EXIT_USAGE
-        return _run(lambda: run_surfaces(target, workspace, kinds, excluded, max_bytes))
+    if args.subcommand in _PEER_SOURCES:
+        return _run_peer_source(args, target, workspace, excluded, max_bytes)
 
     try:
         catalog = resolve_catalog(args.catalog)

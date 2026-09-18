@@ -4,12 +4,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repository state
 
-`src/secrev/` holds the M1 and M2 pipeline — `inventory`, `ids`, `catalog`, `sweep`, `recon`,
-`ledger`, `kinds`, `surfaces`, `cli` — and `secrev recon`, `secrev sweep` and `secrev surfaces`
-run. `patterns/` ships nine patterns in two packs (`_base.yaml`, `python.yaml`); `surfaces/` ships
-seven kinds in `_surfaces.yaml`. Both gates are green and every stage has something to check,
-including the artifact half of the determinism stage, which compares real `recon.json` and **both
-blocks** of `hits.jsonl`.
+`src/secrev/` holds the M1, M2 and M4 pipeline — `inventory`, `ids`, `catalog`, `sweep`, `recon`,
+`ledger`, `kinds`, `surfaces`, `parser`, `structure`, `structure_rules`, `cli` — and `secrev
+recon`, `secrev sweep`, `secrev surfaces` and `secrev structure` run. `patterns/` ships nine
+patterns in two packs (`_base.yaml`, `python.yaml`); `surfaces/` ships seven kinds in
+`_surfaces.yaml`; `structure/` ships four structural rules in `_structure.yaml`. Both gates are
+green and every stage has something to check, including the artifact half of the determinism
+stage, which compares real `recon.json` and **every block** of `hits.jsonl` — the blocks it
+requires are derived from `cli.SOURCES`, so a fourth source is covered by adding it in one place
+rather than by someone remembering this stage exists.
 
 **M3.5 is closed and merged as PR #15**; M3 as PR #14, M2 as PR #13. The
 owner's decisions are in `.claude/TASKS_M3.md`, which is the ledger — read it before touching M3.
@@ -523,20 +526,23 @@ Pipeline — three peer candidate sources (D-11) feed one ledger, `hits.jsonl`:
 - **pattern** — regex catalog, any text, line-oriented (M1)
 - **surface** — every reachable entry point, entering the ledger on its own account so detection
   never decides scope (P11, M2)
-- **structure** — AST rules; Python-only in v1, behind a `Parser` interface (M4)
+- **structure** — AST rules; Python-only in v1, behind a `Parser` interface (M4, shipped). The
+  interface returns a **vocabulary** — functions, calls, assignments, membership tests, returns —
+  not a syntax tree, so a second language changes no rule logic. `ast` is imported by `parser.py`
+  alone and a test holds that, because an interface its neighbours can reach around is a comment.
 
 Then: triage gate → reachability/proof → severity → report. `verify_ledger.py` blocks report
 rendering while any hit is `unresolved` (P4, AC-2).
 
 ## Commands (decided in `STACK.md` §3)
 
-`recon` and `sweep` are implemented; the rest are not.
+All three candidate sources are implemented; `verify` and `report` are not.
 
 ```
 secrev recon     <target>    # → recon.json  (M1, implemented)
 secrev sweep     <target>    # → hits.jsonl  (M1, implemented)
 secrev surfaces  <target>    # → hits.jsonl  (M2, implemented; its own block of the ledger)
-secrev structure <target>    # → hits.jsonl  (M4)
+secrev structure <target>    # → hits.jsonl  (M4, implemented; its own block, `block-20` windows)
 secrev verify    <workspace> # gate          (M7)
 secrev report    <workspace> # → report.md   (M9)
 ```

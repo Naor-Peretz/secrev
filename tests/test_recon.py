@@ -599,8 +599,13 @@ def test_coverage_gaps_state_what_is_not_done() -> None:
     not is gone (BRIEF_M2.md §4) — a gap that is no longer true misleads as
     surely as a missing one."""
     gaps = recon(FIXTURES).coverage_gaps
-    assert any("structural analysis not implemented" in gap for gap in gaps)
+    # The structural source exists since M4, so the line saying it did not is
+    # gone — the same correction the surface line got in M2, and for the same
+    # reason. What replaces it says which languages it does not reach and what
+    # it cannot follow in the ones it does.
+    assert not any("structural analysis not implemented" in gap for gap in gaps)
     assert not any("surface enumeration not implemented" in gap for gap in gaps)
+    assert any(gap.startswith("structure: reasoning stops at one function body") for gap in gaps)
 
 
 @pytest.mark.parametrize(
@@ -626,19 +631,52 @@ def test_coverage_gaps_name_what_the_surface_source_cannot_reach(unreachable: st
 
 
 def test_other_code_languages_are_named(tmp_path: Path) -> None:
-    """Surface kinds read code in Python only (STACK.md §7). A tree holding
-    other code has entry points no kind can see, and the gap names the
-    languages, as the structural line does."""
+    """Both sources read code in Python only (STACK.md §7). A tree holding
+    other code has entry points no kind can see and bodies no parser can read,
+    and each gap names the languages.
+
+    **Selected by prefix, and that is the point of the prefix.** These two
+    assertions matched on "Python only" alone until M4 added the structural
+    block, at which point the match found two lines and the tests failed on
+    unpacking — which is the failure mode BRIEF_M4.md §6 Q4 predicted for a
+    reader too: with two sets of limits in one list, nothing but the prefix says
+    which source a gap belongs to.
+    """
     (tmp_path / "app.py").write_text("x = 1\n", encoding="utf-8")
     (tmp_path / "server.ts").write_text("export const x = 1\n", encoding="utf-8")
     (tmp_path / "run.sh").write_text("echo hi\n", encoding="utf-8")
-    [line] = [gap for gap in recon(tmp_path).coverage_gaps if "Python only" in gap]
-    assert line.endswith("not read for: shell, typescript")
+    gaps = recon(tmp_path).coverage_gaps
+    [surface] = [gap for gap in gaps if gap.startswith("surface:") and "Python only" in gap]
+    [structural] = [gap for gap in gaps if gap.startswith("structure:") and "Python only" in gap]
+    assert surface.endswith("not read for: shell, typescript")
+    assert structural.endswith("not implemented for: shell, typescript")
 
 
 def test_a_python_only_tree_says_so() -> None:
-    [line] = [gap for gap in recon(FIXTURES).coverage_gaps if "Python only" in gap]
-    assert line.endswith("no other code language present")
+    gaps = recon(FIXTURES).coverage_gaps
+    [surface] = [gap for gap in gaps if gap.startswith("surface:") and "Python only" in gap]
+    [structural] = [gap for gap in gaps if gap.startswith("structure:") and "Python only" in gap]
+    assert surface.endswith("no other code language present")
+    assert structural.endswith("no other code language present")
+
+
+def test_every_coverage_gap_names_the_source_it_belongs_to() -> None:
+    """BRIEF_M4.md §6 Q4. Two blocks of limits in one list, so each line says
+    which source it is a limit *of* — in the artifact, rather than in a
+    convention a reader has to already know.
+
+    The two lines that carry no prefix are deliberate and are the exclusions:
+    a directory that was never walked and a file that was never read are facts
+    about the review as a whole, not limits of one source.
+    """
+    gaps = recon(FIXTURES).coverage_gaps
+    unprefixed = [
+        gap
+        for gap in gaps
+        if not gap.startswith(("surface:", "structure:"))
+        and not gap.startswith(("excluded from review", "present but not read"))
+    ]
+    assert not unprefixed, f"coverage gaps naming no source: {unprefixed}"
 
 
 def test_entrypoints_are_declared_metadata_only(tmp_path: Path) -> None:

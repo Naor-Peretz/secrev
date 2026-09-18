@@ -135,44 +135,44 @@ and applies here identically; see §6 Q5.
 
 ## 4. Definition of done
 
-- [ ] **A1 — Each of the four FR-3.6 rules detects its shape**, with a positive fixture that matches
+- [x] **A1 — Each of the four FR-3.6 rules detects its shape**, with a positive fixture that matches
       and a negative fixture that does not. Evidence: the fixture pair per rule, and the negative
       failing first against a deliberately over-broad draft.
-- [ ] **A2 — The negative fixture separates the shape from its neighbours.** Order-of-operations
+- [x] **A2 — The negative fixture separates the shape from its neighbours.** Order-of-operations
       must not fire on a fused create-with-mode call; decision shape must not fire on an allowlist
       that happens to branch over a literal; unvalidated reach must not fire where the validator is
       called; sink adjacency must not fire on a literal string.
-- [ ] **A3 — A rule is a question.** No record concludes anything, and the `question` field reads as
+- [x] **A3 — A rule is a question.** No record concludes anything, and the `question` field reads as
       one (FR-3.2). A rule whose question can be answered from the record alone is misfiled.
-- [ ] **B1 — Adding a fifth rule of an existing shape is a data edit only.** Evidence: add one, show
+- [x] **B1 — Adding a fifth rule of an existing shape is a data edit only.** Evidence: add one, show
       the diff touches no `.py`. This is NFR-6's actual test, and it is the one AC-4 uses for
       archetypes.
-- [ ] **B2 — The loader refuses a malformed rule file with exit 2, naming the offending rule id**,
+- [x] **B2 — The loader refuses a malformed rule file with exit 2, naming the offending rule id**,
       as `catalog.py` and `kinds.py` do. A silently ignored typo is a check that disappeared.
-- [ ] **B3 — The `structure.` namespace is closed from both sides**, as `surface.` is: the loader
+- [x] **B3 — The `structure.` namespace is closed from both sides**, as `surface.` is: the loader
       requires it, and `catalog.py` refuses it. A `rule_id` in `hits.jsonl` names one question.
-- [ ] **C1 — Two runs are byte-identical**, and adding an unrelated file moves no existing candidate
+- [x] **C1 — Two runs are byte-identical**, and adding an unrelated file moves no existing candidate
       id. Automated in `scripts/determinism_check.py`, which the gate runs.
-- [ ] **C2 — `structure.py` is in `is_nfr3_path` before it exists**, so the determinism guard is not
+- [x] **C2 — `structure.py` is in `is_nfr3_path` before it exists**, so the determinism guard is not
       silent on the file it most needs to watch.
-- [ ] **C3 — The cross-platform digest comparison covers the structure block**, as it covers the
+- [x] **C3 — The cross-platform digest comparison covers the structure block**, as it covers the
       pattern and surface blocks.
-- [ ] **D1 — Records carry `source: structure`** and join the one ledger as a third block, replacing
+- [x] **D1 — Records carry `source: structure`** and join the one ledger as a third block, replacing
       only their own (M2's Q1 answer).
-- [ ] **D2 — `structure.py` imports no other source.** Evidence: the import list.
-- [ ] **D3 — Records carry `window_spec: block-20`**, and the window is the enclosing function or
+- [x] **D2 — `structure.py` imports no other source.** Evidence: the import list.
+- [x] **D3 — Records carry `window_spec: block-20`**, and the window is the enclosing function or
       block rather than ±20 lines. The name is not new — `STACK.md` §5 has held it since M1 for
       exactly this span (§6 Q2). Using `lines-20` here would make two differently-shaped windows
       comparable, which is the defect C-2 exists to prevent; inventing a third name would
       contradict §5.
-- [ ] **E1 — Every language present with no structural coverage is a `coverage_gaps` line**
+- [x] **E1 — Every language present with no structural coverage is a `coverage_gaps` line**
       (FR-3.8). Python-only is a stated position, and silence about the rest is the false assurance
       this project exists to prevent.
-- [ ] **E2 — FR-3.7's limit is stated in the artifact, not only here.** Cross-function dataflow is
+- [x] **E2 — FR-3.7's limit is stated in the artifact, not only here.** Cross-function dataflow is
       invisible; a reader of `recon.json` must see that without reading this brief.
-- [ ] **F1 — The tool runs on itself** and the result is read, not assumed: `secrev structure .`,
+- [x] **F1 — The tool runs on itself** and the result is read, not assumed: `secrev structure .`,
       with every candidate resolved or recorded.
-- [ ] **F2 — Every document claim this milestone makes is true or gone**, searched with
+- [x] **F2 — Every document claim this milestone makes is true or gone**, searched with
       `git grep -n "<old name>"` from the root, no pathspec — the rule `CLAUDE.md` carries, applied
       to this milestone's own mechanism names.
 - [x] **F3 — `.claude/skills/` is read, and every checkable claim in it is true or gone.** Its own
@@ -193,8 +193,12 @@ and applies here identically; see §6 Q5.
 
       1. **`testing-contract` and `pattern-author` both cited `STACK.md` §8** for a testing rule.
          §8 is Harness discipline; §9 is Testing. The same wrong number in two files is a class.
-      2. **`testing-contract`'s example called `run_sweep(FIXTURES, workspace=tmp_path)`** — no such
-         function, no such parameter. The sources return text; the CLI writes.
+      2. **`testing-contract`'s example called `run_sweep(FIXTURES, workspace=tmp_path)`** and then
+         compared a file the call was supposed to have written. `cli.run_sweep` exists, takes
+         `(target, workspace, catalog, …)`, and is not what a golden test calls: the sources return
+         serialised text and `cli.py` writes. Replaced with the form the real goldens use. *(This
+         entry read "no such function" until F2's own sweep; the function exists and the signature
+         does not, and overstating a finding is the same defect as understating one.)*
       3. **The suite did not follow `testing-contract`'s own `read_bytes` rule.** Five golden
          comparisons used `read_text`, three of them in tests named `..._byte_for_byte`.
          `read_text` opens in universal-newline mode, so with no `.gitattributes` a clone with
@@ -260,8 +264,48 @@ and applies here identically; see §6 Q5.
       `test_m4_permits_the_source_it_builds` had been green for a directory `is_scoped_path` had
       never heard of. A permit assertion cannot tell "allowed by name" from "allowed by silence";
       `test_scope_guard_covers_structure` is the refusal that can. 125 -> 129 assertions.
-- [ ] Both gates green; self-application clean; every golden regenerated deliberately and every
+- [x] Both gates green; self-application clean; every golden regenerated deliberately and every
       changed line explained.
+
+**Evidence, so a tick is a claim someone can check.** 565 tests (was 501), 129 guard assertions,
+mypy across 19 source files, determinism byte-identical with ids stable over all three blocks.
+
+- **A1/A2** — `tests/fixtures/structural/<rule id>/{positive,negative}.py`, eight files, asserted
+  in both directions and per rule. Each negative is the rule's *nearest neighbour* rather than an
+  unrelated file: the fused `mkdir(mode=…)`, the reversed membership, the validator inside the
+  argument, the literal command. **A2 changed a rule while it was being written** — the decision
+  shape fired on allowlists and denylists alike, because both branch over a literal and return
+  booleans. The direction of the membership is the distinction, `MembershipTest.negated` already
+  carried it, and it was a field nothing read until the negative fixture demanded it.
+- **A3** — every `question` ends in a question mark, asserted; no record carries a status other
+  than `unresolved`.
+- **B1** — `test_a_fifth_rule_of_an_existing_shape_needs_no_python` loads a fifth rule through the
+  real loader. The `shape` field is what makes it true: parameters are declared per *shape*, not
+  per rule id, so a fifth rule of a known shape is data and nothing else.
+- **B2** — eight refusals, each naming the rule, plus a control that the valid file still loads.
+  The one that matters is the **misspelled parameter**: a missing one raises in the analysis and
+  someone notices, an unknown one leaves the analysis reading a parameter that is not there.
+- **B3** — the catalog refuses the namespace, and **it did not until this test asked.** `surface`
+  was named inline in `catalog.py` from M2, so `structure` was open and a pattern could have taken
+  a structural rule id. The reservation now reads from `ledger.RESERVED_NAMESPACES`.
+- **C1/C2/C3** — `scripts/determinism_check.py` derives the blocks it requires from `cli.SOURCES`
+  rather than listing them, which is why the third was covered by construction; `ci.yml` produces
+  the structural block for the cross-platform digest under the same guard as the other two.
+- **D1/D2/D3** — `source: structure`, `window_spec: block-20`, and an import list holding no other
+  source (`ids`, `inventory`, `ledger`, `parser`, `structure_rules` — the shared record module and
+  the parser, never `sweep`, `surfaces`, `catalog` or `kinds`).
+- **E1/E2** — `_STRUCTURE_GAPS`, four lines with a `structure: ` prefix, and FR-3.7's limit stated
+  first among them. The old line said "structural analysis not implemented (M4)" and would have
+  been false the moment this shipped.
+- **F1 — the tool ran on itself and found a real defect in `cli.py`.** 32 candidates over this
+  repository, nothing unparsed. `_prepare` created the workspace with
+  `mkdir(parents=True, exist_ok=True)` and then walked it setting `0o700`, leaving every level at
+  the umask between the two calls — 0o775 on the machine M3.5 measured — while that directory
+  holds the `match_excerpt` values G-3 exists to make safe. M3.5's E4 fixed the mode they end up
+  with and left the window they pass through. Fixed with the fused form the rule's own negative
+  fixture demonstrates, and `test_the_tool_does_not_contain_the_shape_it_asks_about` keeps it
+  fixed. The remaining candidates in `src/` and `scripts/` resolve as correct by construction:
+  every path reaching a sink is built by `workspace_for` and never derived from target content.
 
 ---
 

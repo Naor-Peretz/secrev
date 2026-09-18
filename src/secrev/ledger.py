@@ -31,6 +31,15 @@ from dataclasses import asdict, dataclass
 LAYERS = frozenset({"code", "instruction", "manifest"})
 PRECISIONS = frozenset({"high", "medium", "low"})
 
+# Rule-id namespaces owned by a source other than the pattern catalog. Each
+# source's loader *requires* its own, and `catalog.py` refuses all of them, so a
+# `rule_id` in `hits.jsonl` names exactly one question whichever source produced
+# it. Here rather than spelled out in `catalog.py` because the list grew: M2
+# added `surface` and `catalog.py` named it inline, so M4's `structure` was open
+# until a test asked — the closure was written once and then had to be
+# remembered, which is the shape H-7 exists to prevent.
+RESERVED_NAMESPACES = frozenset({"surface", "structure"})
+
 # ±20 lines. Named, carried on every record, and an FR-4.6 invalidation
 # trigger. See STACK.md §5 for why the name matters more than the number.
 WINDOW_RADIUS = 20
@@ -43,6 +52,18 @@ WINDOW_SPEC = "lines-20"
 # specs are never comparable, so a surface window can never be read as a
 # pattern window that happens to cover the same lines.
 DECL_WINDOW_SPEC = "decl-20"
+
+# The structural source's window (M4, BRIEF_M4.md §6 Q2): the same ±20 lines,
+# clipped to the enclosing function or block. **Not a new name** — `STACK.md` §5
+# has held `block-20` for exactly this span since M1, so the question "what do
+# structural records carry" was answered by binding text before it was asked.
+#
+# Sharing the name with a future re-windowing of the pattern source is correct
+# rather than a C-2 violation: C-2 keeps differently-*shaped* spans from being
+# compared, and two spans of the same shape sharing a name is what the name is
+# for. Ids stay distinct because `rule_id` is in the tuple. That re-windowing is
+# a milestone of its own and explicitly not M4's (`STACK.md` §5).
+BLOCK_WINDOW_SPEC = "block-20"
 
 # `BRIEF_M1.md` §5: "the matched span with a small margin, truncated to 200
 # chars". Cited wrongly as `STACK.md` §5 until M3.5 — §5 there fixes traversal,
@@ -256,4 +277,31 @@ def window(lines: list[str], index: int) -> str:
     """`lines-20`: ±20 lines around `index`, clamped to the file."""
     low = max(0, index - WINDOW_RADIUS)
     high = min(len(lines), index + WINDOW_RADIUS + 1)
+    return "\n".join(lines[low:high])
+
+
+def block_window(lines: list[str], index: int, start: int, end: int) -> str:
+    """`block-20`: the ±20 lines, tightened to the enclosing body.
+
+    `start` and `end` are the body's first and last line, zero-based and
+    inclusive. The radius stays, so the name keeps meaning what it says: this is
+    `lines-20` clipped to a block boundary, not an unbounded body. A 900-line
+    function would otherwise put 900 lines into one `window_sha256`, where any
+    edit anywhere in it re-identifies the candidate — which is the opposite of
+    what tightening the window is for (FR-4.6).
+
+    Clipping in both directions is what makes the spec worth a separate name.
+    A candidate in a four-line function carries four lines, so an edit twenty
+    lines above it no longer expires the verification — and that, rather than
+    the span being smaller, is the property `STACK.md` §5 wanted from
+    `block-20`.
+    """
+    low = max(0, index - WINDOW_RADIUS, start)
+    high = min(len(lines), index + WINDOW_RADIUS + 1, end + 1)
+    # A body that reports its end before its start is not something any parser
+    # here produces; falling back to the untightened span rather than returning
+    # "" keeps a malformed span from silently producing an empty window, which
+    # every candidate in the file would then share an ordinal with.
+    if high <= low:
+        return window(lines, index)
     return "\n".join(lines[low:high])

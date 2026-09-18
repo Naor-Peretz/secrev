@@ -291,7 +291,7 @@ _NOT_CODE = frozenset({"ini", "json", "markdown", "text", "toml", "yaml"})
 # Every ordinary target holds binary assets, so an uncapped list puts every
 # image in the tree on one line and the gap stops being readable — the same
 # failure as not reporting it, reached from the other side.
-_GAP_LIST_LIMIT = 5
+GAP_LIST_LIMIT = 5
 
 # Extensions whose files are assets rather than content a reviewer reads. The
 # *only* thing that exempts an unread file from `unread_code`.
@@ -434,10 +434,41 @@ _UNREAD_REASONS = (
 # two; the rest are the line-oriented limits accepted in TASKS_M2.md (Q3) on
 # the condition that each is named here. Fixed text, not derived from the
 # kinds: recon is a peer of the surface source and does not import it (P11).
+_STRUCTURE_GAPS = (
+    # FR-3.7, and the limit a reader of a structural record most needs. The
+    # report has to carry it too; this is the artifact half.
+    "structure: reasoning stops at one function body — a value reaching a sink "
+    "through an intermediate call is not followed (FR-3.7, v2)",
+    "structure: a value bound outside the body it is used in is not followed, so a "
+    "collection held in a module constant is not read as a literal one",
+    "structure: what counts as validating is a list of names, not a proof — a call "
+    "that is named here suppresses a candidate whether or not it confines anything",
+    # Not "listed in unread_code", which this line said for one draft and which
+    # is false: recon is a peer of the structural source and does not parse
+    # anything, so it cannot know. `secrev structure` names the files and exits
+    # 2 — the honest split, and the same one M3.5 settled for unread files.
+    "structure: a file that fails to parse is not reviewed by this source at all; "
+    "`secrev structure` names it and exits 2 rather than reporting no candidates",
+)
+
+# What the surface source cannot reach, one line each, so a reader sees the
+# limit rather than inferring it from a regex. Prefixed `surface: ` since M4,
+# when a second block joined it: with two sets of limits in one list a reader
+# has to be able to tell which source each belongs to, and the prefix does that
+# in the artifact rather than in a convention someone has to know
+# (BRIEF_M4.md §6 Q4).
 _SURFACE_GAPS = (
     "surface: HTTP routes are not enumerated (framework-specific; FR-1.3)",
     "surface: IPC handlers are not enumerated (framework-specific; FR-1.3)",
-    "surface: the argument parser beneath a declared CLI command is not enumerated (needs AST, M4)",
+    # This said "(needs AST, M4)" until M4 shipped one. The parser exists now and
+    # this is still not enumerated, because it is a *reachability* question and
+    # the structural source adds candidates rather than entry points (P11,
+    # BRIEF_M4.md §1 refuses `surfaces/` by name). A gap line naming the
+    # milestone that was going to close it, in the milestone that did not, is
+    # how a reader learns to stop believing gap lines.
+    "surface: the argument parser beneath a declared CLI command is not enumerated — "
+    "it needs an AST, which exists since M4, but reading it is the surface source's "
+    "work and not the structural source's",
     "surface: a package with no `__all__` has no declared public surface to enumerate",
     "surface: an `__all__` built at runtime, and names more than 20 lines below "
     "its declaration, are not seen",
@@ -467,18 +498,30 @@ def _coverage_gaps(
     which do not pass it keep the previous output exactly.
 
     §3's example reads "structural analysis unavailable for: yaml, markdown",
-    which implies structural analysis exists for the other languages. It exists
-    for none of them until M4, and naming two languages would understate the
-    gap by implying the rest were covered.
+    which implies structural analysis exists for the other languages. Until M4
+    it existed for none of them, and naming two languages would have understated
+    the gap by implying the rest were covered.
+
+    **Since M4 it exists for Python and for nothing else**, so the line now says
+    which languages are present and unreached — which is §3's shape, arrived at
+    once it became true. The previous line said "not implemented (M4)" and would
+    have been false the moment the source shipped: a gap that overstates is read
+    once and then discounted, exactly like one that understates.
 
     The surface source exists since M2, so the line saying it did not is gone
     (BRIEF_M2.md §4): a gap that is no longer true misleads as surely as a
     missing one. What replaces it says what the source still cannot reach,
     including the code languages present that no kind reads (STACK.md §7).
     """
-    present = ", ".join(sorted(languages)) if languages else "none detected"
     code = sorted(name for name in languages if name not in _NOT_CODE and name != "python")
     others = f"not read for: {', '.join(code)}" if code else "no other code language present"
+    # The same set answers both sources' first line: a code language no parser
+    # and no kind reads. Computed once from `_NOT_CODE` rather than listed, so a
+    # language added to the inventory cannot appear in one line and not the
+    # other (STACK.md §7).
+    unparsed_languages = (
+        f"not implemented for: {', '.join(code)}" if code else "no other code language present"
+    )
 
     # First in the list, because a directory left unread is the largest gap
     # this tool can have and the likeliest place for something to have been
@@ -504,16 +547,17 @@ def _coverage_gaps(
         # reached from the other side. `cli._incomplete` already truncates this
         # way; a truncation that does not say how much it left out would be a
         # third way of reporting a partial answer as a whole one.
-        shown = ", ".join(paths[:_GAP_LIST_LIMIT])
-        if len(paths) > _GAP_LIST_LIMIT:
-            extra = len(paths) - _GAP_LIST_LIMIT
+        shown = ", ".join(paths[:GAP_LIST_LIMIT])
+        if len(paths) > GAP_LIST_LIMIT:
+            extra = len(paths) - GAP_LIST_LIMIT
             shown += f", and {extra} more — the full list is inventory.{key}"
         not_read.append(f"present but not read, {why}: {shown}")
 
     return [
         *skipped,
         *not_read,
-        f"structural analysis not implemented (M4); no coverage for: {present}",
+        f"structure: rules are read in Python only; {unparsed_languages}",
+        *_STRUCTURE_GAPS,
         f"surface: code entry points are read in Python only; {others}",
         *_SURFACE_GAPS,
     ]
