@@ -1,5 +1,19 @@
-#!/bin/bash
+#!/bin/sh
 # Strategic Compact Suggester
+#
+# `sh`, not `bash`: STACK.md §1 binds POSIX sh and §8 holds .claude/ to the
+# tool's own standards. This was the only `#!/bin/bash` in fourteen shell
+# scripts here, and it is the only one this project did not write — the rule
+# held wherever someone typed it and broke where code arrived from outside.
+# Nothing in the body was bash-specific, so this is a one-line correction.
+#
+# KNOWN BROKEN, and deliberately not repaired here: the counter below cannot
+# work. `$$` is this script's own pid and a hook is a fresh process every time,
+# so COUNTER_FILE has a new name on every invocation, the `-f` test is never
+# true, the file is rewritten as 1, and neither threshold is ever reached. It
+# is vendored third-party content and rewriting its logic is not this
+# milestone's business; it is recorded here, in SKILL.md and in BRIEF_M4.md §6
+# rather than left to be discovered by someone who wires it up and waits.
 # Runs on PreToolUse or periodically to suggest manual compaction at logical intervals
 #
 # Why manual over auto-compact:

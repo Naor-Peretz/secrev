@@ -321,8 +321,8 @@ def test_each_block_is_its_sources_golden(tmp_path: Path) -> None:
     run(["surfaces", str(FIXTURES), "--workspace", str(tmp_path)])
     run(["sweep", str(FIXTURES), "--workspace", str(tmp_path)])
     text = ledger(tmp_path)
-    assert block(text, "pattern") == PATTERN_GOLDEN.read_text(encoding="utf-8")
-    assert block(text, "surface") == SURFACE_GOLDEN.read_text(encoding="utf-8")
+    assert block(text, "pattern").encode("utf-8") == PATTERN_GOLDEN.read_bytes()
+    assert block(text, "surface").encode("utf-8") == SURFACE_GOLDEN.read_bytes()
     assert text == block(text, "pattern") + block(text, "surface")
 
 
@@ -342,7 +342,7 @@ def test_stdout_is_the_runs_own_block(tmp_path: Path, capsys: pytest.CaptureFixt
     run(["sweep", str(FIXTURES), "--workspace", str(tmp_path)])
     capsys.readouterr()
     run(["surfaces", str(FIXTURES), "--workspace", str(tmp_path)])
-    assert capsys.readouterr().out == SURFACE_GOLDEN.read_text(encoding="utf-8")
+    assert capsys.readouterr().out.encode("utf-8") == SURFACE_GOLDEN.read_bytes()
 
 
 def test_run_json_keeps_one_entry_per_command(tmp_path: Path) -> None:

@@ -221,12 +221,15 @@ skills/security-review/
 │   └── render_report.py            # findings.json + template  → report.md
 ├── patterns/
 │   ├── _base.yaml                  # language-agnostic code patterns
-│   ├── _structure.yaml             # AST rule declarations
 │   ├── _instruction.yaml           # prose/instruction-layer patterns (P8)
 │   ├── _manifest.yaml              # capability-grant & config patterns (P10)
 │   ├── python.yaml
 │   ├── node.yaml
 │   └── shell.yaml
+├── surfaces/
+│   └── _surfaces.yaml              # entry-point kinds (M2)
+├── structure/
+│   └── _structure.yaml             # AST rule declarations (M4)
 ├── threat-models/
 │   ├── _classifier.md              # how to pick archetypes
 │   ├── _agentic-core.md            # ALWAYS loaded for any agentic target

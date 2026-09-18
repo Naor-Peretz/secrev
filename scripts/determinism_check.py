@@ -1,14 +1,19 @@
 """NFR-3 enforced rather than trusted.
 
-Two checks, both from BRIEF_M1.md §7 and, since TASK-M2-009, over both
-blocks of the ledger (BRIEF_M2.md §4):
+Two checks, both from BRIEF_M1.md §7 and, since TASK-M2-009, over every block
+of the ledger (BRIEF_M2.md §4, BRIEF_M4.md C3):
 
   1. Two runs over the same fixture tree produce byte-identical recon.json
-     and hits.jsonl — the pattern block and the surface block alike. A ledger
-     missing either block fails: a block that was never produced was never
+     and hits.jsonl — the pattern, surface and structural blocks alike. A ledger
+     missing any block fails: a block that was never produced was never
      compared, and saying "identical" about it would be H-1.
   2. Adding an unrelated file to the tree renumbers no existing candidate id,
-     pattern or surface.
+     whichever source produced it.
+
+The required blocks are derived from `cli.SOURCES` rather than listed here.
+They were listed until M4, so the structural block would have been absent from
+this check while the summary line said "both blocks" — a check that is complete
+by construction only until someone adds a third of something.
 
 Both write to a throwaway workspace outside the tree (STACK.md §6, G-4) and
 never touch the fixtures. Exits 0 when there is nothing to check yet, so it is
@@ -27,6 +32,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 FIXTURES = ROOT / "tests" / "fixtures"
 ARTIFACTS = ("recon.json", "hits.jsonl")
+
+# Read from the tool rather than restated (H-7). A fourth source has to appear
+# here for the check to cover it, and the one place to add it is `cli.py`.
+sys.path.insert(0, str(ROOT / "src"))
+from secrev.cli import COMMANDS, SOURCES  # noqa: E402
 
 
 def _python() -> str:
@@ -74,7 +84,7 @@ def check_byte_identical(tmp: Path) -> bool:
     runs = []
     for index in (1, 2):
         workspace = tmp / f"run{index}"
-        for subcommand in ("recon", "sweep", "surfaces"):
+        for subcommand in COMMANDS:
             if not _run(subcommand, FIXTURES, workspace):
                 return False
         runs.append(_collect(workspace))
@@ -83,7 +93,7 @@ def check_byte_identical(tmp: Path) -> bool:
         sys.stderr.write("  no recon.json or hits.jsonl produced — nothing compared\n")
         return False
 
-    missing = {"pattern", "surface"} - {
+    missing = set(SOURCES) - {
         record["source"] for record in _records(runs[0].get("hits.jsonl", b""))
     }
     if missing:
@@ -141,8 +151,12 @@ def check_stable_ids(tmp: Path) -> bool:
     tree = tmp / "tree"
     shutil.copytree(FIXTURES, tree, symlinks=True)
 
+    # Every ledger-producing command, derived rather than listed: `recon`
+    # writes no block, so it is the one COMMANDS entry this check skips.
+    producing = tuple(name for name in COMMANDS if name != "recon")
+
     before_ws = tmp / "before"
-    for subcommand in ("sweep", "surfaces"):
+    for subcommand in producing:
         if not _run(subcommand, tree, before_ws):
             return False
     before = _collect(before_ws).get("hits.jsonl")
@@ -151,7 +165,7 @@ def check_stable_ids(tmp: Path) -> bool:
 
     (tree / "zz_unrelated_addition.txt").write_text("nothing to match here\n", encoding="utf-8")
     after_ws = tmp / "after"
-    for subcommand in ("sweep", "surfaces"):
+    for subcommand in producing:
         if not _run(subcommand, tree, after_ws):
             return False
     after = _collect(after_ws).get("hits.jsonl", b"")
@@ -201,7 +215,7 @@ def main() -> int:
     # way the src/secrev condition did.
     pending = [
         name
-        for name in ("recon.py", "sweep.py", "surfaces.py")
+        for name in ("recon.py", "sweep.py", "surfaces.py", "structure.py")
         if not (ROOT / "src" / "secrev" / name).exists()
     ]
     if pending:
@@ -212,7 +226,8 @@ def main() -> int:
         tmp = Path(raw)
         if not (check_byte_identical(tmp) and check_stable_ids(tmp)):
             return 1
-    print("artifacts: recon.json and both hits.jsonl blocks byte-identical, ids stable")
+    blocks = ", ".join(SOURCES)
+    print(f"artifacts: recon.json and every hits.jsonl block ({blocks}) byte-identical, ids stable")
     return 0
 
 

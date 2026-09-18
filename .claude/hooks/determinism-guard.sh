@@ -46,7 +46,8 @@ echo "   · paths collected then sorted() on the POSIX string — never os.walk 
 echo "   · every path NFC-normalised before use, comparison or hashing"
 echo "   · CRLF→LF before hashing; line numbers reported against the original"
 echo "   · window_sha256 covers window text only — no filename, line, or timestamp"
-echo "   · id from (relative_path, line, rule_id, ordinal), never a traversal counter"
+echo "   · id from (relative_path, rule_id, window_sha256, ordinal) — never a traversal"
+echo "     counter, and never 'line': derive() rejects it rather than ignoring it (FR-4.5)"
 
 if [ -d "$ROOT/src/secrev" ] && [ -d "$ROOT/tests/fixtures" ]; then
     if [ ! -x "$PY" ]; then

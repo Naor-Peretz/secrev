@@ -58,6 +58,13 @@ Per AC-10 the tool is reviewed by its own rules. Non-negotiable consequences:
 - **`yaml.safe_load` only.** Never `yaml.load`, never `Loader=`. A scanner that flags `yaml.load`
   and then calls it is not credible.
 - No `eval`, `exec`, `pickle`, or `shell=True` anywhere in the codebase.
+- No `compile`, and no `marshal`. Dynamic compilation is `exec` with a longer path, and `marshal`
+  is `pickle` with worse documentation; both are shapes the catalog asks about in targets. **Added
+  in M4, after the enforcement had cited this list for two milestones without the list containing
+  them:** `scripts/self_check.py` refuses both and names "STACK.md §2.1" as its reason, and
+  `.claude/skills/secrev-invariants` repeated them as though they were here. The rules are right
+  and were never in dispute; what was wrong is that two places attributed them to a paragraph that
+  did not say them, which is how a rule becomes unfalsifiable.
 - No `subprocess` with a shell string; argument lists only.
 - No network calls at runtime (NFR-4). Tests included.
 - No writes outside the workspace directory (§6).
@@ -314,10 +321,18 @@ unachievable without fixing the following explicitly:
   answers it wrongly in the direction that looks like success.
 
   **M1 ships `lines-20`.** Tightening to a block requires an AST, and `BRIEF_M1.md` §1 defers AST
-  analysis to M4 with a reason. M4 moving to `block-20` still re-identifies every candidate and
-  still invalidates every verification recorded against them — that is unchanged and it is still a
-  migration. What changes is that the tool detects it, rather than it depending on someone reading
-  this paragraph in six months.
+  analysis to M4 with a reason. Tightening the *pattern* window to `block-20` still re-identifies
+  every candidate and still invalidates every verification recorded against them — that is
+  unchanged and it is still a migration. What changes is that the tool detects it, rather than it
+  depending on someone reading this paragraph in six months.
+
+  **That migration is not M4's**, and this paragraph said it was until M4 was scoped. M4 builds the
+  parser and ships `block-20` on **structural** records, which are new and re-identify nothing.
+  Re-windowing the pattern source is a separate act with a separate blast radius — every existing
+  `hits.jsonl` id moves and every verification against one expires — and folding it into the
+  milestone that introduces a third source would mean that when an id moved, nobody could say
+  whether the new source or the re-windowing did it. It gets its own milestone, on the owner's
+  decision, and `sweep.py` keeps `lines-20` until then.
 
   **M2 adds `decl-20`** for surface candidates: the same ±20 lines, anchored on the line that
   declares the entry point. PRD FR-4.1 says surface candidates are "traced rather than windowed" —
@@ -430,9 +445,17 @@ It is in scope for AC-10, and the rules below are binding on it.
 - **H-3 — Guards cover every tool that can write, not every tool that usually writes.**
   `Write|Edit|MultiEdit` alone leaves `Bash` as an open path. Under P7 a write is an execution
   primitive regardless of which tool performed it.
-- **H-4 — Protected paths are `src/`, `patterns/`, `surfaces/`, `scripts/`, `threat-models/`,
-  `tests/golden/` and `.claude/`.** `threat-models/` joined in M3 (`TASKS_M3.md` D-1), in the
-  change that created it.
+- **H-4 — Protected paths are `src/`, `patterns/`, `surfaces/`, `structure/`, `scripts/`,
+  `threat-models/`, `tests/golden/` and `.claude/`.** `threat-models/` joined in M3
+  (`TASKS_M3.md` D-1), in the change that created it.
+
+  **`structure/` joined in M4** (`BRIEF_M4.md` §6 Q1), likewise in the change that created it and
+  on the same argument as `patterns/` and `surfaces/`: the structural rules are the tool's input.
+  Their parameters decide which calls count as sinks and which functions count as validating, so an
+  unreviewed edit is a structural check that stops firing while every run still reports success. It
+  needs its own entry only because the owner placed the file in a directory of its own rather than
+  under `patterns/`, correcting the §7 tree — had it landed where the PRD tree put it, `patterns/`
+  would already have covered it.
   Its case is not identical to the two below it and the difference is stated rather than glossed:
   the catalog and the kinds are data a script reads, while an overlay is prose a reviewing agent
   reads. The failure mode is what transfers — a mandatory question deleted from an overlay is a

@@ -80,7 +80,24 @@ REFUSE = 2
 # a bare `golden` would protect any directory of that name anywhere, and the
 # over-match this file already carries for one-word names is not worth widening
 # when the real path is known.
-PROTECTED = ("src", "patterns", "surfaces", "scripts", "threat-models", "tests/golden", r"\.claude")
+# `structure` joined in M4 on exactly the argument `surfaces` joined on, and in
+# the change that created the directory rather than after it. The structural
+# rules are tool input like the catalog and the kinds: the parameters in
+# `_structure.yaml` decide which calls count as sinks and which functions count
+# as validating, so an unreviewed edit there is a structural check that silently
+# stops firing while every run still reports success. The owner placed the file
+# in a directory of its own (BRIEF_M4.md §6 Q1) rather than under patterns/,
+# which is what makes a separate entry here necessary at all.
+PROTECTED = (
+    "src",
+    "patterns",
+    "surfaces",
+    "structure",
+    "scripts",
+    "threat-models",
+    "tests/golden",
+    r"\.claude",
+)
 
 # The set as a reader sees it, derived rather than restated. The refusal message
 # below used to spell the list out and had already drifted — it omitted

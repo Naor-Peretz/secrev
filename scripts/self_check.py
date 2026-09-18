@@ -105,10 +105,23 @@ _SHELL_BINARIES = ("sh", "bash", "zsh", "dash", "ksh", "csh", "tcsh", "fish")
 # Written as full dotted paths, so `importlib.metadata` is permitted while bare
 # `importlib` is not: `importlib.import_module` is `__import__` with a nicer
 # spelling, and `BANNED_ATTRS` already says so.
+#
+# `ast` joined in M4 and is not an amendment: `STACK.md` §2 already names it in
+# the stdlib list this project uses, and §7 *requires* the structural source to
+# sit behind a `Parser` interface with `ast` as the first implementation. The
+# allowlist simply had no `src/` module importing it until now — the same shape
+# as `subprocess` in M3.5, where the entry was missing rather than the rule.
+#
+# It is permitted here for the whole package because this list has no per-module
+# scoping and inventing some would be a new mechanism inside a gate script. The
+# narrower rule that actually matters — **only `parser.py` may import it**, or
+# the interface §7 requires can be reached around without anyone noticing — is
+# asserted in `tests/test_parser.py` instead.
 ALLOWED_IMPORTS = frozenset(
     {
         "__future__",
         "argparse",
+        "ast",
         "collections.abc",
         "dataclasses",
         "datetime",

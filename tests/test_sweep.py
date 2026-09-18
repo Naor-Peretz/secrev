@@ -34,8 +34,11 @@ def catalog() -> Catalog:
 
 
 def test_matches_the_golden_byte_for_byte(catalog: Catalog) -> None:
+    """`read_bytes`: see the note in `tests/test_recon.py`. `read_text`
+    translates CRLF to LF on the way in, so it cannot see the one difference
+    this module's own docstring says must never re-identify a candidate."""
     produced = to_jsonl(sweep(FIXTURES, catalog))
-    assert produced == GOLDEN.read_text(encoding="utf-8")
+    assert produced.encode("utf-8") == GOLDEN.read_bytes()
 
 
 def test_two_runs_are_byte_identical(catalog: Catalog) -> None:
@@ -92,8 +95,10 @@ def test_an_edit_above_a_match_does_not_re_identify_it(tmp_path: Path, catalog: 
 
 
 def test_every_record_carries_the_window_spec(catalog: Catalog) -> None:
-    """The M4 transition to `block-20` has to be an invalidation FR-4.6
-    detects, not something someone remembers."""
+    """A later transition to `block-20` has to be an invalidation FR-4.6
+    detects, not something someone remembers. It is not M4's: M4 gives
+    `block-20` to structural records, which are new and re-identify nothing,
+    and re-windowing this source is a milestone of its own (`STACK.md` §5)."""
     assert all(hit.window_spec == WINDOW_SPEC for hit in sweep(FIXTURES, catalog))
 
 

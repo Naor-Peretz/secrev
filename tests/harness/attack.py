@@ -254,6 +254,30 @@ def test_determinism_guard_speaks_on_surfaces_before_it_exists() -> None:
     )
 
 
+def test_determinism_guard_speaks_on_structure_before_it_exists() -> None:
+    """BRIEF_M4.md C2, and the same argument as surfaces.py one milestone on.
+
+    Both files are named, and `parser.py` is the one worth stating a reason for.
+    It looks like a loader and is not: it fixes the order nodes are visited in,
+    and an order that is not a property of the input reaches the output exactly
+    as `os.walk`'s does. Leaving it out would put the guard on the module that
+    *emits* records while leaving the module that *orders* them unwatched, which
+    is the split that made `catalog.py` the wrong analogy.
+    """
+    for name in ("structure.py", "parser.py"):
+        rc, out, _ = run_hook(
+            "determinism-guard.sh", write_payload(str(REPO / "src" / "secrev" / name), "")
+        )
+        assert rc == PASS_THROUGH, (
+            f"got rc={rc} for {name}. rc=2 means the determinism check it re-ran failed — "
+            f"read the determinism stage of the gate, not this assertion."
+        )
+        assert name in out and "NFR-3" in out, (
+            f"touching {name} must restate the determinism rules — is_nfr3_path "
+            f"in .claude/hooks/lib/paths.sh does not name it"
+        )
+
+
 # ----------------------------------------------------------------- plan-review
 
 
@@ -388,6 +412,26 @@ def test_bash_refuses_writing_the_surface_kinds() -> None:
 
 def test_bash_permits_reading_the_surface_kinds() -> None:
     assert bash("cat surfaces/_surfaces.yaml") == PASS_THROUGH
+
+
+def test_bash_refuses_writing_the_structural_rules() -> None:
+    """H-4 as amended in M4. The parameters in `_structure.yaml` decide which
+    calls count as sinks and which functions count as validating, so an
+    unreviewed edit turns a structural check off while every run still reports
+    success — the same argument that protects `patterns/` and `surfaces/`."""
+    assert bash("echo x | tee structure/_structure.yaml") == BLOCK
+
+
+def test_bash_permits_reading_the_structural_rules() -> None:
+    assert bash("cat structure/_structure.yaml") == PASS_THROUGH
+
+
+def test_bash_does_not_protect_a_file_merely_named_structure() -> None:
+    """The negative, and it matters more here than for `surfaces`: "structure"
+    is an ordinary English word, so protecting it as a *directory* rather than
+    as a token is what keeps `build/structure.txt` writable. `structure.py`
+    under src/ is protected by `src`, not by this name."""
+    assert bash("echo x > build/structure.txt") == PASS_THROUGH
 
 
 def test_bash_does_not_protect_a_file_merely_named_surfaces() -> None:
@@ -751,16 +795,24 @@ def test_documentation_architect_still_points_at_stack_md() -> None:
 # ------------------------------------------------------------ current milestone
 
 
-def test_milestone_marker_is_m3_5() -> None:
-    """M3 is closed, so the marker moves again — to `M3.5`, a hardening pass
-    inserted between M3 and M4 rather than a renumbering.
+def test_milestone_marker_is_m4() -> None:
+    """M3.5 is closed and merged as PR #15, so the marker moves to `M4`.
 
-    The dotted token is new and it broke an assertion by construction: the DoD
-    check below matched `M(\\d+)` and raised "not a milestone token" on `M3.5`.
-    That was the guard behaving correctly — refusing a state it could not reason
-    about (H-9) — so the harness's notion of a milestone was widened rather than
-    the check weakened. Found before the marker moved, which is the only time
-    finding it is cheap.
+    **Moved last, and that order is the whole content of this assertion.**
+    `BRIEF_M4.md` and the M4 case in `scope-guard.sh` landed first, with three
+    assertions above exercising that case, and only then this file. Moving the
+    marker first write-locks the scoped tree against a milestone nobody has
+    scoped — `scope-guard.sh` ends in `refuse_no_rules`, so every write to
+    `src/` would be refused until the brief existed (H-6). That is not a
+    hypothetical: it is what happened between M1 closing and `BRIEF_M2.md`
+    being written, and the remedy is to write the brief, never to move the
+    marker back to buy write access.
+
+    The dotted token that preceded this one was new and broke an assertion by
+    construction: the DoD check below matched `M(\\d+)` and raised "not a
+    milestone token" on `M3.5`. That was the guard behaving correctly — refusing
+    a state it could not reason about (H-9) — so the harness's notion of a
+    milestone was widened rather than the check weakened.
 
     It read M1 while BRIEF_M0.md sat unbuilt beside it, and TASK-011 pulled it
     back; leaving it at M0 after M0 closed would have refused every write to
@@ -768,14 +820,15 @@ def test_milestone_marker_is_m3_5() -> None:
     harness's only notion of where the project is and it is wrong in both
     directions if nobody moves it.
 
-    The M2 move was made before scope-guard.sh had M2 rules, so H-6 correctly
-    refused every write to the scoped tree until BRIEF_M2.md existed — the
-    guard saying the project claimed a milestone nobody had scoped. This move
-    was made the other way round: the M3 branch and its assertions landed
-    first, and only then the marker. Either order is survivable; only one of
-    them is survivable without a window in which nothing can be written.
+    Both orders have now been tried. The M2 move was made before
+    `scope-guard.sh` had M2 rules, and H-6 correctly refused every write to the
+    scoped tree until `BRIEF_M2.md` existed — the guard saying the project
+    claimed a milestone nobody had scoped. M3, M3.5 and this one were made the
+    other way round: brief and rules first, marker last. Either order is
+    survivable; only one is survivable without a window in which nothing can be
+    written.
     """
-    assert (REPO / ".claude" / "MILESTONE").read_text(encoding="utf-8").strip() == "M3.5"
+    assert (REPO / ".claude" / "MILESTONE").read_text(encoding="utf-8").strip() == "M4"
 
 
 def _unticked(brief: str) -> list[str]:
@@ -1071,6 +1124,69 @@ def test_m3_5_does_not_object_to_its_own_subject() -> None:
     )
 
 
+def test_m4_permits_the_source_it_builds() -> None:
+    """M4 is the structural source (BRIEF_M4.md §1): src/ for `structure.py`,
+    the `Parser` interface and the CLI subcommand; scripts/ because
+    `determinism_check.py` must compare the structure block as it already
+    compares the other two; `structure/` for the rule data; and tests/golden/
+    for the goldens that make NFR-3 checkable rather than aspirational."""
+    for relative in (
+        "src/secrev/structure.py",
+        "src/secrev/cli.py",
+        "scripts/determinism_check.py",
+        "structure/_structure.yaml",
+        "tests/golden/hits.jsonl",
+    ):
+        rc, out = scope_at("M4", relative, "x = 1\n")
+        assert rc == PASS_THROUGH and not asks(out), (
+            f"M4 must be able to write {relative}, got rc={rc}"
+        )
+
+
+def test_m4_refuses_the_layers_it_does_not_own() -> None:
+    """Answered by name, which is the D-1 lesson M3 paid a failed assertion for.
+
+    `patterns/` is the interesting one: it was *permitted* under M3.5 for a
+    single rewrite and is refused here, so this is a deliberate narrowing rather
+    than a branch nobody updated. BRIEF_M4.md §1 says no pattern is added — a
+    structural rule wanting a pattern that does not exist is a finding about the
+    catalog, not a pack edited inside the milestone that would benefit from it.
+
+    `surfaces/` is refused while `src/secrev/structure.py` is permitted above,
+    for the reason M3.5 already records about its own remit: writing a source is
+    in scope, reaching into another source's data is not (D-11)."""
+    for relative, expected in (
+        ("surfaces/_surfaces.yaml", "reachability class"),
+        ("patterns/python.yaml", "M4 adds no patterns"),
+        ("threat-models/_agentic-core.md", "threat models are M3"),
+    ):
+        with milestone_tree("M4") as tmp:
+            path = str(Path(tmp) / relative)
+            rc, _, err = run_hook(
+                "scope-guard.sh", write_payload(path, "x\n"), project_dir=Path(tmp)
+            )
+        assert rc == BLOCK, f"M4 must refuse {relative}, got rc={rc}"
+        assert expected in err, f"M4's refusal must give its own reason: {err}"
+        assert "no rules permitting this write" not in err, (
+            f"M4 has rules; it must not refuse as though it had none: {err}"
+        )
+
+
+def test_m4_does_not_object_to_the_ast_it_owns() -> None:
+    """The heuristic that flags `import ast` names M4 as the answer in its own
+    message. Firing it *under* M4 would be the guard contradicting itself, and
+    the same shape as M2 objecting to surfaces or M3.5 objecting to the AST in
+    the file it hardens: it does not stop the work, it moves it somewhere the
+    guard cannot see, and costs every other check in that file its credibility.
+
+    Scoped rather than removed — the objection is still right for M1, M2 and
+    M3, and each of those is asserted elsewhere in this file."""
+    rc, out = scope_at("M4", "src/secrev/structure.py", "import ast\n\nast.parse(src)\n")
+    assert rc == PASS_THROUGH and not asks(out), (
+        f"M4 must not object to the AST that is its entire subject: {out}"
+    )
+
+
 def test_scope_guard_refuses_on_unknown_milestone() -> None:
     """Inverted from a known-open assertion in TASK-001."""
     rc, _ = scope_at("M9", "src/secrev/sweep.py", "severity = 1\n")
@@ -1216,6 +1332,44 @@ def test_every_anchored_glob_has_a_relative_sibling() -> None:
     assert not offenders, f"anchored-only globs: {offenders}"
 
 
+def test_every_shell_script_is_posix_sh() -> None:
+    """STACK.md §1 binds POSIX `sh`, never `bash`, and §8 holds the harness to
+    the tool's own standards. Nothing checked it until M4.
+
+    Found during the M4 skills pass, and the shape is the point: thirteen of
+    fourteen shell scripts were `#!/bin/sh`, and the one that was not is the
+    only one this project did not write — a vendored script under
+    `.claude/skills/`. The rule held everywhere someone typed it out and broke
+    where code arrived from outside, which is the case a control exists for and
+    the case a habit does not cover.
+
+    Scanned across the whole repository rather than `.claude/hooks/`, because
+    scoping it to where the violation was found is how this project keeps
+    re-finding the same class one directory over.
+
+    **Only files that carry a shebang are judged**, and the first draft did not
+    make that distinction: it failed on `.claude/hooks/lib/paths.sh`, which has
+    no shebang because it is sourced by the guards rather than executed, and a
+    sourced file naming an interpreter would be the wrong thing to write. A
+    control that fires on a correct file is worse than none, because it is
+    routed around rather than fixed. A missing shebang is therefore not an
+    offence here; `#!/usr/bin/env bash` and every other spelling still is,
+    because the test compares against the one permitted line rather than
+    listing interpreters to reject (H-2).
+    """
+    skipped = {".git", ".venv", ".venv-audit", "node_modules"}
+    offenders = []
+    for script in sorted(REPO.rglob("*.sh")):
+        if skipped.intersection(script.relative_to(REPO).parts):
+            continue
+        first = script.read_text(encoding="utf-8").splitlines()[:1]
+        if not first or not first[0].startswith("#!"):
+            continue
+        if first[0].strip() != "#!/bin/sh":
+            offenders.append(f"{script.relative_to(REPO)} — {first[0].strip()}")
+    assert not offenders, f"non-POSIX shebangs (STACK.md §1): {offenders}"
+
+
 def test_glob_does_not_overmatch_a_similar_name() -> None:
     """Inverted from the assertion that recorded the over-match in TASK-009.
 
@@ -1317,6 +1471,23 @@ def test_m2_permits_the_surface_kinds() -> None:
     """...and the milestone that owns the surface source may write its data."""
     rc, out = scope_at("M2", "surfaces/_surfaces.yaml", 'version: "2026.09.1"\n')
     assert rc == PASS_THROUGH and not asks(out), "surfaces/ is M2's remit"
+
+
+def test_scope_guard_covers_structure() -> None:
+    """structure/ is in the scoped tree (M4, BRIEF_M4.md §6 Q1), on the same
+    terms as surfaces/ and patterns/.
+
+    This is the assertion that carries the weight, and the permit case is the
+    one that does not. `test_m4_permits_the_source_it_builds` already listed
+    `structure/_structure.yaml` and was **green before the directory was scoped
+    at all** — the M4 branch ended in a catch-all permit, so it answered for a
+    directory `is_scoped_path` had never heard of. A permit assertion cannot
+    tell "allowed by name" from "allowed by silence"; only a refusal under a
+    milestone with no business there can, because that needs the path to reach
+    the guard in the first place.
+    """
+    rc, _ = scope_at("M0", "structure/_structure.yaml", 'version: "2026.09.1"\n')
+    assert rc == BLOCK, f"structure/ is outside M0's remit, got rc={rc}"
 
 
 def test_protected_paths_have_one_definition() -> None:
