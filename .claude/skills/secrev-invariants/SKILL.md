@@ -19,14 +19,29 @@ Byte-identical output across runs **and machines**. Not "stable in practice".
 | Decode UTF-8 with `errors="replace"`; record the mode | A locale must never decide how a target is read |
 | CRLF→LF **before** hashing; line numbers against the original | Otherwise a checkout setting changes every hash |
 | `window_sha256` covers window text only | No filename, no line number, no timestamp. The hash answers "did this content change", and must not fire when content merely moved |
-| `id` from `(relative_path, line, rule_id, ordinal)` | Never a traversal counter. Adding an unrelated file must renumber nothing |
+| `id` from `(relative_path, rule_id, window_sha256, ordinal)` | Never a traversal counter, and **never `line`** — `derive()` rejects a `line` argument rather than ignoring it, because FR-4.5 says a verification anchored to a line number is lost the moment content moves, and one added import shifts every line below it |
 | No timestamps, no absolute paths in deterministic output | `run.json` is the single exemption |
 
-Exclusions are `.git/`, `node_modules`, `.venv`, `venv`, `__pycache__`, `dist`,
-`build` — and they are **recorded in `recon.json`, never applied silently**. A
-binary file is one with a NUL byte in the first 8 KiB: inventoried, not swept,
-never judged by extension. Symlinks are never followed; one that escapes the
-root is itself a candidate (P9).
+Exclusions are exact directory names — `.git/`, `node_modules`, `.venv`,
+`.venv-audit`, `venv`, `__pycache__`, `dist`, `build`, and the tool caches
+(`.mypy_cache`, `.ruff_cache`, `.pytest_cache`, `.tox`, `.nox`, `.eggs`).
+`--exclude NAMES` **replaces** that set; `--exclude ""` skips nothing. They are
+**recorded in `recon.json` as what was actually applied, never silently**, and
+the applied set is also stated in `coverage_gaps`.
+
+A binary file is one with **more than 5% non-text bytes in the first 8 KiB**
+(`STACK.md` §5) — inventoried, not swept, and named in `coverage_gaps`. It was
+"a NUL byte in the first 8 KiB" until M3.5, where one byte in a comment was
+shown to remove a whole file from review.
+
+**Extension decides the exemption, not the classification.** A file that went
+unread for any reason counts as `unread_code`, and the run exits 2, *unless* its
+extension is a known binary asset. That polarity is the fourth review's
+correction: asking "does this look like code" was defeated three times, by a
+shebang script with no extension, by `SKILL.md`, and by `AGENT.md`.
+
+Symlinks are never followed; one that escapes the root is itself a candidate
+(P9).
 
 Verify, don't assume: `python3 scripts/determinism_check.py`.
 
@@ -42,6 +57,14 @@ writes outside the workspace.
 credible, and that is the whole argument. Enforced three ways — ruff's bandit
 rules, `scripts/self_check.py`, and the `self-application-guard` hook — because
 this one is a claim the project makes publicly.
+
+**"Writes outside the workspace" is in the list above as a rule, not as an
+enforced one.** M3.5's E2 removed exactly that claim from the README: `cli.py`
+writes by design, so a name-based AST test would flag it, and deciding whether a
+write lands *inside* the workspace is a dataflow question a name test cannot
+answer. The structural property is what holds it — `cli.py` is the only module
+that writes — and a check nobody looks for because the documentation says it
+exists is the expensive kind of wrong.
 
 ## 3. Workspace containment (STACK.md §6, G-4)
 

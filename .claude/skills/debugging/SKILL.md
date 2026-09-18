@@ -63,8 +63,13 @@ it. Find the value first. In order of likelihood:
 - **Line endings.** CRLF must become LF *before* hashing, while line numbers are
   reported against the original.
 - **Identity.** A candidate `id` from a traversal counter rather than
-  `(relative_path, line, rule_id, ordinal)` renumbers everything when an
-  unrelated file appears.
+  `(relative_path, rule_id, window_sha256, ordinal)` renumbers everything when
+  an unrelated file appears. **`line` is not in the derivation**, and `derive()`
+  rejects it rather than ignoring it: FR-4.5 says a verification anchored to a
+  line number is lost the moment the content moves, and one added import shifts
+  every line below it. An id that changed while its content did not is this
+  class, and it is the expensive one — every verification hanging on that id is
+  thrown away.
 - **Ambient values.** A timestamp, an absolute path, a PID, `hash()` on a str
   (PYTHONHASHSEED), or a locale-dependent sort key. `run.json` is the only
   output exempt from the first two.

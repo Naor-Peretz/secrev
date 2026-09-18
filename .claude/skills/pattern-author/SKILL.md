@@ -32,7 +32,7 @@ patterns:
     question: >
       Where does the command string originate, and is any part of it
       interpolated from input the caller does not control?
-    severity_hint: high
+    default_severity_hint: high   # REQUIRED, and this is the spelling
     references: ["CWE-78"]
 ```
 

@@ -208,9 +208,13 @@ What costs time every session, and how it goes instead:
 - **Branch names.** `m2/surfaces` itself matches the protected token, so `git push -u origin
   m2/surfaces` is refused. Use `git push -u origin HEAD` and `gh pr create` without `--head`.
   (An open finding in `TASKS_M2.md`: the guard should match only a path segment.)
-- **After replacing a mechanism, search the old name across the whole tree** — not only the diff,
-  and not only `src/`. Derive the candidates rather than recalling them: `git log -p <base>..HEAD`
-  and grep for removed definitions. A net `git diff` cannot see an identifier introduced *and*
+- **After replacing a mechanism, search the old name across the whole tree** — `git grep -n "<old
+  name>"` from the repository root, **no pathspec and no `--include`**. The command is written out
+  because the principle alone did not hold: the pass that introduced this rule ran its
+  identifier search over `*.md` and its *concept* search over `*.py` and `*.sh` only — so the one
+  that covers prose was the one restricted to code, and it missed a false binary rule in
+  `.claude/skills/` and a stale one in `tests/fixtures/`. Derive the candidates rather than
+  recalling them: `git log -p <base>..HEAD` and grep for removed definitions. A net `git diff` cannot see an identifier introduced *and*
   removed inside the same branch, which is what `_AGENT_ARTIFACTS` and `has_shebang` were — the two
   a reviewer had to find by hand. Then read every hit and sort it into three:
   **false** (states the superseded rule — `inventory.py`'s docstring still gave the NUL rule after

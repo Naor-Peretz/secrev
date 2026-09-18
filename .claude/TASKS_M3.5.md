@@ -992,3 +992,58 @@ recorded so the question is not lost:
 
 All three need the same missing piece: a machine-readable way to say "this sentence is a record,
 not an instruction". That is the decision, and it is the owner's.
+
+## The sixth review, 2026-09-18 — the method was written correctly and then run narrowly
+
+The rule added in the fifth commit says "search the old name across the whole tree — not only the
+diff, and not only `src/`". The pass that introduced it ran **two** searches: the identifier search
+included `*.md`, which is how it reached this ledger; the *concept* search — `NUL byte`, `shebang` —
+was restricted to `*.py` and `*.sh`. So the search that exists to catch **prose** was the one
+limited to code, and `.claude/skills/` and `tests/fixtures/` were never looked at.
+
+The reviewer ran `git grep -n "NUL byte in the first 8 KiB"` from the root, exactly as the rule
+says, and got two live hits. **The command is now written into the rule**, because what failed was
+not understanding what to search for — it was the scope of the search, and seven words close that
+exact failure.
+
+**Reading the skills found three more that no mechanism-name search could have reached**, because
+they are not about this milestone's mechanisms at all:
+
+- **`secrev-invariants` stated the candidate id as `(relative_path, line, rule_id, ordinal)`.** The
+  derivation is `(relative_path, rule_id, window_sha256, ordinal)` and `line` is *deliberately
+  absent* — `derive()` rejects it rather than ignoring it, per FR-4.5. A core NFR-3 claim, stated
+  backwards, in the file whose own opening line calls these rules "not revisable". An M1-era error,
+  not a drift from this milestone.
+- **`debugging` carried the identical wrong derivation.** Two files, one error, and the same
+  sentence — so it was copied once and has been read as instruction ever since.
+- **`pattern-author`'s schema example wrote `severity_hint`.** The catalog requires
+  `default_severity_hint` and refuses unknown fields, so following that example produces *two*
+  exit-2 failures: an unknown field and a missing required one. A skill that teaches pattern
+  authoring, teaching a catalog that will not load.
+
+Also in `secrev-invariants`: the exclusions list named seven directories where the code has
+fourteen and says nothing about `--exclude` replacing the set; and "writes outside the workspace"
+sat under **"Enforced three ways"** — which is the exact claim M3.5's E2 removed from the README,
+because nothing enforces it and `cli.py` writes by design.
+
+**F1 is not reopened a third time, and the reason is worth stating rather than assumed.** Its
+wording is scoped — "every document claim in §1F" — and `.claude/skills/` was never in §1F. The box
+is literally true. What is true *and* uncomfortable is that every sweep this milestone ran,
+including F1's, stopped at the repository's own documents and never entered the directory of files
+that load into a session **as instruction**. That is a scope gap, not a false box, and mechanically
+reopening F1 would blur the difference. **Raised for the owner: should `.claude/skills/` be inside
+F1's scope, or inside a box of its own?**
+
+**Still open — a deliberate pass over `.claude/skills/`.** Four of the nine are project-specific and
+were read here; three of those four carried false claims. The remaining five were **not** read,
+which is stated rather than counted as covered — but they were checked for project-specific claims,
+and the result is worth recording: `skill-developer` and `eval-harness` each open with a
+"Project note (secrev)" saying the skill was written for another stack and naming what does not
+apply here. That is the honest form — a foreign skill that flags its own foreignness rather than
+asserting a contract it does not know. `iterative-retrieval`, `strategic-compact` and
+`skill-rules.json` mention nothing project-specific at all.
+(An earlier draft of this paragraph called all five "generic tooling" without checking. Two of them
+matched a grep for project terms, and the check ran before this entry shipped — in the ledger whose
+subject is exactly that failure.) The case for the
+pass is that these files describe contracts from M1 through M3, so mechanism-name search cannot
+reach them — only reading can, which is how all three above were found.
