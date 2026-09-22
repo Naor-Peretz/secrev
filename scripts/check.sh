@@ -122,16 +122,15 @@ if [ "$FAST" = 1 ]; then
     skip "pytest" "--fast; pre-push and CI run it"
 elif [ -d tests ]; then
     "$PY" -m pytest --version >/dev/null 2>&1 || missing pytest
-    # Snapshot the protected paths around the suite (owner decision,
+    # pytest runs as a child of protected_snapshot.py, which snapshots every
+    # protected path in its own memory before and after (owner decision,
     # 2026-09-22). This gate is auto-approved and pytest is code execution, so
     # a test is a write path no guard watches; a review showed one writing into
-    # threat-models/. The protected roots live in scripts/protected_snapshot.py.
-    SNAPSHOT=$(mktemp)
-    gate_script scripts/protected_snapshot.py take "$SNAPSHOT"
-    run "pytest" runpy pytest
-    printf '\n\033[1m── tests wrote no protected path\033[0m\n'
-    gate_script scripts/protected_snapshot.py compare "$SNAPSHOT"
-    rm -f "$SNAPSHOT"
+    # threat-models/. The baseline was a $(mktemp) file until a second review
+    # showed a test could re-take it and turn the stage green over a change
+    # still in the tree — so it is never written anywhere.
+    printf '\n\033[1m── pytest\033[0m\n'
+    gate_script scripts/protected_snapshot.py run -- "$PY" -m pytest
 else
     skip "pytest" "no tests/ yet — nothing to run"
 fi

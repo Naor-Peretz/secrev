@@ -47,6 +47,17 @@ decides on what a `git add` *is*, wherever it sits and whether or not a
 protected path is named. It is the prototype that question now has, and the
 single-character evasions it records (`s?c/…`, `sr[c]/…`) are the reason it
 stays open.
+
+That prototype has its own KNOWN LIMIT, found in review and recorded rather
+than claimed closed: it identifies the subcommand by the token after `git`,
+and git itself resolves names this file cannot see. `git ad -f .env` runs `add`
+when `help.autocorrect` is set; `git a -f .env` runs it through a configured
+alias; and `git -c alias.a=add a -f .env` defines the alias inline, where the
+`add` sits inside another token and the option-before-subcommand check, which
+looks for `add` exactly, passes it. None is auto-approved — `Bash(git add:*)`
+matches none of them — so each reaches an approval dialog, and the commit
+checkpoint shows what was staged whatever did the staging. Closing it here
+would mean predicting git's own name resolution from shell text.
 """
 
 from __future__ import annotations

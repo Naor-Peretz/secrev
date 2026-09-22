@@ -1,30 +1,46 @@
 """Did the test suite write to a protected path? Owner decision, 2026-09-22.
 
-    python3 scripts/protected_snapshot.py take    <file>
-    python3 scripts/protected_snapshot.py compare <file>
+    python3 scripts/protected_snapshot.py run -- <command> [args...]
 
-`check.sh` takes a snapshot before pytest and compares after. Exit 0: nothing
-protected changed. Exit 1: something did, and every path is named. Exit 2: the
-snapshot could not be taken or read, which is "did not check", not "clean"
-(STACK.md §8 H-1).
+`check.sh` runs pytest through this: snapshot every protected path, run the
+command as a child process, snapshot again, compare. Exit 0: the command passed
+and nothing protected changed. Exit 1: the command failed, or it passed and
+something protected changed — every path is named. Exit 2: the check could not
+be made, which is "did not check", never "clean" (STACK.md §8 H-1).
 
 **Why this exists.** Test code is a write path around every guard. `check.sh`
 is auto-approved and runs pytest; pytest is code execution; `tests/` is not
 protected. A review demonstrated a test file writing into `threat-models/` and
-the change reaching the index with nothing in the path noticing — the
-residual of M3.5's E3, where `pytest:*` left the allowlist but the gate that
-runs pytest did not. Protecting `tests/` or taking the gate off the allowlist
-would both have prevented it and both would have put an approval into daily
-work. This *detects* it, from inside the gate, and adds no approval: a
-legitimate test writes to `tmp_path`, never to `src/` or `threat-models/`, so
-in ordinary use the check never fires.
+the change reaching the index with nothing in the path noticing — the residual
+of M3.5's E3, where `pytest:*` left the allowlist but the gate that runs pytest
+did not. Protecting `tests/` or taking the gate off the allowlist would each
+have prevented it and each would have put an approval into daily work. This
+*detects* it from inside the gate and adds no approval: a legitimate test
+writes to `tmp_path`, never to `src/` or `threat-models/`.
 
-**What it cannot see**, stated so nobody reads more into a green stage: a test
-that writes and then restores the file before pytest ends, and a process a test
-detaches that writes after pytest returns. The commit checkpoint
-(`.claude/hooks/commit-review.sh`) is the layer for those — it shows protected
-paths in the index whatever put them there. Neither layer alone covers what the
-two cover together, and neither adds an approval to ordinary work.
+**The baseline never touches disk, and that is the fix for the second
+review.** The first version was two commands — `take <file>` before pytest,
+`compare <file>` after — with the baseline in `$(mktemp)`: a file in /tmp,
+owned by the same user, created seconds before the tests ran. A test that wrote
+to a protected path could find that file and re-take it, and the gate then
+printed "no protected path changed" over a change still sitting in the tree —
+H-1 in the control built to close E3, and a false green is worse than a missing
+line. Hardening where the file lived would have left the class open, since any
+file the parent can read the child can find. So there is no file: the baseline
+is taken in this process's memory, the command runs as a child, and the
+comparison happens here. The `take` and `compare` modes are gone rather than
+kept beside this, because their existence is the thing that was exploited.
+
+A test that rewrites this script is caught too: `scripts/` is a protected root,
+and the code doing the comparison was loaded before the child started.
+
+**What it cannot see**, stated so nobody reads more into a green stage than it
+holds: a test that writes and restores a file within the run, and a process a
+test detaches that writes after the child returns. The commit checkpoint
+(`.claude/hooks/commit-review.sh`) shows protected paths in the index whatever
+put them there. The exit code is what gates: a test can print anything to the
+shared terminal, including a copy of the success line, but it cannot set this
+process's status.
 
 **Which files.** Everything git would consider under the protected roots —
 tracked, plus untracked-but-not-ignored — so a new `src/secrev/evil.py` counts
@@ -39,7 +55,6 @@ to the guard's, so the two cannot drift without the harness gate going red.
 from __future__ import annotations
 
 import hashlib
-import json
 import shutil
 import subprocess
 import sys
@@ -59,13 +74,14 @@ PROTECTED_ROOTS = (
     ".claude",
 )
 
-USAGE = "usage: protected_snapshot.py take|compare <file>"
-ARGUMENTS = 2
+USAGE = "usage: protected_snapshot.py run -- <command> [args...]"
 SHOWN = 10
+# `run`, `--`, and at least the command itself.
+MINIMUM_ARGUMENTS = 3
 
 
 class CannotCheck(Exception):
-    """The snapshot could not be taken or read — exit 2, never 0."""
+    """The snapshot could not be taken — exit 2, never 0."""
 
 
 def _files() -> list[str]:
@@ -126,36 +142,43 @@ def changes(before: dict[str, str], after: dict[str, str]) -> list[str]:
 
 
 def main(argv: list[str]) -> int:
-    if len(argv) != ARGUMENTS or argv[0] not in {"take", "compare"}:
+    if len(argv) < MINIMUM_ARGUMENTS or argv[:2] != ["run", "--"]:
         print(USAGE, file=sys.stderr)
         return 2
-    mode, target = argv[0], Path(argv[1])
+    command = argv[2:]
+
     try:
-        current = snapshot()
-        if mode == "take":
-            target.write_text(json.dumps(current, sort_keys=True), encoding="utf-8")
-            return 0
-        try:
-            before = json.loads(target.read_text(encoding="utf-8"))
-        except (OSError, ValueError) as exc:
-            raise CannotCheck(f"snapshot unreadable: {exc}") from exc
+        before = snapshot()
     except CannotCheck as exc:
         print(f"protected_snapshot: cannot check — {exc} (H-1)", file=sys.stderr)
         return 2
 
-    found = changes(before, current)
-    if not found:
-        print(f"no protected path changed during the test run ({len(current)} checked)")
-        return 0
-    print(
-        "the test run changed protected paths — a test wrote where no guard looks:",
-        file=sys.stderr,
-    )
-    for line in found[:SHOWN]:
-        print(f"  {line}", file=sys.stderr)
-    if len(found) > SHOWN:
-        print(f"  … and {len(found) - SHOWN} more", file=sys.stderr)
-    return 1
+    try:
+        child = subprocess.run(command, cwd=ROOT, check=False)  # noqa: S603 - argv from check.sh
+    except OSError as exc:
+        print(f"protected_snapshot: could not start {command[0]!r}: {exc} (H-1)", file=sys.stderr)
+        return 2
+
+    print("\n\033[1m── tests wrote no protected path\033[0m")
+    try:
+        after = snapshot()
+    except CannotCheck as exc:
+        print(f"protected_snapshot: cannot check — {exc} (H-1)", file=sys.stderr)
+        return 2
+
+    found = changes(before, after)
+    if found:
+        print(
+            "the test run changed protected paths — a test wrote where no guard looks:",
+            file=sys.stderr,
+        )
+        for line in found[:SHOWN]:
+            print(f"  {line}", file=sys.stderr)
+        if len(found) > SHOWN:
+            print(f"  … and {len(found) - SHOWN} more", file=sys.stderr)
+        return 1
+    print(f"no protected path changed during the test run ({len(after)} checked)")
+    return 0 if child.returncode == 0 else 1
 
 
 if __name__ == "__main__":

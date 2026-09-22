@@ -415,7 +415,11 @@ Still open, and each is named here so it is not mistaken for settled:
   work. Instead `check.sh` snapshots every protected path (content and executable bit) before
   pytest and fails if the suite changed one; legitimate tests write to `tmp_path`, so in
   ordinary use it never fires, and the review's own demonstration now fails the gate before it
-  can reach a commit. **Still not covered, and stated:** a test that writes and restores within
-  the run, and a process it detaches that writes after pytest returns. For those,
+  can reach a commit. **A second review broke the first version**: the baseline was a `mktemp`
+  file, so a test could re-take it and the stage printed "no protected path changed" over a
+  change still in the tree — a false green in the control meant to close E3. The baseline now
+  lives only in the checker's memory, with pytest run as its child, so there is no file to find;
+  that class is closed, not narrowed. **Still not covered, and stated:** a test that writes and
+  restores within the run, and a process it detaches that writes after pytest returns. For those,
   `commit-review.sh` shows protected paths in the index at commit, whatever put them there. Two
   layers, neither adding an approval.

@@ -223,7 +223,12 @@ def _read_manifest(
     and `structure` down with it:
 
     - `package.json` containing `[]` — two bytes, valid JSON, and a list has no
-      `.get`. `project = "x"` in `pyproject.toml` is the same shape.
+      `.get`. `project = "x"` in `pyproject.toml` is the same shape one key
+      down, and is answered by `_expect_table` rather than here: this function
+      sees only the top level. It was first answered by an `isinstance` guard
+      that stopped the crash and made the case silent — exit 0, nothing
+      recorded — which is the collapse the next paragraph describes, one level
+      below where this function looks.
     - deep nesting in either: both decoders recurse, and `RecursionError` is not
       a decode error. `MemoryError` is its sibling at larger depths.
     - invalid UTF-8, which raised out of `read_text` before the decoder ran and
@@ -251,6 +256,21 @@ def _read_manifest(
     return data
 
 
+def _expect_table(
+    data: dict[str, Any], key: str, where: str, unreadable: list[str]
+) -> dict[str, Any]:
+    """`data[key]` when it is a mapping; `{}` when absent; and `{}` *recorded
+    as unreadable* when present with any other shape. Absent and malformed are
+    different facts, and only the first means there was nothing to read."""
+    value = data.get(key)
+    if value is None:
+        return {}
+    if isinstance(value, dict):
+        return value
+    unreadable.append(f"{where} (`{key}` is {type(value).__name__}, not a table)")
+    return {}
+
+
 def _entrypoints(root: Path, found: frozenset[str], unreadable: list[str]) -> dict[str, list[str]]:
     """Declared metadata only. §3: "Deeper enumeration is M2's job; do not
     attempt it here." Reading a manifest is reading a declaration; walking
@@ -273,12 +293,18 @@ def _entrypoints(root: Path, found: frozenset[str], unreadable: list[str]) -> di
     # so containment held for every file the tool discovered and failed for
     # every file it went looking for. That is the shape worth remembering: the
     # exception to a rule is wherever the rule is not the thing doing the work.
+    # A key that is present with the wrong shape is recorded as unreadable, not
+    # read as absent. The first version guarded the type with `isinstance` and
+    # stopped there, which stopped the crash and made the case silent: `project
+    # = "x"` gave exit 0 and an empty `declared`, the same `recon.json` as a
+    # manifest declaring nothing — the exact collapse `_read_manifest`'s own
+    # docstring names as the problem. Exit 2 at the top level and a silent 0
+    # one key down is not a uniform rule (owner decision, 2026-09-22).
     if "pyproject.toml" in found:
         data = _read_manifest(root / "pyproject.toml", tomllib.loads, unreadable)
-        project = data.get("project")
-        scripts = project.get("scripts") if isinstance(project, dict) else None
-        if isinstance(scripts, dict):
-            declared += [f"{name} = {target}" for name, target in sorted(scripts.items())]
+        project = _expect_table(data, "project", "pyproject.toml", unreadable)
+        scripts = _expect_table(project, "scripts", "pyproject.toml `project`", unreadable)
+        declared += [f"{name} = {target}" for name, target in sorted(scripts.items())]
 
     # The same breach by the other manifest; see the note above `pyproject`.
     if "package.json" in found:
@@ -288,6 +314,10 @@ def _entrypoints(root: Path, found: frozenset[str], unreadable: list[str]) -> di
             declared += [f"{name} = {target}" for name, target in sorted(binaries.items())]
         elif isinstance(binaries, str):
             declared.append(binaries)
+        elif binaries is not None:
+            unreadable.append(
+                f"package.json (`bin` is {type(binaries).__name__}, not an object or string)"
+            )
 
     # From the walk, never from `glob`. `Path.glob` follows a symlinked
     # directory, so a target shipping `.github -> /somewhere/else` had a foreign

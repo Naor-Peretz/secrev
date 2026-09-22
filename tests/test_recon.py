@@ -695,7 +695,12 @@ def test_entrypoints_are_declared_metadata_only(tmp_path: Path) -> None:
         # Two bytes, valid JSON, and a list has no `.get` — exit 3 until M4's review.
         ("package.json", b"[]", "top level is list"),
         # Valid TOML whose `project` is a string: the same shape one key down.
-        ("pyproject.toml", b'project = "x"\n', None),
+        # This row expected *no* gap until the second review — the test was
+        # pinning the silent case, and asserted it as correct.
+        ("pyproject.toml", b'project = "x"\n', "`project` is str"),
+        ("pyproject.toml", b'[project]\nscripts = "x"\n', "`scripts` is str"),
+        # A declared `bin` of any other shape declares nothing readable.
+        ("package.json", b'{"bin": 5}', "`bin` is int"),
         # Both decoders recurse; RecursionError is not a decode error.
         ("package.json", b"[" * 200_000 + b"]" * 200_000, "RecursionError"),
         ("pyproject.toml", b"a = " + b"[" * 200_000 + b"]" * 200_000 + b"\n", "RecursionError"),
@@ -705,30 +710,41 @@ def test_entrypoints_are_declared_metadata_only(tmp_path: Path) -> None:
     ],
 )
 def test_no_manifest_shape_ends_the_run(
-    tmp_path: Path, name: str, body: bytes, reason: str | None
+    tmp_path: Path, name: str, body: bytes, reason: str
 ) -> None:
     """Found while fixing M4's review finding, and older than M4: `recon` runs
     inside every subcommand's `_prepare`, so each of these ended `sweep`,
-    `surfaces` and `structure` too. Measured at exit 3 for four of the five.
+    `surfaces` and `structure` too. Measured at exit 3 for four of them.
 
-    Each one must complete, declare nothing, and — for the four that could not
-    be read at all — say so in `coverage_gaps`. The `project = "x"` case parses
-    fine and simply declares no scripts, so it adds no gap line: the manifest
-    *was* read, and there was nothing in it.
+    Each one must complete, declare nothing, and say so — in `coverage_gaps`
+    and in `entrypoints.unreadable`, which the exit code keys on. **Including
+    the shapes one key down.** This docstring said the `project = "x"` case
+    "parses fine and simply declares no scripts, so it adds no gap line", and
+    the second review showed that was the bug stated as the rule: a key present
+    with the wrong shape is not a key that is absent, and treating it as absent
+    gave exit 0 one level below a uniform exit 2.
     """
     (tmp_path / name).write_bytes(body)
     result = recon(tmp_path)
     assert result.entrypoints["declared"] == []
     gaps = [gap for gap in result.coverage_gaps if "a manifest that could not be parsed" in gap]
-    if reason is None:
-        assert not gaps
-        assert result.entrypoints["unreadable"] == []
-    else:
-        [line] = gaps
-        assert name in line and reason in line
-        # In the artifact as well as in prose: the exit code keys on this field.
-        [recorded] = result.entrypoints["unreadable"]
-        assert recorded.startswith(name)
+    [line] = gaps
+    assert name in line and reason in line
+    # In the artifact as well as in prose: the exit code keys on this field.
+    [recorded] = result.entrypoints["unreadable"]
+    assert recorded.startswith(name)
+
+
+def test_an_absent_key_is_not_a_malformed_one(tmp_path: Path) -> None:
+    """The control for the rows above: a manifest with no `[project]` table,
+    or no `bin`, declares nothing and is *read* — no gap, no unreadable entry.
+    Without this, recording every missing key would make an ordinary
+    `pyproject.toml` exit 2."""
+    (tmp_path / "pyproject.toml").write_text("[tool.ruff]\nline-length = 100\n", "utf-8")
+    (tmp_path / "package.json").write_text('{"name": "x"}', "utf-8")
+    result = recon(tmp_path)
+    assert result.entrypoints["unreadable"] == []
+    assert not [gap for gap in result.coverage_gaps if "could not be parsed" in gap]
 
 
 def test_a_malformed_manifest_does_not_crash_the_run(tmp_path: Path) -> None:
