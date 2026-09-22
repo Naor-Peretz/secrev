@@ -408,9 +408,14 @@ Still open, and each is named here so it is not mistaken for settled:
 - The **HARNESS-CI approval gate**, an open M2 task.
 - **Test code is a write path around every guard** — the residual of M3.5's E3, demonstrated in
   M4's review. `Bash(pytest:*)` was removed from the allowlist, but `sh scripts/check.sh` stays
-  auto-approved and runs pytest, and `tests/` is not protected, so a test file can write into
-  `threat-models/` or `src/` with no guard in the path. Until 2026-09-22 the owner's hand on
-  staging would have caught the result; `commit-review.sh` now shows it at commit instead, which
-  makes it **visible, not prevented**. Closing it means either protecting `tests/` (every test
-  edit then asks) or taking the gate off the auto-approved list — both change the daily flow, so
-  both are the owner's call.
+  auto-approved and runs pytest, and `tests/` is not protected, so a test file could write into
+  `threat-models/` or `src/` with no guard in the path. **Decided (owner, 2026-09-22): detect,
+  from inside the gate, rather than prevent.** The two preventions on offer — protecting
+  `tests/`, or taking the gate off the allowlist — would each have put an approval into daily
+  work. Instead `check.sh` snapshots every protected path (content and executable bit) before
+  pytest and fails if the suite changed one; legitimate tests write to `tmp_path`, so in
+  ordinary use it never fires, and the review's own demonstration now fails the gate before it
+  can reach a commit. **Still not covered, and stated:** a test that writes and restores within
+  the run, and a process it detaches that writes after pytest returns. For those,
+  `commit-review.sh` shows protected paths in the index at commit, whatever put them there. Two
+  layers, neither adding an approval.

@@ -304,7 +304,14 @@ def _entrypoints(root: Path, found: frozenset[str], unreadable: list[str]) -> di
         for path in found
         if path.startswith(".github/workflows/") and path.endswith((".yml", ".yaml"))
     )
-    return {"declared": sorted(declared), "workflows": workflows}
+    # `unreadable` in the artifact, not derived in `cli.py`: the exit code keys
+    # on it (owner decision, 2026-09-22), and M3.5 settled that the number a
+    # reader sees and the number the exit code came from must be the same one.
+    return {
+        "declared": sorted(declared),
+        "workflows": workflows,
+        "unreadable": sorted(unreadable),
+    }
 
 
 def _security_process(entries: list[FileEntry], found: frozenset[str]) -> dict[str, Any]:

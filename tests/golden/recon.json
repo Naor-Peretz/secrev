@@ -29,7 +29,8 @@
   },
   "entrypoints": {
     "declared": [],
-    "workflows": []
+    "workflows": [],
+    "unreadable": []
   },
   "security_process": {
     "security_md": false,

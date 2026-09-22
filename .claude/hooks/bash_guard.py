@@ -37,10 +37,16 @@ a command *mentions* a protected path, which is a test over path spellings, and
 spellings do not close: `$HOME/secrev/src/secrev/cli.py`, `./sr*/secrev/*.py`,
 `$P/cli.py` and `tar -x` all evade it. The verb polarity is right; the path
 polarity is inherited from H-2's own wording and is the subject of open
-question 8 in .claude/TASKS_M0.md. Fixing it means making the trigger "the
+question 8 in .claude/TASKS_M0.md (item 5 of its "Raised" list). Fixing it means making the trigger "the
 command is read-only" rather than "the command mentions a protected path",
 which refuses `uv sync`, `pytest` and `git commit` and needs its own allowlist.
 That is a decision for a human, not something to settle inside this file.
+
+Since M4 one command already works the inverted way: `_staging_refusal`
+decides on what a `git add` *is*, wherever it sits and whether or not a
+protected path is named. It is the prototype that question now has, and the
+single-character evasions it records (`s?c/…`, `sr[c]/…`) are the reason it
+stays open.
 """
 
 from __future__ import annotations
@@ -262,17 +268,42 @@ def segments(tokens: list[str]) -> list[list[str]]:
     return [segment for segment in segments if segment]
 
 
+def git_argv(segment: list[str]) -> list[str] | None:
+    """`git` and what follows it, wherever `git` sits in the command, or None.
+
+    Shared with `commit_review.py` so the staging check and the commit
+    checkpoint cannot disagree about which command is a git command — the first
+    version of each read only the first word, and a wrapper walked past both.
+    """
+    for index, token in enumerate(segment):
+        if token.rsplit("/", 1)[-1] == "git":
+            argv = segment[index:]
+            return argv if len(argv) >= COMMAND_AND_SUBCOMMAND else None
+    return None
+
+
 def _staging_refusal(tokens: list[str]) -> str | None:
     """A `git add` anywhere in the line that carries a flag outside
-    `STAGE_FLAGS`, or that hides `add` behind an option."""
+    `STAGE_FLAGS`, or that hides `add` behind an option.
+
+    `git` is found wherever it sits in a command, not only in first position.
+    The first version checked `segment[0]`, so `env git add -f .env`,
+    `VAR=1 git add -f .env` and `sudo git add -f .env` all walked past it.
+    Listing the wrappers — `env`, `sudo`, `nice`, `nohup`, `command`, `time` —
+    would be a denylist over prefixes, which is the polarity this file refuses;
+    locating `git` itself needs no list. What still defeats it is the KNOWN
+    LIMIT above: a `git` spelled through a variable is not a token anyone can
+    read.
+    """
     for segment in segments(tokens):
-        if segment[0].rsplit("/", 1)[-1] != "git" or len(segment) < COMMAND_AND_SUBCOMMAND:
+        argv = git_argv(segment)
+        if argv is None:
             continue
-        if segment[1].startswith("-") and "add" in segment:
+        if argv[1].startswith("-") and "add" in argv:
             return "an option before `git add` — the second token must be the subcommand"
-        if segment[1] not in STAGE_GIT:
+        if argv[1] not in STAGE_GIT:
             continue
-        for argument in segment[2:]:
+        for argument in argv[2:]:
             if argument == "--":
                 break
             if argument.startswith("-") and argument not in STAGE_FLAGS:

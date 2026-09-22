@@ -22,6 +22,7 @@ never a shell string. The strings below that look like violations -- `eval(`,
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -583,6 +584,29 @@ def test_a_forbidden_staging_flag_is_refused_inside_a_chain() -> None:
     assert bash("true && git add -f .env") == BLOCK
 
 
+def test_a_forbidden_staging_flag_is_refused_behind_a_wrapper() -> None:
+    """Found in my own first version before the review reached it: `git` was
+    recognised only as the first word, so any prefix walked past. Located, not
+    enumerated — no list of wrappers exists to fall behind."""
+    assert bash("env git add -f .env") == BLOCK
+    assert bash("GIT_DIR=.git git add -f .env") == BLOCK
+    assert bash("sudo git add --force notes/x.md") == BLOCK
+
+
+def test_the_reviewers_probes_of_the_allowlist() -> None:
+    """The shapes in which an allowlist quietly becomes a denylist, each run
+    rather than reasoned about. Git accepts an unambiguous prefix of a long
+    option, so `--forc` *is* `--force` — refused because nothing but the four
+    exact spellings is admitted, not because anyone listed the abbreviation.
+    Pathspec magic selects paths; it cannot carry a flag, so it stages like any
+    path and the commit checkpoint shows what it selected."""
+    assert bash("git add --forc .env") == BLOCK
+    assert bash("git add --al") == BLOCK
+    assert bash("git add -Af") == BLOCK
+    assert bash("git add -- -f") == PASS_THROUGH
+    assert bash("git add ':(glob)docs/**'") == PASS_THROUGH
+
+
 def test_ordinary_staging_is_not_disturbed() -> None:
     """The control. Every refusal above is worth nothing if the flow the owner
     asked for stops working — and a path beginning with `-` stays stageable
@@ -652,6 +676,48 @@ def test_commit_review_is_wired_on_bash() -> None:
     assert any(command.endswith("/commit-review.sh") for command in commands)
 
 
+def test_every_wired_hook_is_executable_on_disk_and_in_the_index() -> None:
+    """H-1, and found by reading a commit summary rather than by any test.
+
+    `commit-review.sh` was committed `100644`. `settings.json` invokes a hook by
+    path, not through `sh`, so it failed with *Permission denied* — exit 126 —
+    and for a PreToolUse hook any non-zero exit other than 2 is a non-blocking
+    error: the commit went through and the checkpoint did nothing, in the hook
+    that exists to replace a checkpoint. Every test here runs hooks through
+    `sh <path>`, which needs no executable bit, so none of them could see it.
+
+    Both places, because they fail differently: a missing bit on disk breaks
+    this checkout now, and a missing bit in the index breaks every fresh clone
+    while the checkout that committed it keeps working.
+    """
+    settings = json.loads((REPO / ".claude" / "settings.json").read_text("utf-8"))
+    wired = sorted(
+        {
+            hook["command"].replace("$CLAUDE_PROJECT_DIR", str(REPO))
+            for blocks in settings["hooks"].values()
+            for block in blocks
+            for hook in block["hooks"]
+        }
+    )
+    git = shutil.which("git")
+    assert git
+    problems = []
+    for command in wired:
+        path = Path(command)
+        if not os.access(path, os.X_OK):
+            problems.append(f"{path.relative_to(REPO)} is not executable on disk")
+        listed = subprocess.run(
+            [git, "ls-files", "-s", "--", str(path.relative_to(REPO))],
+            cwd=REPO,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.split()
+        if listed and listed[0] != "100755":
+            problems.append(f"{path.relative_to(REPO)} is {listed[0]} in the index")
+    assert not problems, f"wired hooks that cannot run: {problems}"
+
+
 def test_commit_review_is_silent_on_other_commands() -> None:
     with commit_tree() as tmp:
         rc, out, _ = commit_review(Path(tmp), "ls -la")
@@ -705,6 +771,42 @@ def test_commit_review_finds_a_commit_inside_a_chain() -> None:
         stage(root, "src/secrev/x.py")
         _, out, _ = commit_review(root, "git status && git commit -m x")
     assert "PROTECTED" in json.loads(out)["hookSpecificOutput"]["permissionDecisionReason"]
+
+
+def test_commit_review_sees_a_commit_behind_a_wrapper() -> None:
+    """The staging check and the checkpoint share `git_argv`, so the prefix that
+    was closed for one is closed for the other."""
+    with commit_tree() as tmp:
+        root = Path(tmp)
+        stage(root, "src/secrev/x.py")
+        _, out, _ = commit_review(root, "env git commit -m x")
+    assert "PROTECTED" in json.loads(out)["hookSpecificOutput"]["permissionDecisionReason"]
+
+
+def test_commit_review_marks_an_executable_whose_content_changed() -> None:
+    """The reviewer's probe: a file that was *already* executable and changed
+    content. Its mode did not change, so there is no mode line to show — the
+    checkpoint lists it as a modified path, and marks it only if it is
+    protected. That is the honest answer rather than a gap: the executable bit
+    was reviewed when it arrived, and what is new is content."""
+    git = shutil.which("git")
+    assert git
+    with commit_tree() as tmp:
+        root = Path(tmp)
+        identity = ["-c", "user.name=t", "-c", "user.email=t@t.invalid"]
+        stage(root, "scripts/run.sh", "--chmod=+x")
+        subprocess.run([git, *identity, "commit", "-qm", "x"], cwd=root, check=True)
+        script = root / "scripts" / "run.sh"
+        # Executable on disk too: `--chmod` set only the index, and with the
+        # file left 644 the next plain `git add` would record a mode change —
+        # testing a different case than the one named.
+        script.chmod(0o755)
+        script.write_text("changed\n", encoding="utf-8")
+        subprocess.run([git, "add", "scripts/run.sh"], cwd=root, check=True)
+        _, out, _ = commit_review(root, "git commit -m x")
+    reason = json.loads(out)["hookSpecificOutput"]["permissionDecisionReason"]
+    assert "scripts/run.sh   <- PROTECTED" in reason
+    assert "mode change" not in reason
 
 
 def test_commit_review_refuses_when_it_cannot_read_the_index() -> None:
@@ -1679,6 +1781,30 @@ def test_scope_guard_covers_structure() -> None:
     """
     rc, _ = scope_at("M0", "structure/_structure.yaml", 'version: "2026.09.1"\n')
     assert rc == BLOCK, f"structure/ is outside M0's remit, got rc={rc}"
+
+
+def test_the_gate_snapshots_exactly_the_protected_paths() -> None:
+    """H-7, where a second copy was unavoidable. The product gate may not import
+    from `.claude/` — `test_the_product_gate_does_not_reach_into_the_harness`
+    holds that — so `scripts/protected_snapshot.py` carries its own tuple of the
+    protected roots. This pins it equal to the guard's, so a directory joining
+    H-4 cannot be protected against Bash and left out of the test-run check
+    without this going red."""
+
+    def declared(path: Path, name: str) -> set[str]:
+        """A tuple of string literals, read as text — how this file reads the
+        guard everywhere else, rather than importing it."""
+        source = path.read_text(encoding="utf-8")
+        match = re.search(rf"^{name} = \((.*?)\)", source, re.DOTALL | re.MULTILINE)
+        assert match, f"{path.name} no longer declares {name}"
+        return {literal.replace("\\", "") for literal in re.findall(r'"([^"]+)"', match.group(1))}
+
+    snapshot_roots = declared(REPO / "scripts" / "protected_snapshot.py", "PROTECTED_ROOTS")
+    guard_roots = declared(HOOKS / "bash_guard.py", "PROTECTED")
+    assert snapshot_roots == guard_roots, (
+        f"only in the guard: {sorted(guard_roots - snapshot_roots)}; "
+        f"only in the snapshot: {sorted(snapshot_roots - guard_roots)}"
+    )
 
 
 def test_protected_paths_have_one_definition() -> None:

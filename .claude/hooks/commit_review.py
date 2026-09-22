@@ -33,21 +33,23 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from bash_guard import mentions_protected, segments, tokenize
-
-GIT_AND_SUBCOMMAND = 2
+from bash_guard import git_argv, mentions_protected, segments, tokenize
 
 
 def is_commit(command: str) -> bool:
+    """Any `git commit` in the line, found by `bash_guard.git_argv` so a
+    wrapper — `env git commit` — cannot put a commit past the checkpoint while
+    the staging check would have caught the same prefix."""
     tokens = tokenize(command)
     if tokens is None:
         # Unparseable: say so by treating it as a commit, so the owner sees the
         # index rather than nothing. Asking is the conservative direction.
         return True
     for segment in segments(tokens):
-        if segment[0].rsplit("/", 1)[-1] != "git" or len(segment) < GIT_AND_SUBCOMMAND:
+        argv = git_argv(segment)
+        if argv is None:
             continue
-        if segment[1] == "commit" or (segment[1].startswith("-") and "commit" in segment):
+        if argv[1] == "commit" or (argv[1].startswith("-") and "commit" in argv):
             return True
     return False
 

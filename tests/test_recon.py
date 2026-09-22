@@ -722,9 +722,13 @@ def test_no_manifest_shape_ends_the_run(
     gaps = [gap for gap in result.coverage_gaps if "a manifest that could not be parsed" in gap]
     if reason is None:
         assert not gaps
+        assert result.entrypoints["unreadable"] == []
     else:
         [line] = gaps
         assert name in line and reason in line
+        # In the artifact as well as in prose: the exit code keys on this field.
+        [recorded] = result.entrypoints["unreadable"]
+        assert recorded.startswith(name)
 
 
 def test_a_malformed_manifest_does_not_crash_the_run(tmp_path: Path) -> None:

@@ -452,12 +452,26 @@ def _incomplete(result: Recon) -> int:
     # not to the string beside it is the same half-fix this milestone keeps
     # finding, one layer in.
     unread_code = result.inventory["unread_code"]
-    if not unreadable and not unread_code:
+    # A manifest that could not be parsed, by owner decision (2026-09-22). Not
+    # code, but it declares which entry points exist, so it sets scope (P11) —
+    # and the target chooses which case occurs: a manifest nested past what
+    # Python's decoder accepts can be valid to its own ecosystem's tooling, with
+    # entry points that are real and that this tool did not see. Telling that
+    # apart from a manifest npm would also reject means reimplementing each
+    # ecosystem's parser, so exit 2 is uniform, keeping M3.5's chosen direction:
+    # over-report rather than call a partial review clean.
+    manifests = result.entrypoints["unreadable"]
+    if not unreadable and not unread_code and not manifests:
         return EXIT_OK
 
     for count, what, paths in (
         (len(unreadable), "could not be read and were not reviewed", unreadable),
         (len(unread_code), "were never read and are not a known binary asset", unread_code),
+        (
+            len(manifests),
+            "manifest(s) could not be parsed, so their entry points are unknown",
+            manifests,
+        ),
     ):
         if not paths:
             continue

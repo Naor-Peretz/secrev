@@ -83,6 +83,21 @@ def test_a_file_the_parser_cannot_read_is_exit_two_and_recorded(tmp_path: Path) 
     assert entry["unparsed"] == ["deep.py"]
 
 
+@pytest.mark.parametrize("command", ["recon", "sweep", "surfaces", "structure"])
+def test_a_manifest_that_cannot_be_parsed_is_exit_two_on_every_command(
+    tmp_path: Path, command: str
+) -> None:
+    """Owner decision, 2026-09-22. A `package.json` of `[]` ended every command
+    with exit 3 until M4's review; after the first fix it completed with exit 0,
+    which reported a clean review of a tree whose entry points were never read.
+    Every command, because `recon` runs inside each one's `_prepare` — the same
+    reason the crash reached all four."""
+    target = tmp_path / "target"
+    target.mkdir()
+    (target / "package.json").write_text("[]", encoding="utf-8")
+    assert run([command, str(target), "--workspace", str(tmp_path / "ws")]) == EXIT_USAGE
+
+
 def test_a_code_file_removed_from_review_is_not_exit_zero(tmp_path: Path) -> None:
     """The half of `_incomplete` that a second review found missing.
 
