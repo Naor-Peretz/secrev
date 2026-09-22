@@ -4,14 +4,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repository state
 
-`src/secrev/` holds the M1 and M2 pipeline — `inventory`, `ids`, `catalog`, `sweep`, `recon`,
-`ledger`, `kinds`, `surfaces`, `cli` — and `secrev recon`, `secrev sweep` and `secrev surfaces`
-run. `patterns/` ships nine patterns in two packs (`_base.yaml`, `python.yaml`); `surfaces/` ships
-seven kinds in `_surfaces.yaml`. Both gates are green and every stage has something to check,
-including the artifact half of the determinism stage, which compares real `recon.json` and **both
-blocks** of `hits.jsonl`.
+`src/secrev/` holds the M1, M2 and M4 pipeline — `inventory`, `ids`, `catalog`, `sweep`, `recon`,
+`ledger`, `kinds`, `surfaces`, `parser`, `structure`, `structure_rules`, `cli` — and `secrev
+recon`, `secrev sweep`, `secrev surfaces` and `secrev structure` run. `patterns/` ships nine
+patterns in two packs (`_base.yaml`, `python.yaml`); `surfaces/` ships seven kinds in
+`_surfaces.yaml`; `structure/` ships four structural rules in `_structure.yaml`. Both gates are
+green and every stage has something to check, including the artifact half of the determinism
+stage, which compares real `recon.json` and **every block** of `hits.jsonl` — the blocks it
+requires are derived from `cli.SOURCES`, so a fourth source is covered by adding it in one place
+rather than by someone remembering this stage exists.
 
-**M3 is closed and merged as PR #14**; M2 as PR #13. The
+**M3.5 is closed and merged as PR #15**; M3 as PR #14, M2 as PR #13. The
 owner's decisions are in `.claude/TASKS_M3.md`, which is the ledger — read it before touching M3.
 `threat-models/` ships four files: `_agentic-core.md` (PRD §8.1's eight sections, `CORE-01`…
 `CORE-27`), `skill.md` and `mcp-server.md` (§8.2's six sections each, `SKILL-01`…`SKILL-10` and
@@ -24,15 +27,22 @@ true because the question-id pin is data (`tests/golden/question_ids.json`) rath
 with the pin in a test module, adding an archetype would have edited a script and AC-4 would have
 failed on its own terms.
 
-**The marker now reads `M3.5`** — a hardening pass inserted between M3 and M4 by owner decision,
+**M3.5 was a hardening pass inserted between M3 and M4** by owner decision,
 after an external review found that a hostile target can hide code from the tool, hang it, or make
 it leak secrets into the ledger. `BRIEF_M3.5.md` scopes it. Rules landed before the marker, so there
 was no window in which the scoped tree was write-locked (H-6).
 
-**M3.5's work is complete — all fifteen Definition-of-done boxes — and the marker stays at `M3.5`
-until `BRIEF_M4.md` and its scope-guard rules exist.** Moving it first write-locks the scoped tree
-with no rules to permit anything (H-6). What changed, because most of it is behaviour the rest of
-this file describes:
+**M3.5 is closed and merged** — all fifteen Definition-of-done boxes, and **six external review
+rounds after the first commit**, five of which found the same shape: a fix applied to the case that
+had been demonstrated rather than to the class behind it. A3, C3, D1, E1 and E3 were each reopened
+and re-closed at least once for that reason; A3 three times. `CLAUDE.md`'s own rule about searching
+a replaced mechanism's old name across the whole tree came out of the last two rounds, and was
+itself run narrowly the first time.
+
+The marker now reads `M4`, moved **after** `BRIEF_M4.md` and the M4 case in `scope-guard.sh`
+existed and had assertions exercising them. Moving it first write-locks the scoped tree with no
+rules to permit anything (H-6). What M3.5 changed, because most of it is behaviour the rest of this
+file describes:
 
 - **Two new flags.** `--exclude NAMES` *replaces* the default exclusion set (`--exclude ""` skips
   nothing); `--max-file-bytes N` bounds what is read, default 5 MiB. Both are on `recon`, `sweep`
@@ -123,9 +133,10 @@ exits 0 on its placeholder path by design — a green conclusion alone would hav
 advertised install pipes a fetched script into a shell, which is `net.fetch_exec`, one of the nine
 patterns this tool ships.
 
-### The current milestone is M3.5
+### The current milestone is M4
 
-`.claude/MILESTONE` reads `M3.5`, and **M0, M1, M2 and M3 are closed** — every box in the Definition of
+`.claude/MILESTONE` reads `M4` — the structural source, `BRIEF_M4.md`. **M0, M1, M2, M3 and M3.5 are
+closed**, the last merged as PR #15. Every box in the Definition of
 done of `BRIEF_M0.md`, `BRIEF_M1.md` and `BRIEF_M2.md` is ticked, with per-task receipts in
 `.claude/receipts.md` and the ledgers in `.claude/TASKS_M0.md`, `.claude/TASKS_M1.md` and
 `.claude/TASKS_M2.md`. One obligation was carried across a milestone boundary rather than done, by
@@ -200,9 +211,18 @@ deterministic output is silent under `determinism-guard.sh` until it is added.
 
 What costs time every session, and how it goes instead:
 
-- **Staging protected paths.** `bash-guard.sh` refuses `git add` naming `src/`, `patterns/`,
-  `surfaces/`, `scripts/` or `.claude/`. The owner stages those with `! git add …`; then commit
-  with no pathspec. Never route around it (`git add -A`, `commit -a`, assembling the path).
+- **Staging protected paths is permitted** (owner decision, 2026-09-22), and the checkpoint it
+  removed was *moved*, not dropped. Until then the owner staged protected paths by hand, and that
+  was the one place a protected file changed **without** a Write or Edit would have been noticed —
+  a review demonstrated one: a test file writing into `threat-models/` under the auto-approved
+  gate, since `pytest` is code execution and `tests/` is not protected. The first version of this
+  rule said staged content was "what the guards already saw"; it is what the *session* wrote,
+  which the guards see only when it arrives through Write or Edit. So `commit-review.sh` asks at
+  every `git commit` with the staged set in the dialog, protected paths and executable bits
+  marked — the owner's look now happens there. `git add` flags are an **allowlist** (`-A`,
+  `--all`, `-u`, `--update`), checked on *every* `git add` in the line whether or not a
+  protected path is named: `-f` (gitignored files — `.env`, `notes/`), `--chmod` and
+  `--pathspec-from-file` are refused, as are a chain after a stage and an option before `add`.
 - **Commit messages and PR bodies.** A command naming a protected path *and* containing a newline
   is refused. Word the message without the path tokens, and pass PR bodies with `--body-file`.
 - **Branch names.** `m2/surfaces` itself matches the protected token, so `git push -u origin
@@ -231,8 +251,8 @@ What costs time every session, and how it goes instead:
   committed file, explain every changed line, then copy.
 - **Test values that must look secret must not be credential-shaped.** `gitleaks` exempts only
   `tests/fixtures/`, and `.gitleaks.toml` is not widened to make a test pass.
-- **Fixture directories are never named `src`, `patterns`, `surfaces` or `scripts`** — the guards
-  would treat them as protected.
+- **Fixture directories are never named `src`, `patterns`, `surfaces`, `structure` or `scripts`**
+  — the guards would treat them as protected.
 - **GitHub comments and PR bodies** posted for the owner end with
   `🤖 Posted by Claude Code on behalf of @Naor-Peretz`.
 
@@ -251,7 +271,8 @@ directory index orders by a hash of the name; it is kept as a cross-filesystem c
 labelled as not being the control.
 
 **The Bash bypass is narrowed, not closed.** `bash-guard.sh` is wired as a `PreToolUse` matcher on
-`Bash`, and a write to `src/`, `patterns/`, `surfaces/`, `scripts/` or `.claude/` through a shell is
+`Bash`, and a write to `src/`, `patterns/`, `surfaces/`, `structure/`, `scripts/` or `.claude/`
+through a shell is
 refused. It is a guardrail against mistakes: the trigger is a test over path spellings, so a glob, a
 variable or a `cd` defeats it, and the file says so in its own KNOWN LIMIT. It also over-matches in
 the other direction — a bare word equal to a protected name, such as the subcommand `secrev
@@ -260,8 +281,9 @@ message names the token so a reader can tell. Enforcement of the harness's own f
 layers that do not read shell text (STACK.md §8 H-2).
 
 What it permits beside a protected path: the read-only set (`cat`, `grep`, `head`, `tail`, `wc`,
-`ls`, `rg`, `git diff`, `git log`), and running an existing script — `sh <x.sh>`, `python3 <x.py>`
-with no flag after the interpreter. What it refuses: everything else, **and every shell operator**.
+`ls`, `rg`, `git diff`, `git log`), staging with `git add` (since 2026-09-22 — the index, never
+the file), and running an existing script — `sh <x.sh>`, `python3 <x.py>` with no flag after the
+interpreter. What it refuses: everything else, **and every shell operator**.
 No `;`, `&&`, `||`, `|`, newline, redirect, subshell or substitution, because each of those carries
 a write past the command that was actually checked. That costs read-only pipelines: `cat src/x.py |
 grep foo` is refused, and reading a protected file takes one command or the `Read` tool.
@@ -440,7 +462,9 @@ them, no tool that can write to a protected path is unwatched (H-3).
 
 | Hook | Event | Effect |
 |---|---|---|
-| `bash-guard.sh` | PreToolUse Bash | **Refuses** a Bash command touching `src/`, `patterns/`, `surfaces/`, `scripts/` or `.claude/` unless it reads (allowlisted command) or runs an existing script (`sh <x.sh>`, `python3 <x.py>`, no flags). Every shell operator refuses — chaining carries a write past the command that was checked |
+| `bash-guard.sh` | PreToolUse Bash | **Refuses** a Bash command touching `src/`, `patterns/`, `surfaces/`, `structure/`, `scripts/` or `.claude/` unless it reads (allowlisted command), stages (`git add`), or runs an existing script (`sh <x.sh>`, `python3 <x.py>`, no flags). Every shell operator refuses — chaining carries a write past the command that was checked |
+| *(every hook)* | — | **Starts Python isolated**: `-I` always, `-S` where the script is stdlib-only. Python puts a script's own directory first on `sys.path`, so a `json.py` planted in `lib/` owned every guard until M4's third review. No hook imports our own code through the bytecode cache — `commit_review.py` loads `bash_guard` from source — so a planted `.pyc` has nothing to replace. Both are held by `attack.py`, statically and by running the plants against the real hooks |
+| `commit-review.sh` | PreToolUse Bash | **Asks** on any `git commit`, with the staged set in the approval dialog — protected paths and executable bits marked, unstaged tracked changes listed. The replacement for hand-staging (2026-09-22), not an optional extra; refuses when the index cannot be read (H-9) |
 | `self-application-guard.sh` | PreToolUse Write/Edit | **Blocks** a write that would put `eval`, `exec`, `pickle`, `shell=True`, `yaml.load`, `Loader=`, or a network client into Python under `src/` or `scripts/` |
 | `scope-guard.sh` | PreToolUse Write/Edit | **Asks** when a write reaches past the milestone in `.claude/MILESTONE`; **refuses** when that milestone has no rules (H-6) |
 | `spec-guard.sh` | PreToolUse Write/Edit | **Asks** before any edit to the PRD, `STACK.md`, or a brief, restating precedence |
@@ -513,20 +537,23 @@ Pipeline — three peer candidate sources (D-11) feed one ledger, `hits.jsonl`:
 - **pattern** — regex catalog, any text, line-oriented (M1)
 - **surface** — every reachable entry point, entering the ledger on its own account so detection
   never decides scope (P11, M2)
-- **structure** — AST rules; Python-only in v1, behind a `Parser` interface (M4)
+- **structure** — AST rules; Python-only in v1, behind a `Parser` interface (M4, shipped). The
+  interface returns a **vocabulary** — functions, calls, assignments, membership tests, returns —
+  not a syntax tree, so a second language changes no rule logic. `ast` is imported by `parser.py`
+  alone and a test holds that, because an interface its neighbours can reach around is a comment.
 
 Then: triage gate → reachability/proof → severity → report. `verify_ledger.py` blocks report
 rendering while any hit is `unresolved` (P4, AC-2).
 
 ## Commands (decided in `STACK.md` §3)
 
-`recon` and `sweep` are implemented; the rest are not.
+All three candidate sources are implemented; `verify` and `report` are not.
 
 ```
 secrev recon     <target>    # → recon.json  (M1, implemented)
 secrev sweep     <target>    # → hits.jsonl  (M1, implemented)
 secrev surfaces  <target>    # → hits.jsonl  (M2, implemented; its own block of the ledger)
-secrev structure <target>    # → hits.jsonl  (M4)
+secrev structure <target>    # → hits.jsonl  (M4, implemented; its own block, `block-20` windows)
 secrev verify    <workspace> # gate          (M7)
 secrev report    <workspace> # → report.md   (M9)
 ```
@@ -604,11 +631,12 @@ stays there.
   `python -c`, `dd` is not a closeable list. Reaching for another verb to block means the polarity
   is wrong — which is P3 applied to our own tooling, and this project's founding finding was a
   denylist bypass.
-- **H-4** Protected paths are `src/`, `patterns/`, `surfaces/`, `scripts/`, `threat-models/`,
-  `tests/golden/` and `.claude/` — `patterns/` and `surfaces/` especially, since they are the
-  tool's input and an unreviewed rule or surface kind is a check that silently disappears (a kind
-  decides which entry points enter the ledger at all). `surfaces/` joined in M2 and
-  `threat-models/` in M3, each in the change that created it. `tests/golden/` joined in M3: the
+- **H-4** Protected paths are `src/`, `patterns/`, `surfaces/`, `structure/`, `scripts/`,
+  `threat-models/`, `tests/golden/` and `.claude/` — the three data directories especially, since
+  they are the tool's input and an unreviewed rule, surface kind or structural parameter is a check
+  that silently disappears (a kind decides which entry points enter the ledger at all; a structural
+  parameter decides which calls count as sinks). `surfaces/` joined in M2,
+  `threat-models/` in M3 and `structure/` in M4, each in the change that created it. `tests/golden/` joined in M3: the
   question-id pin had to be data rather than Python for AC-4 to stay true, and a pin editable
   without review is protection one step from what it protects. The artifact goldens inherit it,
   which is right — a golden edited without review is a comparison that stops comparing. `.claude/`

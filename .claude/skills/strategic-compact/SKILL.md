@@ -23,22 +23,35 @@ Strategic compaction at logical boundaries:
 
 ## How It Works
 
-The `suggest-compact.sh` script runs on PreToolUse (Edit/Write) and:
+The `suggest-compact.sh` script is **intended** to run on PreToolUse (Edit/Write)
+and:
 
 1. **Tracks tool calls** - Counts tool invocations in session
 2. **Threshold detection** - Suggests at configurable threshold (default: 50 calls)
 3. **Periodic reminders** - Reminds every 25 calls after threshold
 
+> **It does not do any of that, and the M4 skills pass measured it.** The
+> counter file is named `/tmp/claude-tool-count-$$`, and `$$` is the script's own
+> pid. A hook is a fresh process each time, so the name is new on every
+> invocation, the `-f` test never succeeds, the file is rewritten as `1`, and
+> neither threshold is ever reached. The script is not wired into this
+> repository's `.claude/settings.json`, so nothing here depends on it — but the
+> three numbered claims above described behaviour no run has ever produced, in a
+> file that reaches an agent's context (P8). The logic is vendored third-party
+> content and is left unrepaired deliberately; see the header comment in the
+> script and `BRIEF_M4.md` §6.
+
 ## Hook Setup
 
-Add to your `~/.claude/settings.json`:
+Add to your `~/.claude/settings.json`. The matcher is a regex over tool names —
+the same form this repository's own hooks use — not an expression:
 
 ```json
 {
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "tool == \"Edit\" || tool == \"Write\"",
+        "matcher": "Write|Edit",
         "hooks": [
           {
             "type": "command",

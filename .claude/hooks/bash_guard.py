@@ -37,10 +37,27 @@ a command *mentions* a protected path, which is a test over path spellings, and
 spellings do not close: `$HOME/secrev/src/secrev/cli.py`, `./sr*/secrev/*.py`,
 `$P/cli.py` and `tar -x` all evade it. The verb polarity is right; the path
 polarity is inherited from H-2's own wording and is the subject of open
-question 8 in .claude/TASKS_M0.md. Fixing it means making the trigger "the
+question 8 in .claude/TASKS_M0.md (item 5 of its "Raised" list). Fixing it means making the trigger "the
 command is read-only" rather than "the command mentions a protected path",
 which refuses `uv sync`, `pytest` and `git commit` and needs its own allowlist.
 That is a decision for a human, not something to settle inside this file.
+
+Since M4 one command already works the inverted way: `_staging_refusal`
+decides on what a `git add` *is*, wherever it sits and whether or not a
+protected path is named. It is the prototype that question now has, and the
+single-character evasions it records (`s?c/…`, `sr[c]/…`) are the reason it
+stays open.
+
+That prototype has its own KNOWN LIMIT, found in review and recorded rather
+than claimed closed: it identifies the subcommand by the token after `git`,
+and git itself resolves names this file cannot see. `git ad -f .env` runs `add`
+when `help.autocorrect` is set; `git a -f .env` runs it through a configured
+alias; and `git -c alias.a=add a -f .env` defines the alias inline, where the
+`add` sits inside another token and the option-before-subcommand check, which
+looks for `add` exactly, passes it. None is auto-approved — `Bash(git add:*)`
+matches none of them — so each reaches an approval dialog, and the commit
+checkpoint shows what was staged whatever did the staging. Closing it here
+would mean predicting git's own name resolution from shell text.
 """
 
 from __future__ import annotations
@@ -80,7 +97,24 @@ REFUSE = 2
 # a bare `golden` would protect any directory of that name anywhere, and the
 # over-match this file already carries for one-word names is not worth widening
 # when the real path is known.
-PROTECTED = ("src", "patterns", "surfaces", "scripts", "threat-models", "tests/golden", r"\.claude")
+# `structure` joined in M4 on exactly the argument `surfaces` joined on, and in
+# the change that created the directory rather than after it. The structural
+# rules are tool input like the catalog and the kinds: the parameters in
+# `_structure.yaml` decide which calls count as sinks and which functions count
+# as validating, so an unreviewed edit there is a structural check that silently
+# stops firing while every run still reports success. The owner placed the file
+# in a directory of its own (BRIEF_M4.md §6 Q1) rather than under patterns/,
+# which is what makes a separate entry here necessary at all.
+PROTECTED = (
+    "src",
+    "patterns",
+    "surfaces",
+    "structure",
+    "scripts",
+    "threat-models",
+    "tests/golden",
+    r"\.claude",
+)
 
 # The set as a reader sees it, derived rather than restated. The refusal message
 # below used to spell the list out and had already drifted — it omitted
@@ -102,6 +136,49 @@ READ_ONLY = frozenset({"cat", "grep", "egrep", "fgrep", "head", "tail", "wc", "l
 # `git` is not the unit of trust; these two subcommands are.
 READ_ONLY_GIT = frozenset({"diff", "log", "show", "status", "blame"})
 
+# Staging, admitted by owner decision on 2026-09-22 — its own category, not an
+# entry in READ_ONLY_GIT, because it is not read-only and a list whose name is
+# false is how a later reader widens it by analogy.
+#
+# **What `git add` stages is whatever the session wrote — which the Write/Edit
+# guards saw only if it arrived through Write or Edit.** The first version of
+# this comment said the guards had "already seen" staged content, and a review
+# disproved it with a test file that wrote into `threat-models/` under the
+# auto-approved gate: `pytest` is code execution, `tests/` is not protected, and
+# nothing on that path touched a guard. The owner's hand on staging had been the
+# one control that would have noticed a protected file changed without a Write.
+# It moved to commit — `commit-review.sh` puts the staged set, protected paths
+# flagged, in front of the owner at the approval that is still asked every time.
+# That hook is the replacement for the checkpoint this category removed, not an
+# optional improvement to it.
+#
+# `git add` writes the index and never the working tree, which is the true part
+# of the original claim and the reason staging needs no guard of its own on
+# *content*. Every operator remains banned beside a protected path, so `git add
+# src/x.py; rm -rf src` is still refused — the category is one command, not a
+# chain that begins with one.
+#
+# Only `add` in the second position. `git -C <dir> add` is refused, because an
+# option before the subcommand is how a git invocation stops meaning what its
+# second token says.
+STAGE_GIT = frozenset({"add"})
+
+# The flags staging may carry — an allowlist, for the reason `find` is absent
+# above: admitting `git add` "minus the dangerous flags" would be a denylist over
+# flags. Everything the ordinary flow needs, and nothing else. The review named
+# three that were admitted and should not be: `-f` stages a gitignored file,
+# which is how `.env` and `notes/` leave the machine; `--chmod` changes a mode
+# no guard reads; `--pathspec-from-file` stages paths that never appear in the
+# command, so no test over the command's text can see what it touched.
+#
+# **Checked on every `git add`, protected path named or not**, and that is the
+# half that makes the list mean anything. Two of the review's three examples —
+# `git add -f .env` and `--pathspec-from-file=list` — name no protected path, so
+# `evaluate` permitted them at its first line and never reached `is_stage`.
+# Narrowing only the protected-path branch would have fixed the demonstrated
+# case and left the class open.
+STAGE_FLAGS = frozenset({"-A", "--all", "-u", "--update"})
+
 # Interpreters permitted to *run* an existing script under a protected path,
 # mapped to the extension they may run. Executing a script is not writing it,
 # and the brief's allowlist has two categories where three are needed.
@@ -117,6 +194,9 @@ EXECUTE = {"sh": ".sh", "python3": ".py", "python": ".py"}
 # An interpreter and the script it runs. Fewer tokens than this is an
 # interactive interpreter, which is not "running an existing script".
 INTERPRETER_AND_SCRIPT = 2
+
+# `git` and its subcommand. Fewer tokens than this is a bare `git`.
+COMMAND_AND_SUBCOMMAND = 2
 
 # No shell operator may appear beside a protected path. Not `;`, `&&`, `||`,
 # `|`, a redirect, a subshell or a substitution.
@@ -178,6 +258,71 @@ def is_read_only(tokens: list[str]) -> bool:
     return command in READ_ONLY
 
 
+def is_stage(tokens: list[str]) -> bool:
+    """`git add`, and nothing that merely begins with `git`."""
+    command = tokens[0].rsplit("/", 1)[-1]
+    return command == "git" and len(tokens) > 1 and tokens[1] in STAGE_GIT
+
+
+def segments(tokens: list[str]) -> list[list[str]]:
+    """The commands in a line, split on operator tokens. Used to find a
+    `git add` wherever it sits — `true && git add -f .env` names no protected
+    path, so the operator ban never sees it — and by `commit_review.py` to find
+    a `git commit` the same way, so the two cannot disagree about where a
+    command begins."""
+    segments: list[list[str]] = [[]]
+    for token in tokens:
+        if token and all(char in OPERATOR_CHARS for char in token):
+            segments.append([])
+        else:
+            segments[-1].append(token)
+    return [segment for segment in segments if segment]
+
+
+def git_argv(segment: list[str]) -> list[str] | None:
+    """`git` and what follows it, wherever `git` sits in the command, or None.
+
+    Shared with `commit_review.py` so the staging check and the commit
+    checkpoint cannot disagree about which command is a git command — the first
+    version of each read only the first word, and a wrapper walked past both.
+    """
+    for index, token in enumerate(segment):
+        if token.rsplit("/", 1)[-1] == "git":
+            argv = segment[index:]
+            return argv if len(argv) >= COMMAND_AND_SUBCOMMAND else None
+    return None
+
+
+def _staging_refusal(tokens: list[str]) -> str | None:
+    """A `git add` anywhere in the line that carries a flag outside
+    `STAGE_FLAGS`, or that hides `add` behind an option.
+
+    `git` is found wherever it sits in a command, not only in first position.
+    The first version checked `segment[0]`, so `env git add -f .env`,
+    `VAR=1 git add -f .env` and `sudo git add -f .env` all walked past it.
+    Listing the wrappers — `env`, `sudo`, `nice`, `nohup`, `command`, `time` —
+    would be a denylist over prefixes, which is the polarity this file refuses;
+    locating `git` itself needs no list. What still defeats it is the KNOWN
+    LIMIT above: a `git` spelled through a variable is not a token anyone can
+    read.
+    """
+    for segment in segments(tokens):
+        argv = git_argv(segment)
+        if argv is None:
+            continue
+        if argv[1].startswith("-") and "add" in argv:
+            return "an option before `git add` — the second token must be the subcommand"
+        if argv[1] not in STAGE_GIT:
+            continue
+        for argument in argv[2:]:
+            if argument == "--":
+                break
+            if argument.startswith("-") and argument not in STAGE_FLAGS:
+                allowed = ", ".join(sorted(STAGE_FLAGS))
+                return f"`git add {argument}` — staging may carry only {allowed}"
+    return None
+
+
 def is_execute(tokens: list[str]) -> bool:
     """Running an existing script, as opposed to writing one.
 
@@ -225,10 +370,10 @@ def _syntax_refusal(command: str, tokens: list[str]) -> str | None:
 
 
 def _command_refusal(tokens: list[str]) -> str | None:
-    """A command that neither reads nor runs an existing script."""
-    if is_read_only(tokens) or is_execute(tokens):
+    """A command that neither reads, stages, nor runs an existing script."""
+    if is_read_only(tokens) or is_stage(tokens) or is_execute(tokens):
         return None
-    return f"{tokens[0]!r} neither reads nor runs an existing script"
+    return f"{tokens[0]!r} neither reads, stages, nor runs an existing script"
 
 
 def evaluate(command: str) -> tuple[int, str]:
@@ -241,6 +386,11 @@ def evaluate(command: str) -> tuple[int, str]:
         # (H-1); the raw string is not consulted, because a guard that falls
         # back to substring matching when its parser fails is guessing.
         return REFUSE, "the command could not be parsed, so it could not be checked"
+
+    # Before the protected-path test, not after it: see STAGE_FLAGS.
+    staging = _staging_refusal(tokens)
+    if staging:
+        return REFUSE, staging
 
     if not any(mentions_protected(token) for token in tokens):
         return PERMIT, ""
@@ -268,8 +418,9 @@ def main() -> int:
         "to them (BRIEF_M0.md §1). Use the Write or Edit tool for this change so "
         "the self-application and scope guards can see it.\n"
         "Reading one of these paths is unaffected — cat, grep, head, tail, wc, ls, "
-        "rg, git diff, git log — and so is running an existing script: sh <x.sh>, "
-        "python3 <x.py>. One command at a time: no `;`, `&&`, `|`, redirect or "
+        "rg, git diff, git log — and so is staging it with git add, and running an "
+        "existing script: sh <x.sh>, python3 <x.py>. One command at a time: no `;`, "
+        "`&&`, `|`, redirect or "
         "substitution beside a protected path, because each of those carries a "
         "write past the command that was checked.\n"
     )

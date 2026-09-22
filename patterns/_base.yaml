@@ -144,7 +144,8 @@ patterns:
   # closed-list assumption that `tee`, a heredoc, `sed -i`, `>`, `cp`, `mv` and
   # `python -c` each defeat — the same reasoning STACK.md §8 H-2 applies to the
   # harness guards. Naming the region and asking whether it is a write is what
-  # a pattern is for (P4); deciding it is M4's job.
+  # a pattern is for (P4); deciding it is left to review — M4's structural
+  # rules do not cover it.
   - id: fs.agent_config_write
     layer: [code]
     regex: |-

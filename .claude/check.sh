@@ -62,9 +62,13 @@ run "ruff check (harness)"          "$PY" -m ruff check --config "$CONFIG" $PATH
 
 # ------------------------------------------------------------------ 3. types
 "$PY" -m mypy --version >/dev/null 2>&1 || missing mypy
+# Every hook module by glob, not by name. It named two modules until M4, and a
+# third — commit_review.py — passed the gate unchecked while mypy printed the
+# same "4 source files" it had printed before the file existed. A count that
+# does not move when a module is added is a list someone has to remember.
 # shellcheck disable=SC2086
 run "mypy --strict (harness)" "$PY" -m mypy --strict --ignore-missing-imports \
-    .claude/hooks/lib .claude/hooks/skill_activation.py .claude/hooks/bash_guard.py
+    .claude/hooks/lib .claude/hooks/*.py
 
 # ------------------------------------------------------------------ 4. tests
 # H-8: a guard nobody has tried to defeat is an assumption, not a control. The

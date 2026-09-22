@@ -23,7 +23,7 @@ SYSPY=$(command -v python3 2>/dev/null) || {
 }
 
 read_field() {
-    printf '%s' "$INPUT" | "$SYSPY" "$READER" "$1" || {
+    printf '%s' "$INPUT" | "$SYSPY" -I -S "$READER" "$1" || {
         echo "async-check: unreadable hook payload — refusing (H-1)." >&2
         exit 2
     }
@@ -85,10 +85,19 @@ fi
             # Silence read as "nothing to report". `if` is where set -e stands
             # down.
             if
+                # pytest runs inside the protected-path snapshot, as it does in
+                # the gate. It ran bare until a review showed the gate's
+                # snapshot could be sidestepped — and this hook runs the same
+                # suite after *every* edit with no approval at all, so a test
+                # planting into .claude/hooks/ needed neither the gate nor a
+                # dialog to do it. `-I` on the checker, not on pytest: pytest
+                # needs the project on sys.path; the checker must not have a
+                # planted scripts/ module in place of the stdlib.
                 case "$check" in
-                  ruff)    out=$("$PY" -m ruff check "$ROOT" 2>&1) ;;
-                  pytest)  out=$("$PY" -m pytest -x -q "$ROOT" 2>&1) ;;
-                  *)       out=$("$PY" "$ROOT/scripts/self_check.py" 2>&1) ;;
+                  ruff)    out=$("$PY" -I -m ruff check "$ROOT" 2>&1) ;;
+                  pytest)  out=$("$PY" -I -S "$ROOT/scripts/protected_snapshot.py" run -- \
+                                     "$PY" -m pytest -x -q "$ROOT" 2>&1) ;;
+                  *)       out=$("$PY" -I "$ROOT/scripts/self_check.py" 2>&1) ;;
                 esac
             then
                 status=0

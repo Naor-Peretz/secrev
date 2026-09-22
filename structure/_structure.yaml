@@ -1,0 +1,183 @@
+# Structural rules — the questions, and the parameters that decide what counts.
+# BRIEF_M4.md §3 and §6 Q1, PRD FR-3.6, NFR-6.
+#
+# The analysis is Python (`src/secrev/structure.py`); the questions, the
+# precision, the references and the parameters are here. `shape` names which
+# analysis reads a rule, so a fifth rule of an existing shape is an edit to this
+# file and nothing else — which is the half of NFR-6 that can actually be
+# demonstrated. A genuinely new shape needs Python, and BRIEF_M4.md §3 says so
+# rather than pretending otherwise.
+#
+# **A name with a dot matches exactly; a bare name matches any receiver.**
+# `os.chmod` matches only that, while `chmod` matches `os.chmod`, `path.chmod`
+# and a bare `chmod` alike. The choice is per name, so this file decides where
+# recall is worth the noise rather than the code deciding once for everything.
+#
+# Every question ends in a question mark and none of them concludes (FR-3.2,
+# A3). A structural record says *this shape is here, go and look*; whether it is
+# a finding is a later phase's answer, and nothing in M4 has the information to
+# give it.
+#
+# `precision: low` throughout, and that is a position rather than an apology
+# (BRIEF_M1.md §4). Under P4 every candidate is resolved anyway, so a false
+# positive costs a paragraph and a miss is a silent gap.
+
+version: "2026.09.1"
+
+rules:
+  - id: structure.permission_after_creation
+    shape: order_of_operations
+    layer: [code]
+    precision: low
+    question: >
+      This body creates a resource and then sets its permissions in a later,
+      separate call. Between the two the resource exists with whatever the
+      process umask gave it — who can open it in that window, and does anything
+      on this machine reach it before the second call lands?
+    references:
+      - CWE-732
+      - CWE-367
+    parameters:
+      # Bare names throughout: these are written as methods as often as
+      # functions (`path.touch()`, `tempfile.mkstemp()`, `Path(p).mkdir()`), and
+      # a dotted list would miss the receiver that happens to be in use.
+      creating_calls:
+        - open
+        - mkstemp
+        - mkdtemp
+        - mkdir
+        - makedirs
+        - touch
+        - NamedTemporaryFile
+        - TemporaryDirectory
+        - create
+      permission_calls:
+        - chmod
+        - fchmod
+        - lchmod
+        - chown
+        - fchown
+        - lchown
+      # A creating call carrying one of these has set the permission *at*
+      # creation, which is the fix rather than the defect — so it is not a
+      # candidate. This is what keeps the rule off `open(p, mode=0o600)`, and
+      # A2 requires that negative to exist.
+      fused_keywords:
+        - mode
+        - permissions
+        - perm
+
+  - id: structure.denylist_decision
+    shape: decision_shape
+    layer: [code]
+    precision: low
+    question: >
+      This function decides whether something is permitted by testing it against
+      a collection written into the source. What does it answer for an input
+      nobody listed, and is that answer "allowed"?
+    references:
+      - CWE-184
+      - CWE-183
+    parameters:
+      # Two, not one. A single-element test is an ordinary equality check
+      # spelled with `in`, and firing on it would put a candidate on most
+      # branches in most codebases — which is how a rule gets turned off.
+      minimum_alternatives: 2
+      # Fragments, matched inside the function name. P3 is the reason this rule
+      # exists at all: a denylist is a check that answers "allowed" for
+      # everything its author did not think of, and this is its syntactic
+      # signature rather than its meaning.
+      validating_name_fragments:
+        - valid
+        - check
+        - allow
+        - deny
+        - block
+        - safe
+        - sanit
+        - verify
+        - permit
+        - filter
+        - is_
+
+  - id: structure.unvalidated_path_reach
+    shape: unvalidated_reach
+    layer: [code]
+    precision: low
+    question: >
+      A value this body was handed reaches a call that reads, writes, deletes or
+      executes without passing through anything named here as validating. Where
+      does that value come from, and what can it be made to name?
+    references:
+      - CWE-22
+      - CWE-73
+    parameters:
+      # Dotted where the module is what makes the call dangerous, bare where the
+      # call is a method on whatever object holds the path. `run` and `call` are
+      # deliberately dotted: bare, they would match every `.run()` in every
+      # framework and the rule would be noise rather than low precision.
+      sink_calls:
+        - open
+        - read_text
+        - read_bytes
+        - write_text
+        - write_bytes
+        - os.remove
+        - os.unlink
+        - os.rename
+        - os.replace
+        - os.execv
+        - os.execve
+        - os.system
+        - shutil.rmtree
+        - shutil.copy
+        - shutil.copyfile
+        - shutil.move
+        - subprocess.run
+        - subprocess.call
+        - subprocess.Popen
+        - subprocess.check_output
+      # What counts as having validated the value. Every name here is a claim
+      # that a call makes a path safe, and each is only as good as its
+      # implementation — `realpath` resolves symlinks and says nothing about
+      # containment, so it is listed for what people use it for and a record it
+      # suppresses is one this rule is admitting it cannot judge. FR-3.7 puts
+      # the dataflow that would settle it in v2.
+      validating_calls:
+        - is_within
+        - is_safe_path
+        - safe_join
+        - ensure_within
+        - validate_path
+        - resolve_within
+        - commonpath
+        - relative_to
+
+  - id: structure.built_value_into_sink
+    shape: sink_adjacency
+    layer: [code]
+    precision: low
+    question: >
+      A value built by interpolation or concatenation inside this body is passed
+      straight into a call that executes, queries or fetches. What goes into
+      that value, and can anything outside this process decide it?
+    references:
+      - CWE-78
+      - CWE-89
+      - CWE-77
+    parameters:
+      dangerous_calls:
+        - os.system
+        - os.popen
+        - subprocess.run
+        - subprocess.call
+        - subprocess.Popen
+        - subprocess.check_output
+        - eval
+        - exec
+        - execute
+        - executemany
+        - executescript
+        - urlopen
+        - requests.get
+        - requests.post

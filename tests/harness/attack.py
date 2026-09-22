@@ -21,7 +21,11 @@ never a shell string. The strings below that look like violations -- `eval(`,
 
 from __future__ import annotations
 
+import ast
+import importlib._bootstrap_external
+import importlib.util
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -254,6 +258,30 @@ def test_determinism_guard_speaks_on_surfaces_before_it_exists() -> None:
     )
 
 
+def test_determinism_guard_speaks_on_structure_before_it_exists() -> None:
+    """BRIEF_M4.md C2, and the same argument as surfaces.py one milestone on.
+
+    Both files are named, and `parser.py` is the one worth stating a reason for.
+    It looks like a loader and is not: it fixes the order nodes are visited in,
+    and an order that is not a property of the input reaches the output exactly
+    as `os.walk`'s does. Leaving it out would put the guard on the module that
+    *emits* records while leaving the module that *orders* them unwatched, which
+    is the split that made `catalog.py` the wrong analogy.
+    """
+    for name in ("structure.py", "parser.py"):
+        rc, out, _ = run_hook(
+            "determinism-guard.sh", write_payload(str(REPO / "src" / "secrev" / name), "")
+        )
+        assert rc == PASS_THROUGH, (
+            f"got rc={rc} for {name}. rc=2 means the determinism check it re-ran failed — "
+            f"read the determinism stage of the gate, not this assertion."
+        )
+        assert name in out and "NFR-3" in out, (
+            f"touching {name} must restate the determinism rules — is_nfr3_path "
+            f"in .claude/hooks/lib/paths.sh does not name it"
+        )
+
+
 # ----------------------------------------------------------------- plan-review
 
 
@@ -390,6 +418,26 @@ def test_bash_permits_reading_the_surface_kinds() -> None:
     assert bash("cat surfaces/_surfaces.yaml") == PASS_THROUGH
 
 
+def test_bash_refuses_writing_the_structural_rules() -> None:
+    """H-4 as amended in M4. The parameters in `_structure.yaml` decide which
+    calls count as sinks and which functions count as validating, so an
+    unreviewed edit turns a structural check off while every run still reports
+    success — the same argument that protects `patterns/` and `surfaces/`."""
+    assert bash("echo x | tee structure/_structure.yaml") == BLOCK
+
+
+def test_bash_permits_reading_the_structural_rules() -> None:
+    assert bash("cat structure/_structure.yaml") == PASS_THROUGH
+
+
+def test_bash_does_not_protect_a_file_merely_named_structure() -> None:
+    """The negative, and it matters more here than for `surfaces`: "structure"
+    is an ordinary English word, so protecting it as a *directory* rather than
+    as a token is what keeps `build/structure.txt` writable. `structure.py`
+    under src/ is protected by `src`, not by this name."""
+    assert bash("echo x > build/structure.txt") == PASS_THROUGH
+
+
 def test_bash_does_not_protect_a_file_merely_named_surfaces() -> None:
     """The negative. `surfaces` is protected as a directory, not as a word:
     `src/secrev/surfaces.py` must not read as the data directory, and neither
@@ -489,6 +537,417 @@ def test_bash_permits_allowlisted_git_subcommand() -> None:
 def test_bash_refuses_unlisted_git_subcommand() -> None:
     """`git` is not the unit of trust; `git diff` and `git log` are."""
     assert bash("git checkout -- src/secrev/cli.py") == BLOCK
+
+
+def test_bash_permits_staging_a_protected_path() -> None:
+    """Owner decision, 2026-09-22: staging no longer needs the owner's hand.
+    `git add` writes the index and never the file, so what it stages is exactly
+    what the Write/Edit guards already saw. The human checkpoint moved to
+    commit, which `settings.json` still asks about every time."""
+    assert bash("git add src/secrev/structure.py .claude/hooks/lib/paths.sh") == PASS_THROUGH
+    assert bash("git add -A") == PASS_THROUGH
+
+
+def test_bash_still_refuses_a_write_chained_after_staging() -> None:
+    """H-8: the permit is for one command, not for a chain that begins with
+    one. This is the bypass a new category invites first."""
+    assert bash("git add src/secrev/x.py && echo x > src/secrev/y.py") == BLOCK
+    assert bash("git add src/secrev/x.py; rm -rf src") == BLOCK
+
+
+def test_bash_refuses_an_option_before_the_staging_subcommand() -> None:
+    """`git -C <dir> add` is not what its second token says it is. Only `add` in
+    the second position is the category."""
+    assert bash("git -C src add secrev/x.py") == BLOCK
+
+
+def test_staging_flags_are_an_allowlist_checked_on_every_git_add() -> None:
+    """The review's three, and the reason the check sits before the
+    protected-path test rather than inside it.
+
+    `-f` stages a gitignored file — how `.env` and `notes/` leave the machine.
+    `--chmod` changes a mode no guard reads. `--pathspec-from-file` stages paths
+    that never appear in the command. Two of the three name no protected path, so
+    a check living in `is_stage` would never have seen them: `evaluate` permits a
+    command with no protected token at its first line. Fixing only that branch
+    would have fixed the demonstrated case and left the class open.
+    """
+    assert bash("git add -f .env") == BLOCK
+    assert bash("git add --force notes/finding.md") == BLOCK
+    assert bash("git add --chmod=+x src/secrev/x.py") == BLOCK
+    assert bash("git add --pathspec-from-file=list") == BLOCK
+    # Combined short flags are one token beginning with `-`, so `-fA` is refused
+    # without a rule for it — the property an allowlist has and a denylist lacks.
+    assert bash("git add -fA") == BLOCK
+
+
+def test_a_forbidden_staging_flag_is_refused_inside_a_chain() -> None:
+    """`true && git add -f .env` names no protected path, so the operator ban
+    never looks at it. The staging check reads every command in the line."""
+    assert bash("true && git add -f .env") == BLOCK
+
+
+def test_a_forbidden_staging_flag_is_refused_behind_a_wrapper() -> None:
+    """Found in my own first version before the review reached it: `git` was
+    recognised only as the first word, so any prefix walked past. Located, not
+    enumerated — no list of wrappers exists to fall behind."""
+    assert bash("env git add -f .env") == BLOCK
+    assert bash("GIT_DIR=.git git add -f .env") == BLOCK
+    assert bash("sudo git add --force notes/x.md") == BLOCK
+
+
+def test_the_reviewers_probes_of_the_allowlist() -> None:
+    """The shapes in which an allowlist quietly becomes a denylist, each run
+    rather than reasoned about. Git accepts an unambiguous prefix of a long
+    option, so `--forc` *is* `--force` — refused because nothing but the four
+    exact spellings is admitted, not because anyone listed the abbreviation.
+    Pathspec magic selects paths; it cannot carry a flag, so it stages like any
+    path and the commit checkpoint shows what it selected."""
+    assert bash("git add --forc .env") == BLOCK
+    assert bash("git add --al") == BLOCK
+    assert bash("git add -Af") == BLOCK
+    assert bash("git add -- -f") == PASS_THROUGH
+    assert bash("git add ':(glob)docs/**'") == PASS_THROUGH
+
+
+def test_ordinary_staging_is_not_disturbed() -> None:
+    """The control. Every refusal above is worth nothing if the flow the owner
+    asked for stops working — and a path beginning with `-` stays stageable
+    after `--`, which is what `--` is for."""
+    assert bash("git add -A") == PASS_THROUGH
+    assert bash("git add -u") == PASS_THROUGH
+    assert bash("git add src/secrev/x.py tests/test_x.py") == PASS_THROUGH
+    assert bash("git add -- -odd-name.txt") == PASS_THROUGH
+    assert bash("git commit -m add") == PASS_THROUGH
+
+
+# ------------------------------------------------------ the commit checkpoint
+#
+# Owner decision 2026-09-22 moved the human look at staged content from staging
+# to commit. commit-review.sh is what makes commit able to carry it: before, the
+# approval showed `git commit -m "..."` and nothing of the index.
+
+
+def commit_tree() -> tempfile.TemporaryDirectory[str]:
+    """A throwaway git repository carrying the hook and everything it loads.
+
+    The hook resolves its reader, asker and reviewer from CLAUDE_PROJECT_DIR, so
+    a tree without them measures the missing file rather than the review (the
+    lesson `milestone_tree` records)."""
+    tmp = tempfile.TemporaryDirectory()
+    root = Path(tmp.name)
+    hooks = root / ".claude" / "hooks"
+    shutil.copytree(HOOKS / "lib", hooks / "lib")
+    for name in ("commit_review.py", "bash_guard.py"):
+        shutil.copy2(HOOKS / name, hooks / name)
+    git = shutil.which("git")
+    assert git, "git is required for the commit checkpoint tests"
+    identity = ["-c", "user.name=t", "-c", "user.email=t@t.invalid"]
+    for args in (
+        ["init", "-q"],
+        [*identity, "commit", "-q", "--allow-empty", "-m", "base"],
+    ):
+        subprocess.run([git, *args], cwd=root, check=True, capture_output=True)
+    return tmp
+
+
+def stage(root: Path, relative: str, *extra: str) -> None:
+    git = shutil.which("git")
+    assert git
+    path = root / relative
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("x\n", encoding="utf-8")
+    subprocess.run([git, "add", *extra, relative], cwd=root, check=True, capture_output=True)
+
+
+def commit_review(root: Path, command: str) -> tuple[int, str, str]:
+    return run_hook(
+        "commit-review.sh",
+        {"tool_name": "Bash", "tool_input": {"command": command}},
+        project_dir=root,
+    )
+
+
+def test_commit_review_is_wired_on_bash() -> None:
+    settings = json.loads((REPO / ".claude" / "settings.json").read_text("utf-8"))
+    commands = [
+        hook["command"]
+        for block in settings["hooks"]["PreToolUse"]
+        if block["matcher"] == "Bash"
+        for hook in block["hooks"]
+    ]
+    assert any(command.endswith("/commit-review.sh") for command in commands)
+
+
+def test_every_wired_hook_is_executable_on_disk_and_in_the_index() -> None:
+    """H-1, and found by reading a commit summary rather than by any test.
+
+    `commit-review.sh` was committed `100644`. `settings.json` invokes a hook by
+    path, not through `sh`, so it failed with *Permission denied* — exit 126 —
+    and for a PreToolUse hook any non-zero exit other than 2 is a non-blocking
+    error: the commit went through and the checkpoint did nothing, in the hook
+    that exists to replace a checkpoint. Every test here runs hooks through
+    `sh <path>`, which needs no executable bit, so none of them could see it.
+
+    Both places, because they fail differently: a missing bit on disk breaks
+    this checkout now, and a missing bit in the index breaks every fresh clone
+    while the checkout that committed it keeps working.
+    """
+    settings = json.loads((REPO / ".claude" / "settings.json").read_text("utf-8"))
+    wired = sorted(
+        {
+            hook["command"].replace("$CLAUDE_PROJECT_DIR", str(REPO))
+            for blocks in settings["hooks"].values()
+            for block in blocks
+            for hook in block["hooks"]
+        }
+    )
+    git = shutil.which("git")
+    assert git
+    problems = []
+    for command in wired:
+        path = Path(command)
+        if not os.access(path, os.X_OK):
+            problems.append(f"{path.relative_to(REPO)} is not executable on disk")
+        listed = subprocess.run(
+            [git, "ls-files", "-s", "--", str(path.relative_to(REPO))],
+            cwd=REPO,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.split()
+        if listed and listed[0] != "100755":
+            problems.append(f"{path.relative_to(REPO)} is {listed[0]} in the index")
+    assert not problems, f"wired hooks that cannot run: {problems}"
+
+
+# ------------------------------------------------- a hook is not its directory
+#
+# Third review of PR #16: Python puts a script's directory first on sys.path, so
+# a module planted beside a hook replaced the stdlib inside the guard, and a
+# `.pyc` planted in __pycache__ was loaded instead of the source. The fix has
+# three parts and each has a control here: the interpreter is isolated, no hook
+# imports our own code through the cache, and — measured, not reasoned — the
+# plants do not run.
+
+
+def test_no_hook_module_imports_anything_but_the_stdlib() -> None:
+    """The invariant that makes the `.pyc` vector unreachable. A script never
+    reads bytecode for itself; only an *import* does. So if nothing a hook runs
+    imports a module of ours through the normal machinery, a planted `.pyc` has
+    nothing to replace. `commit_review.py` loads `bash_guard` from source
+    through a loader that never consults `__pycache__`, and imports nothing of
+    ours by name — which this holds."""
+    offenders = []
+    for path in sorted(HOOKS.rglob("*.py")):
+        if "__pycache__" in path.parts:
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                names = [alias.name for alias in node.names]
+            elif isinstance(node, ast.ImportFrom):
+                names = [node.module or ""]
+            else:
+                continue
+            for name in names:
+                top = name.split(".")[0]
+                if top != "__future__" and top not in sys.stdlib_module_names:
+                    offenders.append(f"{path.relative_to(REPO)}:{node.lineno} imports {name}")
+    assert not offenders, f"hook modules importing non-stdlib code: {offenders}"
+
+
+_INVOCATION = re.compile(r'"\$(?:SYS)?PY"((?:\s+-[A-Za-z]+)*)\s+(-m\s+\w+|"[^"]+")')
+
+
+def test_every_interpreter_a_hook_starts_is_isolated() -> None:
+    """`-I` on every one, and `-S` as well wherever the script is the harness's
+    own stdlib code. The single exemption is the pytest *child* of the
+    protected-path snapshot, which needs the project on its path and is the
+    thing being watched rather than a guard."""
+    offenders = []
+    for script in sorted(HOOKS.glob("*.sh")):
+        lines = script.read_text(encoding="utf-8").splitlines()
+        for number, line in enumerate(lines, 1):
+            code = line.split("#", 1)[0]
+            for match in _INVOCATION.finditer(code):
+                flags, target = match.group(1).split(), match.group(2)
+                if number > 1 and lines[number - 2].rstrip().endswith("run -- \\"):
+                    continue
+                own = "hooks" in target or target.strip('"').lstrip("$") in {
+                    "READER",
+                    "DECIDER",
+                    "REVIEWER",
+                    "ASKER",
+                }
+                if "-I" not in flags or (own and "-S" not in flags):
+                    offenders.append(f"{script.name}:{number} {match.group(0)}")
+    assert not offenders, f"hook interpreters that are not isolated: {offenders}"
+
+
+def plant_tree() -> tempfile.TemporaryDirectory[str]:
+    """A git repository holding a full copy of the hooks, to plant into. Never
+    the real `.claude/hooks/`: planting there is the attack."""
+    tmp = commit_tree()
+    root = Path(tmp.name)
+    target = root / ".claude" / "hooks"
+    shutil.rmtree(target)
+    shutil.copytree(HOOKS, target, ignore=shutil.ignore_patterns("__pycache__", "state"))
+    return tmp
+
+
+def test_a_module_planted_beside_the_hooks_does_not_run() -> None:
+    """The review's demonstration, run through the real hook scripts: a
+    `shutil.py` beside `commit_review.py`, a `re.py` beside `bash_guard.py`,
+    and a `json.py` in `lib/` — the last owned every guard, since each reads
+    its payload through `lib/hook_input.py`."""
+    with plant_tree() as tmp:
+        root = Path(tmp)
+        marker = root / "HIJACKED"
+        body = f"open({str(marker)!r}, 'w').write('ran')\n"
+        for relative in ("shutil.py", "re.py", "shlex.py", "lib/json.py", "lib/sys.py"):
+            (root / ".claude" / "hooks" / relative).write_text(body, encoding="utf-8")
+        stage(root, "src/secrev/x.py")
+        payload = {"tool_name": "Bash", "tool_input": {"command": "git commit -m x"}}
+        for hook in ("commit-review.sh", "bash-guard.sh", "scope-guard.sh"):
+            run_hook(hook, payload, project_dir=root)
+        assert not marker.exists(), "a planted module ran inside a hook"
+
+
+def test_a_planted_pyc_for_the_shared_guard_module_does_not_run() -> None:
+    """`-I` alone does not stop this one — measured before the fix: a `.pyc`
+    for `bash_guard` whose header matches the real source's mtime and size was
+    loaded in place of the source by the normal import. The source-only loader
+    in `commit_review.py` is what stops it."""
+    with plant_tree() as tmp:
+        root = Path(tmp)
+        marker = root / "HIJACKED"
+        source = root / ".claude" / "hooks" / "bash_guard.py"
+        evil = compile(f"open({str(marker)!r}, 'w').write('ran')\n", str(source), "exec")
+        stat = source.stat()
+        pyc = Path(importlib.util.cache_from_source(str(source)))
+        pyc.parent.mkdir(exist_ok=True)
+        # The same header the import system writes, so the plant is exactly
+        # what a normal import would accept — built the way the stdlib builds
+        # one rather than by hand.
+        pyc.write_bytes(
+            importlib._bootstrap_external._code_to_timestamp_pyc(
+                evil, int(stat.st_mtime), stat.st_size
+            )
+        )
+        stage(root, "src/secrev/x.py")
+        commit_review(root, "git commit -m x")
+        assert not marker.exists(), "a planted .pyc ran in place of bash_guard.py"
+
+
+def test_commit_review_is_silent_on_other_commands() -> None:
+    with commit_tree() as tmp:
+        rc, out, _ = commit_review(Path(tmp), "ls -la")
+    assert rc == PASS_THROUGH and out == ""
+
+
+def test_commit_review_asks_with_the_staged_set_and_marks_protected_paths() -> None:
+    """The checkpoint doing its job: the approval carries what is in the index,
+    and a protected path cannot pass as an ordinary one."""
+    with commit_tree() as tmp:
+        root = Path(tmp)
+        stage(root, "threat-models/_agentic-core.md")
+        stage(root, "notes.txt")
+        rc, out, _ = commit_review(root, 'git commit -m "docs"')
+    assert rc == PASS_THROUGH
+    decision = json.loads(out)["hookSpecificOutput"]
+    assert decision["permissionDecision"] == "ask"
+    reason = decision["permissionDecisionReason"]
+    assert "threat-models/_agentic-core.md   <- PROTECTED" in reason
+    assert "notes.txt" in reason and "notes.txt   <- PROTECTED" not in reason
+    assert "1 protected path(s) staged" in reason
+
+
+def test_commit_review_shows_executable_bits_both_ways_they_arrive() -> None:
+    """`--chmod` is now refused at staging, but a mode can still reach the index
+    another way, and no guard reads modes — so the checkpoint names them.
+
+    Both shapes, because the first draft caught one: a changed mode on a file
+    already committed reads `mode change`, while a new file staged executable
+    reads `create mode 100755`. Its own test was written with the second and
+    failed against a check for the first.
+    """
+    git = shutil.which("git")
+    assert git
+    with commit_tree() as tmp:
+        root = Path(tmp)
+        identity = ["-c", "user.name=t", "-c", "user.email=t@t.invalid"]
+        stage(root, "existing.sh")
+        subprocess.run([git, *identity, "commit", "-qm", "x"], cwd=root, check=True)
+        subprocess.run([git, "add", "--chmod=+x", "existing.sh"], cwd=root, check=True)
+        stage(root, "new.sh", "--chmod=+x")
+        _, out, _ = commit_review(root, "git commit -m x")
+    reason = json.loads(out)["hookSpecificOutput"]["permissionDecisionReason"]
+    assert "mode change" in reason and "existing.sh" in reason
+    assert "create mode 100755" in reason and "new.sh" in reason
+
+
+def test_commit_review_finds_a_commit_inside_a_chain() -> None:
+    with commit_tree() as tmp:
+        root = Path(tmp)
+        stage(root, "src/secrev/x.py")
+        _, out, _ = commit_review(root, "git status && git commit -m x")
+    assert "PROTECTED" in json.loads(out)["hookSpecificOutput"]["permissionDecisionReason"]
+
+
+def test_commit_review_sees_a_commit_behind_a_wrapper() -> None:
+    """The staging check and the checkpoint share `git_argv`, so the prefix that
+    was closed for one is closed for the other."""
+    with commit_tree() as tmp:
+        root = Path(tmp)
+        stage(root, "src/secrev/x.py")
+        _, out, _ = commit_review(root, "env git commit -m x")
+    assert "PROTECTED" in json.loads(out)["hookSpecificOutput"]["permissionDecisionReason"]
+
+
+def test_commit_review_marks_an_executable_whose_content_changed() -> None:
+    """The reviewer's probe: a file that was *already* executable and changed
+    content. Its mode did not change, so there is no mode line to show — the
+    checkpoint lists it as a modified path, and marks it only if it is
+    protected. That is the honest answer rather than a gap: the executable bit
+    was reviewed when it arrived, and what is new is content."""
+    git = shutil.which("git")
+    assert git
+    with commit_tree() as tmp:
+        root = Path(tmp)
+        identity = ["-c", "user.name=t", "-c", "user.email=t@t.invalid"]
+        stage(root, "scripts/run.sh", "--chmod=+x")
+        subprocess.run([git, *identity, "commit", "-qm", "x"], cwd=root, check=True)
+        script = root / "scripts" / "run.sh"
+        # Executable on disk too: `--chmod` set only the index, and with the
+        # file left 644 the next plain `git add` would record a mode change —
+        # testing a different case than the one named.
+        script.chmod(0o755)
+        script.write_text("changed\n", encoding="utf-8")
+        subprocess.run([git, "add", "scripts/run.sh"], cwd=root, check=True)
+        _, out, _ = commit_review(root, "git commit -m x")
+    reason = json.loads(out)["hookSpecificOutput"]["permissionDecisionReason"]
+    assert "scripts/run.sh   <- PROTECTED" in reason
+    assert "mode change" not in reason
+
+
+def test_commit_review_refuses_when_it_cannot_read_the_index() -> None:
+    """H-9. A checkpoint that cannot show what it gates must not wave the commit
+    through with an empty list — that is the same approval without the look."""
+    with milestone_tree("M4") as tmp:
+        root = Path(tmp)
+        for name in ("commit_review.py", "bash_guard.py"):
+            shutil.copy2(HOOKS / name, root / ".claude" / "hooks" / name)
+        rc, _, err = commit_review(root, "git commit -m x")
+    assert rc == BLOCK
+    assert "cannot read the index" in err
+
+
+def test_bash_does_not_read_staging_as_permission_for_other_writes_to_the_index() -> None:
+    """`git rm` and `git mv` touch the working tree as well as the index —
+    they delete and move the file itself. Staging is `add`, and only `add`."""
+    assert bash("git rm src/secrev/cli.py") == BLOCK
+    assert bash("git mv src/secrev/cli.py src/secrev/x.py") == BLOCK
 
 
 # ------------------------------------------------- the harness guards itself
@@ -751,16 +1210,24 @@ def test_documentation_architect_still_points_at_stack_md() -> None:
 # ------------------------------------------------------------ current milestone
 
 
-def test_milestone_marker_is_m3_5() -> None:
-    """M3 is closed, so the marker moves again — to `M3.5`, a hardening pass
-    inserted between M3 and M4 rather than a renumbering.
+def test_milestone_marker_is_m4() -> None:
+    """M3.5 is closed and merged as PR #15, so the marker moves to `M4`.
 
-    The dotted token is new and it broke an assertion by construction: the DoD
-    check below matched `M(\\d+)` and raised "not a milestone token" on `M3.5`.
-    That was the guard behaving correctly — refusing a state it could not reason
-    about (H-9) — so the harness's notion of a milestone was widened rather than
-    the check weakened. Found before the marker moved, which is the only time
-    finding it is cheap.
+    **Moved last, and that order is the whole content of this assertion.**
+    `BRIEF_M4.md` and the M4 case in `scope-guard.sh` landed first, with three
+    assertions above exercising that case, and only then this file. Moving the
+    marker first write-locks the scoped tree against a milestone nobody has
+    scoped — `scope-guard.sh` ends in `refuse_no_rules`, so every write to
+    `src/` would be refused until the brief existed (H-6). That is not a
+    hypothetical: it is what happened between M1 closing and `BRIEF_M2.md`
+    being written, and the remedy is to write the brief, never to move the
+    marker back to buy write access.
+
+    The dotted token that preceded this one was new and broke an assertion by
+    construction: the DoD check below matched `M(\\d+)` and raised "not a
+    milestone token" on `M3.5`. That was the guard behaving correctly — refusing
+    a state it could not reason about (H-9) — so the harness's notion of a
+    milestone was widened rather than the check weakened.
 
     It read M1 while BRIEF_M0.md sat unbuilt beside it, and TASK-011 pulled it
     back; leaving it at M0 after M0 closed would have refused every write to
@@ -768,14 +1235,15 @@ def test_milestone_marker_is_m3_5() -> None:
     harness's only notion of where the project is and it is wrong in both
     directions if nobody moves it.
 
-    The M2 move was made before scope-guard.sh had M2 rules, so H-6 correctly
-    refused every write to the scoped tree until BRIEF_M2.md existed — the
-    guard saying the project claimed a milestone nobody had scoped. This move
-    was made the other way round: the M3 branch and its assertions landed
-    first, and only then the marker. Either order is survivable; only one of
-    them is survivable without a window in which nothing can be written.
+    Both orders have now been tried. The M2 move was made before
+    `scope-guard.sh` had M2 rules, and H-6 correctly refused every write to the
+    scoped tree until `BRIEF_M2.md` existed — the guard saying the project
+    claimed a milestone nobody had scoped. M3, M3.5 and this one were made the
+    other way round: brief and rules first, marker last. Either order is
+    survivable; only one is survivable without a window in which nothing can be
+    written.
     """
-    assert (REPO / ".claude" / "MILESTONE").read_text(encoding="utf-8").strip() == "M3.5"
+    assert (REPO / ".claude" / "MILESTONE").read_text(encoding="utf-8").strip() == "M4"
 
 
 def _unticked(brief: str) -> list[str]:
@@ -1071,6 +1539,69 @@ def test_m3_5_does_not_object_to_its_own_subject() -> None:
     )
 
 
+def test_m4_permits_the_source_it_builds() -> None:
+    """M4 is the structural source (BRIEF_M4.md §1): src/ for `structure.py`,
+    the `Parser` interface and the CLI subcommand; scripts/ because
+    `determinism_check.py` must compare the structure block as it already
+    compares the other two; `structure/` for the rule data; and tests/golden/
+    for the goldens that make NFR-3 checkable rather than aspirational."""
+    for relative in (
+        "src/secrev/structure.py",
+        "src/secrev/cli.py",
+        "scripts/determinism_check.py",
+        "structure/_structure.yaml",
+        "tests/golden/hits.jsonl",
+    ):
+        rc, out = scope_at("M4", relative, "x = 1\n")
+        assert rc == PASS_THROUGH and not asks(out), (
+            f"M4 must be able to write {relative}, got rc={rc}"
+        )
+
+
+def test_m4_refuses_the_layers_it_does_not_own() -> None:
+    """Answered by name, which is the D-1 lesson M3 paid a failed assertion for.
+
+    `patterns/` is the interesting one: it was *permitted* under M3.5 for a
+    single rewrite and is refused here, so this is a deliberate narrowing rather
+    than a branch nobody updated. BRIEF_M4.md §1 says no pattern is added — a
+    structural rule wanting a pattern that does not exist is a finding about the
+    catalog, not a pack edited inside the milestone that would benefit from it.
+
+    `surfaces/` is refused while `src/secrev/structure.py` is permitted above,
+    for the reason M3.5 already records about its own remit: writing a source is
+    in scope, reaching into another source's data is not (D-11)."""
+    for relative, expected in (
+        ("surfaces/_surfaces.yaml", "reachability class"),
+        ("patterns/python.yaml", "M4 adds no patterns"),
+        ("threat-models/_agentic-core.md", "threat models are M3"),
+    ):
+        with milestone_tree("M4") as tmp:
+            path = str(Path(tmp) / relative)
+            rc, _, err = run_hook(
+                "scope-guard.sh", write_payload(path, "x\n"), project_dir=Path(tmp)
+            )
+        assert rc == BLOCK, f"M4 must refuse {relative}, got rc={rc}"
+        assert expected in err, f"M4's refusal must give its own reason: {err}"
+        assert "no rules permitting this write" not in err, (
+            f"M4 has rules; it must not refuse as though it had none: {err}"
+        )
+
+
+def test_m4_does_not_object_to_the_ast_it_owns() -> None:
+    """The heuristic that flags `import ast` names M4 as the answer in its own
+    message. Firing it *under* M4 would be the guard contradicting itself, and
+    the same shape as M2 objecting to surfaces or M3.5 objecting to the AST in
+    the file it hardens: it does not stop the work, it moves it somewhere the
+    guard cannot see, and costs every other check in that file its credibility.
+
+    Scoped rather than removed — the objection is still right for M1, M2 and
+    M3, and each of those is asserted elsewhere in this file."""
+    rc, out = scope_at("M4", "src/secrev/structure.py", "import ast\n\nast.parse(src)\n")
+    assert rc == PASS_THROUGH and not asks(out), (
+        f"M4 must not object to the AST that is its entire subject: {out}"
+    )
+
+
 def test_scope_guard_refuses_on_unknown_milestone() -> None:
     """Inverted from a known-open assertion in TASK-001."""
     rc, _ = scope_at("M9", "src/secrev/sweep.py", "severity = 1\n")
@@ -1216,6 +1747,44 @@ def test_every_anchored_glob_has_a_relative_sibling() -> None:
     assert not offenders, f"anchored-only globs: {offenders}"
 
 
+def test_every_shell_script_is_posix_sh() -> None:
+    """STACK.md §1 binds POSIX `sh`, never `bash`, and §8 holds the harness to
+    the tool's own standards. Nothing checked it until M4.
+
+    Found during the M4 skills pass, and the shape is the point: thirteen of
+    fourteen shell scripts were `#!/bin/sh`, and the one that was not is the
+    only one this project did not write — a vendored script under
+    `.claude/skills/`. The rule held everywhere someone typed it out and broke
+    where code arrived from outside, which is the case a control exists for and
+    the case a habit does not cover.
+
+    Scanned across the whole repository rather than `.claude/hooks/`, because
+    scoping it to where the violation was found is how this project keeps
+    re-finding the same class one directory over.
+
+    **Only files that carry a shebang are judged**, and the first draft did not
+    make that distinction: it failed on `.claude/hooks/lib/paths.sh`, which has
+    no shebang because it is sourced by the guards rather than executed, and a
+    sourced file naming an interpreter would be the wrong thing to write. A
+    control that fires on a correct file is worse than none, because it is
+    routed around rather than fixed. A missing shebang is therefore not an
+    offence here; `#!/usr/bin/env bash` and every other spelling still is,
+    because the test compares against the one permitted line rather than
+    listing interpreters to reject (H-2).
+    """
+    skipped = {".git", ".venv", ".venv-audit", "node_modules"}
+    offenders = []
+    for script in sorted(REPO.rglob("*.sh")):
+        if skipped.intersection(script.relative_to(REPO).parts):
+            continue
+        first = script.read_text(encoding="utf-8").splitlines()[:1]
+        if not first or not first[0].startswith("#!"):
+            continue
+        if first[0].strip() != "#!/bin/sh":
+            offenders.append(f"{script.relative_to(REPO)} — {first[0].strip()}")
+    assert not offenders, f"non-POSIX shebangs (STACK.md §1): {offenders}"
+
+
 def test_glob_does_not_overmatch_a_similar_name() -> None:
     """Inverted from the assertion that recorded the over-match in TASK-009.
 
@@ -1317,6 +1886,47 @@ def test_m2_permits_the_surface_kinds() -> None:
     """...and the milestone that owns the surface source may write its data."""
     rc, out = scope_at("M2", "surfaces/_surfaces.yaml", 'version: "2026.09.1"\n')
     assert rc == PASS_THROUGH and not asks(out), "surfaces/ is M2's remit"
+
+
+def test_scope_guard_covers_structure() -> None:
+    """structure/ is in the scoped tree (M4, BRIEF_M4.md §6 Q1), on the same
+    terms as surfaces/ and patterns/.
+
+    This is the assertion that carries the weight, and the permit case is the
+    one that does not. `test_m4_permits_the_source_it_builds` already listed
+    `structure/_structure.yaml` and was **green before the directory was scoped
+    at all** — the M4 branch ended in a catch-all permit, so it answered for a
+    directory `is_scoped_path` had never heard of. A permit assertion cannot
+    tell "allowed by name" from "allowed by silence"; only a refusal under a
+    milestone with no business there can, because that needs the path to reach
+    the guard in the first place.
+    """
+    rc, _ = scope_at("M0", "structure/_structure.yaml", 'version: "2026.09.1"\n')
+    assert rc == BLOCK, f"structure/ is outside M0's remit, got rc={rc}"
+
+
+def test_the_gate_snapshots_exactly_the_protected_paths() -> None:
+    """H-7, where a second copy was unavoidable. The product gate may not import
+    from `.claude/` — `test_the_product_gate_does_not_reach_into_the_harness`
+    holds that — so `scripts/protected_snapshot.py` carries its own tuple of the
+    protected roots. This pins it equal to the guard's, so a directory joining
+    H-4 cannot be protected against Bash and left out of the test-run check
+    without this going red."""
+
+    def declared(path: Path, name: str) -> set[str]:
+        """A tuple of string literals, read as text — how this file reads the
+        guard everywhere else, rather than importing it."""
+        source = path.read_text(encoding="utf-8")
+        match = re.search(rf"^{name} = \((.*?)\)", source, re.DOTALL | re.MULTILINE)
+        assert match, f"{path.name} no longer declares {name}"
+        return {literal.replace("\\", "") for literal in re.findall(r'"([^"]+)"', match.group(1))}
+
+    snapshot_roots = declared(REPO / "scripts" / "protected_snapshot.py", "PROTECTED_ROOTS")
+    guard_roots = declared(HOOKS / "bash_guard.py", "PROTECTED")
+    assert snapshot_roots == guard_roots, (
+        f"only in the guard: {sorted(guard_roots - snapshot_roots)}; "
+        f"only in the snapshot: {sorted(snapshot_roots - guard_roots)}"
+    )
 
 
 def test_protected_paths_have_one_definition() -> None:

@@ -22,7 +22,33 @@ GOLDEN = ROOT / "tests" / "golden" / "recon.json"
 
 
 def test_matches_the_golden_byte_for_byte() -> None:
-    assert to_json(recon(FIXTURES)) == GOLDEN.read_text(encoding="utf-8")
+    """`read_bytes`, because the name of this test is a claim. `read_text`
+    opens in universal-newline mode and translates CRLF back to LF, so on a
+    clone with `core.autocrlf` on it compares a golden it has just silently
+    repaired — and there is no `.gitattributes` here pinning the checkout."""
+    assert to_json(recon(FIXTURES)).encode("utf-8") == GOLDEN.read_bytes()
+
+
+def test_the_old_text_comparison_would_have_passed_on_a_crlf_golden(tmp_path: Path) -> None:
+    """The control for the test above (H-8), and it is the reason the switch to
+    `read_bytes` is a measurement rather than a preference.
+
+    Every golden comparison in this suite used `read_text`, and all of them were
+    green — on a checkout where the goldens happen to be LF. There is no
+    `.gitattributes` here, so a clone with `core.autocrlf` on gets CRLF goldens,
+    and `read_text` translates them straight back on the way in. The comparison
+    then reports byte-identity between a string and a file that does not contain
+    those bytes, under a test named `byte_for_byte`.
+
+    Both assertions matter. The first is the defect, still reproducible; without
+    it the second proves only that two different things differ.
+    """
+    produced = to_json(recon(FIXTURES))
+    mangled = tmp_path / "recon.json"
+    mangled.write_bytes(produced.replace("\n", "\r\n").encode("utf-8"))
+
+    assert produced == mangled.read_text(encoding="utf-8")
+    assert produced.encode("utf-8") != mangled.read_bytes()
 
 
 def test_two_runs_are_byte_identical() -> None:
@@ -573,8 +599,13 @@ def test_coverage_gaps_state_what_is_not_done() -> None:
     not is gone (BRIEF_M2.md §4) — a gap that is no longer true misleads as
     surely as a missing one."""
     gaps = recon(FIXTURES).coverage_gaps
-    assert any("structural analysis not implemented" in gap for gap in gaps)
+    # The structural source exists since M4, so the line saying it did not is
+    # gone — the same correction the surface line got in M2, and for the same
+    # reason. What replaces it says which languages it does not reach and what
+    # it cannot follow in the ones it does.
+    assert not any("structural analysis not implemented" in gap for gap in gaps)
     assert not any("surface enumeration not implemented" in gap for gap in gaps)
+    assert any(gap.startswith("structure: reasoning stops at one function body") for gap in gaps)
 
 
 @pytest.mark.parametrize(
@@ -600,19 +631,52 @@ def test_coverage_gaps_name_what_the_surface_source_cannot_reach(unreachable: st
 
 
 def test_other_code_languages_are_named(tmp_path: Path) -> None:
-    """Surface kinds read code in Python only (STACK.md §7). A tree holding
-    other code has entry points no kind can see, and the gap names the
-    languages, as the structural line does."""
+    """Both sources read code in Python only (STACK.md §7). A tree holding
+    other code has entry points no kind can see and bodies no parser can read,
+    and each gap names the languages.
+
+    **Selected by prefix, and that is the point of the prefix.** These two
+    assertions matched on "Python only" alone until M4 added the structural
+    block, at which point the match found two lines and the tests failed on
+    unpacking — which is the failure mode BRIEF_M4.md §6 Q4 predicted for a
+    reader too: with two sets of limits in one list, nothing but the prefix says
+    which source a gap belongs to.
+    """
     (tmp_path / "app.py").write_text("x = 1\n", encoding="utf-8")
     (tmp_path / "server.ts").write_text("export const x = 1\n", encoding="utf-8")
     (tmp_path / "run.sh").write_text("echo hi\n", encoding="utf-8")
-    [line] = [gap for gap in recon(tmp_path).coverage_gaps if "Python only" in gap]
-    assert line.endswith("not read for: shell, typescript")
+    gaps = recon(tmp_path).coverage_gaps
+    [surface] = [gap for gap in gaps if gap.startswith("surface:") and "Python only" in gap]
+    [structural] = [gap for gap in gaps if gap.startswith("structure:") and "Python only" in gap]
+    assert surface.endswith("not read for: shell, typescript")
+    assert structural.endswith("not implemented for: shell, typescript")
 
 
 def test_a_python_only_tree_says_so() -> None:
-    [line] = [gap for gap in recon(FIXTURES).coverage_gaps if "Python only" in gap]
-    assert line.endswith("no other code language present")
+    gaps = recon(FIXTURES).coverage_gaps
+    [surface] = [gap for gap in gaps if gap.startswith("surface:") and "Python only" in gap]
+    [structural] = [gap for gap in gaps if gap.startswith("structure:") and "Python only" in gap]
+    assert surface.endswith("no other code language present")
+    assert structural.endswith("no other code language present")
+
+
+def test_every_coverage_gap_names_the_source_it_belongs_to() -> None:
+    """BRIEF_M4.md §6 Q4. Two blocks of limits in one list, so each line says
+    which source it is a limit *of* — in the artifact, rather than in a
+    convention a reader has to already know.
+
+    The two lines that carry no prefix are deliberate and are the exclusions:
+    a directory that was never walked and a file that was never read are facts
+    about the review as a whole, not limits of one source.
+    """
+    gaps = recon(FIXTURES).coverage_gaps
+    unprefixed = [
+        gap
+        for gap in gaps
+        if not gap.startswith(("surface:", "structure:"))
+        and not gap.startswith(("excluded from review", "present but not read"))
+    ]
+    assert not unprefixed, f"coverage gaps naming no source: {unprefixed}"
 
 
 def test_entrypoints_are_declared_metadata_only(tmp_path: Path) -> None:
@@ -623,6 +687,64 @@ def test_entrypoints_are_declared_metadata_only(tmp_path: Path) -> None:
     (tmp_path / "app.py").write_text("def main():\n    pass\n", encoding="utf-8")
     result = recon(tmp_path)
     assert result.entrypoints["declared"] == ["demo = demo.cli:main"]
+
+
+@pytest.mark.parametrize(
+    ("name", "body", "reason"),
+    [
+        # Two bytes, valid JSON, and a list has no `.get` — exit 3 until M4's review.
+        ("package.json", b"[]", "top level is list"),
+        # Valid TOML whose `project` is a string: the same shape one key down.
+        # This row expected *no* gap until the second review — the test was
+        # pinning the silent case, and asserted it as correct.
+        ("pyproject.toml", b'project = "x"\n', "`project` is str"),
+        ("pyproject.toml", b'[project]\nscripts = "x"\n', "`scripts` is str"),
+        # A declared `bin` of any other shape declares nothing readable.
+        ("package.json", b'{"bin": 5}', "`bin` is int"),
+        # Both decoders recurse; RecursionError is not a decode error.
+        ("package.json", b"[" * 200_000 + b"]" * 200_000, "RecursionError"),
+        ("pyproject.toml", b"a = " + b"[" * 200_000 + b"]" * 200_000 + b"\n", "RecursionError"),
+        # Raised out of `read_text` before the decoder ran, and ended the whole
+        # run with exit 2 over one metadata file.
+        ("package.json", b'{"bin": "\xff\xfe"}', "UnicodeDecodeError"),
+    ],
+)
+def test_no_manifest_shape_ends_the_run(
+    tmp_path: Path, name: str, body: bytes, reason: str
+) -> None:
+    """Found while fixing M4's review finding, and older than M4: `recon` runs
+    inside every subcommand's `_prepare`, so each of these ended `sweep`,
+    `surfaces` and `structure` too. Measured at exit 3 for four of them.
+
+    Each one must complete, declare nothing, and say so — in `coverage_gaps`
+    and in `entrypoints.unreadable`, which the exit code keys on. **Including
+    the shapes one key down.** This docstring said the `project = "x"` case
+    "parses fine and simply declares no scripts, so it adds no gap line", and
+    the second review showed that was the bug stated as the rule: a key present
+    with the wrong shape is not a key that is absent, and treating it as absent
+    gave exit 0 one level below a uniform exit 2.
+    """
+    (tmp_path / name).write_bytes(body)
+    result = recon(tmp_path)
+    assert result.entrypoints["declared"] == []
+    gaps = [gap for gap in result.coverage_gaps if "a manifest that could not be parsed" in gap]
+    [line] = gaps
+    assert name in line and reason in line
+    # In the artifact as well as in prose: the exit code keys on this field.
+    [recorded] = result.entrypoints["unreadable"]
+    assert recorded.startswith(name)
+
+
+def test_an_absent_key_is_not_a_malformed_one(tmp_path: Path) -> None:
+    """The control for the rows above: a manifest with no `[project]` table,
+    or no `bin`, declares nothing and is *read* — no gap, no unreadable entry.
+    Without this, recording every missing key would make an ordinary
+    `pyproject.toml` exit 2."""
+    (tmp_path / "pyproject.toml").write_text("[tool.ruff]\nline-length = 100\n", "utf-8")
+    (tmp_path / "package.json").write_text('{"name": "x"}', "utf-8")
+    result = recon(tmp_path)
+    assert result.entrypoints["unreadable"] == []
+    assert not [gap for gap in result.coverage_gaps if "could not be parsed" in gap]
 
 
 def test_a_malformed_manifest_does_not_crash_the_run(tmp_path: Path) -> None:

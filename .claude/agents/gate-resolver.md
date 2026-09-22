@@ -48,8 +48,11 @@ or an id derived from a counter. Fix the cause, then regenerate the golden file
 as a consequence — never as the fix.
 
 If ids changed when an unrelated file was added, the id derivation is using
-traversal position. That is `ids.py`, and it is `(relative_path, line, rule_id,
-ordinal)`.
+traversal position. That is `ids.py`, and the derivation is
+`(relative_path, rule_id, window_sha256, ordinal)` — never `line`, which
+`derive()` rejects rather than ignores (FR-4.5). This said the `line` form until
+M4, which would have sent a resolver to "fix" a green `ids.py` into a
+requirement violation.
 
 ## When to stop instead of fixing
 

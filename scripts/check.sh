@@ -122,7 +122,21 @@ if [ "$FAST" = 1 ]; then
     skip "pytest" "--fast; pre-push and CI run it"
 elif [ -d tests ]; then
     "$PY" -m pytest --version >/dev/null 2>&1 || missing pytest
-    run "pytest" runpy pytest
+    # pytest runs as a child of protected_snapshot.py, which snapshots every
+    # protected path in its own memory before and after (owner decision,
+    # 2026-09-22). This gate is auto-approved and pytest is code execution, so
+    # a test is a write path no guard watches; a review showed one writing into
+    # threat-models/. The baseline was a $(mktemp) file until a second review
+    # showed a test could re-take it and turn the stage green over a change
+    # still in the tree — so it is never written anywhere.
+    # `-I -S` on the checker and neither on pytest: pytest needs the project
+    # and the venv's packages, and the checker must not be reachable from
+    # either. `-I` keeps a module planted in scripts/ from replacing the stdlib
+    # it compares with; `-S` keeps a `.pth` planted in the venv's
+    # site-packages from running inside it and forging the comparison. The
+    # checker is stdlib-only, so neither flag costs it anything.
+    printf '\n\033[1m── pytest\033[0m\n'
+    gate_script -I -S scripts/protected_snapshot.py run -- "$PY" -m pytest
 else
     skip "pytest" "no tests/ yet — nothing to run"
 fi

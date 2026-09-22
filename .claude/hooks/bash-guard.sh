@@ -26,9 +26,17 @@ for required in "$READER" "$DECIDER"; do
     }
 done
 
-command=$(printf '%s' "$INPUT" | "$PY" "$READER" command) || {
+# `-I -S` on every interpreter a hook starts. Found in review: Python puts a
+# script's own directory first on sys.path, so a `re.py` or `json.py` planted
+# beside a hook replaced the stdlib inside the guard — and one in lib/ owned
+# every guard, since each reads its payload through lib/hook_input.py. `-I`
+# drops the script directory, user site-packages and PYTHON* variables; `-S`
+# drops site-packages altogether, so a `.pth` or `sitecustomize` in whatever
+# virtualenv `python3` resolves to cannot run here either. The hooks are
+# stdlib-only, so neither costs anything they use.
+command=$(printf '%s' "$INPUT" | "$PY" -I -S "$READER" command) || {
     echo "bash-guard: unreadable hook payload — refusing (H-1)." >&2
     exit 2
 }
 
-printf '%s' "$command" | "$PY" "$DECIDER"
+printf '%s' "$command" | "$PY" -I -S "$DECIDER"
