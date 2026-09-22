@@ -11,4 +11,7 @@ ROOT="${CLAUDE_PROJECT_DIR:-.}"
 # python3 is a real fallback here rather than a swallowed failure.
 PY="$ROOT/.venv/bin/python"
 [ -x "$PY" ] || PY=$(command -v python3 2>/dev/null) || exit 0
-exec "$PY" "$ROOT/.claude/hooks/skill_activation.py"
+# `-I -S`: this runs on every prompt, and it preferred the venv's interpreter —
+# so without `-S` a `.pth` planted in .venv's site-packages would run on each
+# one. It is stdlib-only and needs neither the script directory nor site.
+exec "$PY" -I -S "$ROOT/.claude/hooks/skill_activation.py"

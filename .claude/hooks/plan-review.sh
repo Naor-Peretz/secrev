@@ -23,7 +23,7 @@ SYSPY=$(command -v python3 2>/dev/null) || {
 }
 
 read_field() {
-    printf '%s' "$INPUT" | "$SYSPY" "$READER" "$1" || {
+    printf '%s' "$INPUT" | "$SYSPY" -I -S "$READER" "$1" || {
         echo "plan-review: unreadable hook payload — refusing (H-1)." >&2
         exit 2
     }

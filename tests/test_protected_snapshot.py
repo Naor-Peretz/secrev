@@ -113,13 +113,79 @@ def test_an_executable_bit_alone_is_a_change(repo: Path) -> None:
     assert result.returncode == 1 and "changed   src/x.py" in result.stderr
 
 
-def test_bytecode_and_ignored_files_are_not_changes(repo: Path) -> None:
-    """The control that keeps this from firing on every run: importing the
-    package writes `__pycache__/`, which is ordinary and gitignored."""
+def test_a_planted_pyc_is_a_change(repo: Path) -> None:
+    """Inverted by the third review. This test asserted the opposite — that a
+    `.pyc` written into `__pycache__/` was ordinary and not a change — which was
+    the finding written down as a control. A `.pyc` whose header matches a
+    source's mtime and size is loaded instead of the source, so a planted one is
+    a vector, not noise."""
     code = (
         "import os\n"
         "os.makedirs('src/__pycache__')\n"
         "open('src/__pycache__/x.cpython-311.pyc', 'wb').write(b'\\0')\n"
+    )
+    result = suite(repo, code)
+    assert result.returncode == 1
+    assert "added     src/__pycache__/x.cpython-311.pyc" in result.stderr
+
+
+def test_bytecode_from_an_ordinary_import_is_not_written_into_the_tree(repo: Path) -> None:
+    """The control that keeps the rule above from firing on every run. The
+    child runs with `PYTHONPYCACHEPREFIX` outside the tree, so importing a
+    protected module writes its bytecode there and not into `__pycache__/`."""
+    result = suite(repo, "import sys; sys.path.insert(0, 'src'); import x")
+    assert result.returncode == 0, result.stderr
+    assert not (repo / "src" / "__pycache__").exists()
+
+
+def test_a_gitignored_plant_is_a_change(repo: Path) -> None:
+    """The third review's attack: plant a module beside a hook and hide it with
+    an ignore rule. `.git/info/exclude` is not protected and a change to it is
+    in no `git status`, so the listing may not honour ignore rules at all."""
+    code = (
+        "import os\n"
+        "os.makedirs('.claude/hooks', exist_ok=True)\n"
+        "open('.claude/hooks/shutil.py', 'w').write('import os\\n')\n"
+        "open('.git/info/exclude', 'a').write('.claude/hooks/shutil.py\\n')\n"
+    )
+    result = suite(repo, code)
+    assert result.returncode == 1
+    assert "added     .claude/hooks/shutil.py" in result.stderr
+
+
+def test_a_permission_written_into_the_local_settings_is_a_change(repo: Path) -> None:
+    """Gitignored, and where an allow rule that auto-approves everything would
+    go — so invisible to the listing until ignore rules stopped applying."""
+    code = (
+        "import os\n"
+        "os.makedirs('.claude', exist_ok=True)\n"
+        "open('.claude/settings.local.json', 'w').write('{\"permissions\": {}}')\n"
+    )
+    result = suite(repo, code)
+    assert result.returncode == 1
+    assert "added     .claude/settings.local.json" in result.stderr
+
+
+def test_a_startup_file_planted_in_the_venv_is_a_change(repo: Path) -> None:
+    """A `.pth` in site-packages runs in every later interpreter from that
+    venv — the gate's later stages included — and `.venv` is not a protected
+    root, so the listing alone would never see it."""
+    site_packages = repo / ".venv" / "lib" / "python3.11" / "site-packages"
+    site_packages.mkdir(parents=True)
+    code = f"open({str(site_packages / 'evil.pth')!r}, 'w').write('import os\\n')\n"
+    result = suite(repo, code)
+    assert result.returncode == 1
+    assert "evil.pth" in result.stderr
+
+
+def test_hook_state_is_the_one_exclusion(repo: Path) -> None:
+    """The hooks write logs there while a gate may be running, so counting it
+    would fail the gate on the harness's own bookkeeping. Nothing in it is
+    imported or executed; the module docstring records what it leaves open."""
+    code = (
+        "import os\n"
+        "os.makedirs('.claude/hooks/state', exist_ok=True)\n"
+        "open('.claude/hooks/state/async-check.log', 'w').write('ok\\n')\n"
     )
     result = suite(repo, code)
     assert result.returncode == 0, result.stderr

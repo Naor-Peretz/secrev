@@ -35,7 +35,7 @@ PATHS="$ROOT/.claude/hooks/lib/paths.sh"
 . "$PATHS"
 
 read_field() {
-    printf '%s' "$INPUT" | "$SYSPY" "$READER" "$1" || {
+    printf '%s' "$INPUT" | "$SYSPY" -I -S "$READER" "$1" || {
         echo "scope-guard: unreadable hook payload — refusing (H-1)." >&2
         exit 2
     }
@@ -365,5 +365,5 @@ Building it now is not merely early — the brief says each of these gets design
 prerequisite lands. If it is genuinely needed, that is a conflict with the brief and should be
 raised (BRIEF_M1.md §8 states the rule), not resolved here."
 
-printf '%s' "$reason" | "$SYSPY" "$ROOT/.claude/hooks/lib/hook_ask.py"
+printf '%s' "$reason" | "$SYSPY" -I -S "$ROOT/.claude/hooks/lib/hook_ask.py"
 exit 0

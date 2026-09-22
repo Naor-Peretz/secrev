@@ -21,6 +21,9 @@ never a shell string. The strings below that look like violations -- `eval(`,
 
 from __future__ import annotations
 
+import ast
+import importlib._bootstrap_external
+import importlib.util
 import json
 import os
 import re
@@ -716,6 +719,125 @@ def test_every_wired_hook_is_executable_on_disk_and_in_the_index() -> None:
         if listed and listed[0] != "100755":
             problems.append(f"{path.relative_to(REPO)} is {listed[0]} in the index")
     assert not problems, f"wired hooks that cannot run: {problems}"
+
+
+# ------------------------------------------------- a hook is not its directory
+#
+# Third review of PR #16: Python puts a script's directory first on sys.path, so
+# a module planted beside a hook replaced the stdlib inside the guard, and a
+# `.pyc` planted in __pycache__ was loaded instead of the source. The fix has
+# three parts and each has a control here: the interpreter is isolated, no hook
+# imports our own code through the cache, and — measured, not reasoned — the
+# plants do not run.
+
+
+def test_no_hook_module_imports_anything_but_the_stdlib() -> None:
+    """The invariant that makes the `.pyc` vector unreachable. A script never
+    reads bytecode for itself; only an *import* does. So if nothing a hook runs
+    imports a module of ours through the normal machinery, a planted `.pyc` has
+    nothing to replace. `commit_review.py` loads `bash_guard` from source
+    through a loader that never consults `__pycache__`, and imports nothing of
+    ours by name — which this holds."""
+    offenders = []
+    for path in sorted(HOOKS.rglob("*.py")):
+        if "__pycache__" in path.parts:
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                names = [alias.name for alias in node.names]
+            elif isinstance(node, ast.ImportFrom):
+                names = [node.module or ""]
+            else:
+                continue
+            for name in names:
+                top = name.split(".")[0]
+                if top != "__future__" and top not in sys.stdlib_module_names:
+                    offenders.append(f"{path.relative_to(REPO)}:{node.lineno} imports {name}")
+    assert not offenders, f"hook modules importing non-stdlib code: {offenders}"
+
+
+_INVOCATION = re.compile(r'"\$(?:SYS)?PY"((?:\s+-[A-Za-z]+)*)\s+(-m\s+\w+|"[^"]+")')
+
+
+def test_every_interpreter_a_hook_starts_is_isolated() -> None:
+    """`-I` on every one, and `-S` as well wherever the script is the harness's
+    own stdlib code. The single exemption is the pytest *child* of the
+    protected-path snapshot, which needs the project on its path and is the
+    thing being watched rather than a guard."""
+    offenders = []
+    for script in sorted(HOOKS.glob("*.sh")):
+        lines = script.read_text(encoding="utf-8").splitlines()
+        for number, line in enumerate(lines, 1):
+            code = line.split("#", 1)[0]
+            for match in _INVOCATION.finditer(code):
+                flags, target = match.group(1).split(), match.group(2)
+                if number > 1 and lines[number - 2].rstrip().endswith("run -- \\"):
+                    continue
+                own = "hooks" in target or target.strip('"').lstrip("$") in {
+                    "READER",
+                    "DECIDER",
+                    "REVIEWER",
+                    "ASKER",
+                }
+                if "-I" not in flags or (own and "-S" not in flags):
+                    offenders.append(f"{script.name}:{number} {match.group(0)}")
+    assert not offenders, f"hook interpreters that are not isolated: {offenders}"
+
+
+def plant_tree() -> tempfile.TemporaryDirectory[str]:
+    """A git repository holding a full copy of the hooks, to plant into. Never
+    the real `.claude/hooks/`: planting there is the attack."""
+    tmp = commit_tree()
+    root = Path(tmp.name)
+    target = root / ".claude" / "hooks"
+    shutil.rmtree(target)
+    shutil.copytree(HOOKS, target, ignore=shutil.ignore_patterns("__pycache__", "state"))
+    return tmp
+
+
+def test_a_module_planted_beside_the_hooks_does_not_run() -> None:
+    """The review's demonstration, run through the real hook scripts: a
+    `shutil.py` beside `commit_review.py`, a `re.py` beside `bash_guard.py`,
+    and a `json.py` in `lib/` — the last owned every guard, since each reads
+    its payload through `lib/hook_input.py`."""
+    with plant_tree() as tmp:
+        root = Path(tmp)
+        marker = root / "HIJACKED"
+        body = f"open({str(marker)!r}, 'w').write('ran')\n"
+        for relative in ("shutil.py", "re.py", "shlex.py", "lib/json.py", "lib/sys.py"):
+            (root / ".claude" / "hooks" / relative).write_text(body, encoding="utf-8")
+        stage(root, "src/secrev/x.py")
+        payload = {"tool_name": "Bash", "tool_input": {"command": "git commit -m x"}}
+        for hook in ("commit-review.sh", "bash-guard.sh", "scope-guard.sh"):
+            run_hook(hook, payload, project_dir=root)
+        assert not marker.exists(), "a planted module ran inside a hook"
+
+
+def test_a_planted_pyc_for_the_shared_guard_module_does_not_run() -> None:
+    """`-I` alone does not stop this one — measured before the fix: a `.pyc`
+    for `bash_guard` whose header matches the real source's mtime and size was
+    loaded in place of the source by the normal import. The source-only loader
+    in `commit_review.py` is what stops it."""
+    with plant_tree() as tmp:
+        root = Path(tmp)
+        marker = root / "HIJACKED"
+        source = root / ".claude" / "hooks" / "bash_guard.py"
+        evil = compile(f"open({str(marker)!r}, 'w').write('ran')\n", str(source), "exec")
+        stat = source.stat()
+        pyc = Path(importlib.util.cache_from_source(str(source)))
+        pyc.parent.mkdir(exist_ok=True)
+        # The same header the import system writes, so the plant is exactly
+        # what a normal import would accept — built the way the stdlib builds
+        # one rather than by hand.
+        pyc.write_bytes(
+            importlib._bootstrap_external._code_to_timestamp_pyc(
+                evil, int(stat.st_mtime), stat.st_size
+            )
+        )
+        stage(root, "src/secrev/x.py")
+        commit_review(root, "git commit -m x")
+        assert not marker.exists(), "a planted .pyc ran in place of bash_guard.py"
 
 
 def test_commit_review_is_silent_on_other_commands() -> None:

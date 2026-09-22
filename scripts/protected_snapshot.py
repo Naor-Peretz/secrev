@@ -42,10 +42,47 @@ put them there. The exit code is what gates: a test can print anything to the
 shared terminal, including a copy of the success line, but it cannot set this
 process's status.
 
-**Which files.** Everything git would consider under the protected roots —
-tracked, plus untracked-but-not-ignored — so a new `src/secrev/evil.py` counts
-and `__pycache__/` does not. Content and the executable bit both, because no
-guard reads modes and a changed bit is a change.
+**Which files: all of them, ignore rules included.** This listed files with
+`git ls-files --others --exclude-standard`, so anything in `.gitignore` or
+`.git/info/exclude` was never counted — and `.git/info/exclude` is not
+protected, and a change to it shows in no `git status`. A third review planted
+`.claude/hooks/shutil.py`, excluded it there, and the stage printed "no
+protected path changed" while every later `git commit` ran that module inside
+the commit checkpoint. So there is no exclusion by ignore rule. `__pycache__`
+is counted too, and not blindly left out: a `.pyc` whose header matches a
+source file's mtime and size is loaded *instead of* the source, which makes a
+planted one a vector in its own right.
+
+That would fire on every run, since importing the package writes bytecode —
+so the child runs with `PYTHONPYCACHEPREFIX` pointed at a directory outside the
+tree, made fresh for the run and removed after. The suite then writes no
+`__pycache__` in the tree and reads none from it, so an in-tree `.pyc` that
+changes during the run was put there by something other than the interpreter.
+
+**One exclusion, by exact path, with its reason:** `.claude/hooks/state/`.
+The hooks write their logs and markers there while a gate may be running — an
+edit sets off `async-check.sh` in the background — so counting it would fail
+the gate on the harness's own bookkeeping. Nothing in it is imported or
+executed. What it *is* is text: the background log is printed into the
+session, so a test can forge that advisory report. That is recorded, not
+closed, and it is not the gate's own result.
+
+**Python's startup files are watched too, outside the tree.** A `.pth` or a
+`sitecustomize.py` planted in the venv or the user site directory runs in every
+later interpreter started from there. The checker itself runs `-I -S`, so it
+cannot be reached that way; the planting is what this catches. What remains
+open, recorded: a pytest plugin registered through a planted `*.dist-info`
+entry point loads in later pytest runs without being a startup file, and a
+plant made *outside* a watched run is not seen by this at all.
+
+**`.claude/settings.local.json` is counted, and that is deliberate.** It is
+gitignored, so it was invisible here until ignore rules stopped applying — and
+it is where an allow rule that auto-approves everything would be written. The
+cost is honest: granting a permission *while* a gate runs makes the gate name
+that file. It says which file, so the reason is never a mystery.
+
+Content and the executable bit both, because no guard reads modes and a changed
+bit is a change.
 
 The roots mirror `STACK.md` §8 H-4. They are a second copy of that list, which
 H-7 would object to on its own; `tests/harness/attack.py` pins this tuple equal
@@ -55,9 +92,11 @@ to the guard's, so the two cannot drift without the harness gate going red.
 from __future__ import annotations
 
 import hashlib
+import os
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -74,6 +113,10 @@ PROTECTED_ROOTS = (
     ".claude",
 )
 
+# The one exclusion; see the module docstring for why it is safe and what it
+# leaves open.
+HOOK_STATE = ".claude/hooks/state/"
+
 USAGE = "usage: protected_snapshot.py run -- <command> [args...]"
 SHOWN = 10
 # `run`, `--`, and at least the command itself.
@@ -89,30 +132,54 @@ def _files() -> list[str]:
     if git is None:
         raise CannotCheck("no git on PATH")
     proc = subprocess.run(  # noqa: S603 - fixed argv, no shell
-        [
-            git,
-            "ls-files",
-            "-z",
-            "--cached",
-            "--others",
-            "--exclude-standard",
-            "--",
-            *PROTECTED_ROOTS,
-        ],
+        # No `--exclude-standard`: see the module docstring. `--others` alone
+        # lists every untracked file, ignored ones included.
+        [git, "ls-files", "-z", "--cached", "--others", "--", *PROTECTED_ROOTS],
         cwd=ROOT,
         capture_output=True,
         check=False,
     )
     if proc.returncode != 0:
         raise CannotCheck(proc.stderr.decode("utf-8", errors="replace").strip())
-    return sorted({name for name in proc.stdout.decode("utf-8").split("\0") if name})
+    names = {name for name in proc.stdout.decode("utf-8").split("\0") if name}
+    return sorted(name for name in names if not name.startswith(HOOK_STATE))
+
+
+# What Python executes at *every* start, before any script: a `.pth` line that
+# begins with `import`, and the two customize modules. Planted in the venv or
+# the user site directory, any of them runs in every later interpreter from
+# there — the gate's own later stages included — and neither location is a
+# protected root. The suite has no reason to write one, so they are watched
+# too, by name rather than by walking site-packages, which would hash
+# thousands of files to watch three shapes.
+_STARTUP = ("*.pth", "sitecustomize.py", "usercustomize.py")
+
+
+def _startup_files() -> list[Path]:
+    import site  # noqa: PLC0415 - imported here because the checker runs with -S
+
+    directories = [*sorted((ROOT / ".venv").glob("lib/python*/site-packages"))]
+    user = Path(site.getusersitepackages())
+    if user.is_dir():
+        directories.append(user)
+    found: list[Path] = []
+    for directory in directories:
+        for pattern in _STARTUP:
+            found.extend(sorted(directory.glob(pattern)))
+    return found
 
 
 def snapshot() -> dict[str, str]:
     """Path -> digest of content and executable bit. A tracked file that no
     longer exists is recorded as absent rather than skipped, so a deletion is a
-    change like any other."""
+    change like any other. Startup files are keyed by absolute path, since
+    they live outside the tree."""
     state: dict[str, str] = {}
+    for startup in _startup_files():
+        try:
+            state[f"startup:{startup}"] = hashlib.sha256(startup.read_bytes()).hexdigest()
+        except OSError as exc:
+            raise CannotCheck(f"{startup}: {exc}") from exc
     for name in _files():
         path = ROOT / name
         try:
@@ -153,11 +220,20 @@ def main(argv: list[str]) -> int:
         print(f"protected_snapshot: cannot check — {exc} (H-1)", file=sys.stderr)
         return 2
 
-    try:
-        child = subprocess.run(command, cwd=ROOT, check=False)  # noqa: S603 - argv from check.sh
-    except OSError as exc:
-        print(f"protected_snapshot: could not start {command[0]!r}: {exc} (H-1)", file=sys.stderr)
-        return 2
+    # Bytecode for the run goes outside the tree, so the in-tree __pycache__
+    # is neither written nor read by the suite (module docstring).
+    with tempfile.TemporaryDirectory(prefix="secrev-pycache-") as cache:
+        environment = {**os.environ, "PYTHONPYCACHEPREFIX": cache}
+        try:
+            child = subprocess.run(  # noqa: S603 - argv from check.sh
+                command, cwd=ROOT, env=environment, check=False
+            )
+        except OSError as exc:
+            print(
+                f"protected_snapshot: could not start {command[0]!r}: {exc} (H-1)",
+                file=sys.stderr,
+            )
+            return 2
 
     print("\n\033[1m── tests wrote no protected path\033[0m")
     try:

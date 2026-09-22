@@ -24,7 +24,7 @@ SYSPY=$(command -v python3 2>/dev/null) || {
 }
 
 read_field() {
-    printf '%s' "$INPUT" | "$SYSPY" "$READER" "$1" || {
+    printf '%s' "$INPUT" | "$SYSPY" -I -S "$READER" "$1" || {
         echo "spec-guard: unreadable hook payload — refusing (H-1)." >&2
         exit 2
     }
@@ -49,5 +49,5 @@ Before writing, confirm which of these this is:
 Adding a runtime dependency, changing an exit code, or weakening a determinism rule are all
 STACK.md amendments with a written reason, never local exceptions."
 
-printf '%s' "$reason" | "$SYSPY" "$ROOT/.claude/hooks/lib/hook_ask.py"
+printf '%s' "$reason" | "$SYSPY" -I -S "$ROOT/.claude/hooks/lib/hook_ask.py"
 exit 0

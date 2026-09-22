@@ -36,7 +36,7 @@ PATHS="$ROOT/.claude/hooks/lib/paths.sh"
 . "$PATHS"
 
 read_field() {
-    printf '%s' "$INPUT" | "$PY" "$READER" "$1" || {
+    printf '%s' "$INPUT" | "$PY" -I -S "$READER" "$1" || {
         echo "self-application-guard: unreadable hook payload — refusing (H-1)." >&2
         exit 2
     }

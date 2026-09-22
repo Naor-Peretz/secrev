@@ -419,7 +419,18 @@ Still open, and each is named here so it is not mistaken for settled:
   file, so a test could re-take it and the stage printed "no protected path changed" over a
   change still in the tree — a false green in the control meant to close E3. The baseline now
   lives only in the checker's memory, with pytest run as its child, so there is no file to find;
-  that class is closed, not narrowed. **Still not covered, and stated:** a test that writes and
-  restores within the run, and a process it detaches that writes after pytest returns. For those,
+  that class is closed, not narrowed. **A third review broke the second**: the listing honoured
+  ignore rules, so a test planted `.claude/hooks/shutil.py`, hid it in `.git/info/exclude`
+  (unprotected, and absent from `git status`), and the stage stayed green while every later
+  commit ran the plant inside the commit checkpoint — Python puts a script's own directory first
+  on `sys.path`. Now the listing ignores no ignore rule; the suite runs with its bytecode cache
+  outside the tree; every interpreter a hook starts runs `-I`, and `-S` where it is stdlib-only;
+  the one import of our own code in a hook loads from source, never from `__pycache__`; and
+  Python's startup files in the venv and user site are watched. Following the class found two
+  more instances than the review named: `async-check.sh` ran the same suite after *every* edit
+  with no snapshot at all, and the checker could be reached through a `.pth` in the venv.
+  **Still not covered, and stated:** a test that writes and restores within the run, a process it
+  detaches, a pytest plugin registered through a planted `*.dist-info` entry point, and a forged
+  background log in `.claude/hooks/state/` — advisory text, never the gate's result. For those,
   `commit-review.sh` shows protected paths in the index at commit, whatever put them there. Two
   layers, neither adding an approval.

@@ -30,7 +30,7 @@ PATHS="$ROOT/.claude/hooks/lib/paths.sh"
 . "$PATHS"
 
 read_field() {
-    printf '%s' "$INPUT" | "$SYSPY" "$READER" "$1" || {
+    printf '%s' "$INPUT" | "$SYSPY" -I -S "$READER" "$1" || {
         echo "determinism-guard: unreadable hook payload — refusing (H-1)." >&2
         exit 2
     }
@@ -66,7 +66,10 @@ if [ -d "$ROOT/src/secrev" ] && [ -d "$ROOT/tests/fixtures" ]; then
     # the status line below is never reached and the hook returns the tool's
     # exit code — 1, which the hook protocol gives no meaning (H-9). An `if`
     # condition is the one place `set -e` stands down.
-    if out=$("$PY" "$ROOT/scripts/determinism_check.py" 2>&1); then
+    # `-I` without `-S`: this check imports the project and needs the venv's
+    # site-packages. `-I` still keeps a module planted in scripts/ from
+    # shadowing the stdlib inside it.
+    if out=$("$PY" -I "$ROOT/scripts/determinism_check.py" 2>&1); then
         status=0
     else
         status=$?

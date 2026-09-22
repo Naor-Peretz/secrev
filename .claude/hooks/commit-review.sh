@@ -26,7 +26,9 @@ for required in "$READER" "$ASKER" "$REVIEWER"; do
     }
 done
 
-command=$(printf '%s' "$INPUT" | "$PY" "$READER" command) || {
+# `-I -S` for the reason bash-guard.sh records: a module planted beside a hook
+# must not be what the hook imports.
+command=$(printf '%s' "$INPUT" | "$PY" -I -S "$READER" command) || {
     echo "commit-review: unreadable hook payload — refusing (H-1)." >&2
     exit 2
 }
@@ -34,7 +36,7 @@ command=$(printf '%s' "$INPUT" | "$PY" "$READER" command) || {
 # `if reason=$(...)` so a failure is caught here rather than by `set -e`, which
 # would exit with the reviewer's status unexamined (the async-check lesson).
 cd "$ROOT"
-if reason=$(printf '%s' "$command" | "$PY" "$REVIEWER"); then
+if reason=$(printf '%s' "$command" | "$PY" -I -S "$REVIEWER"); then
     :
 else
     exit 2
@@ -42,4 +44,4 @@ fi
 
 # Not a commit: no opinion, no output.
 [ -n "$reason" ] || exit 0
-printf '%s' "$reason" | "$PY" "$ASKER"
+printf '%s' "$reason" | "$PY" -I -S "$ASKER"

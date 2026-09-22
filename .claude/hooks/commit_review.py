@@ -26,14 +26,53 @@ view of an ordinary commit, not a control against a determined one.
 
 from __future__ import annotations
 
+import importlib.machinery
+import importlib.util
 import shutil
 import subprocess
 import sys
 from pathlib import Path
+from types import CodeType, ModuleType
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from bash_guard import git_argv, mentions_protected, segments, tokenize
+class _SourceOnlyLoader(importlib.machinery.SourceFileLoader):
+    """Compile from the `.py` every time; never consult `__pycache__`.
+
+    This file imported `bash_guard` by putting the hooks directory at
+    `sys.path[0]`, and a review showed what that bought: a `shutil.py` planted
+    beside it ran inside this checkpoint, and a `.pyc` planted in
+    `__pycache__/` with a header matching `bash_guard.py`'s mtime and size was
+    loaded *instead of the source*. `-I` on the interpreter closes the first
+    and not the second, because a normal import reads bytecode whenever its
+    header matches. Moving the whole cache out of the tree closes both and
+    costs ~45 ms per Python start, since the stdlib then recompiles every time.
+
+    This is narrower and free: the one module of ours that any hook imports is
+    loaded from source through the loader's own public API, and nothing is put
+    on `sys.path`. `test_no_hook_module_imports_anything_but_the_stdlib` holds
+    that no other import of our code exists to need it.
+    """
+
+    def get_code(self, fullname: str) -> CodeType:
+        return self.source_to_code(self.get_data(self.path), self.path)
+
+
+def _load_bash_guard() -> ModuleType:
+    path = Path(__file__).resolve().parent / "bash_guard.py"
+    loader = _SourceOnlyLoader("bash_guard", str(path))
+    spec = importlib.util.spec_from_loader("bash_guard", loader)
+    if spec is None:
+        raise ImportError(f"cannot load {path}")
+    module = importlib.util.module_from_spec(spec)
+    loader.exec_module(module)
+    return module
+
+
+_guard = _load_bash_guard()
+git_argv = _guard.git_argv
+mentions_protected = _guard.mentions_protected
+segments = _guard.segments
+tokenize = _guard.tokenize
 
 
 def is_commit(command: str) -> bool:
