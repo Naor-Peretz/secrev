@@ -123,18 +123,44 @@ READ_ONLY_GIT = frozenset({"diff", "log", "show", "status", "blame"})
 # entry in READ_ONLY_GIT, because it is not read-only and a list whose name is
 # false is how a later reader widens it by analogy.
 #
-# `git add` writes the *index*, never the working tree, so a staged protected
-# path has exactly the content the Write/Edit guards already saw. What it
-# removes is the owner's hand on staging, which had been the human checkpoint
-# for protected paths since M0; the owner moved that checkpoint to commit, which
-# `settings.json` still refuses to auto-approve, as it does push. Every operator
-# remains banned below, so `git add src/x.py; rm -rf src` is still refused — the
-# category covers one command, not a chain that begins with one.
+# **What `git add` stages is whatever the session wrote — which the Write/Edit
+# guards saw only if it arrived through Write or Edit.** The first version of
+# this comment said the guards had "already seen" staged content, and a review
+# disproved it with a test file that wrote into `threat-models/` under the
+# auto-approved gate: `pytest` is code execution, `tests/` is not protected, and
+# nothing on that path touched a guard. The owner's hand on staging had been the
+# one control that would have noticed a protected file changed without a Write.
+# It moved to commit — `commit-review.sh` puts the staged set, protected paths
+# flagged, in front of the owner at the approval that is still asked every time.
+# That hook is the replacement for the checkpoint this category removed, not an
+# optional improvement to it.
+#
+# `git add` writes the index and never the working tree, which is the true part
+# of the original claim and the reason staging needs no guard of its own on
+# *content*. Every operator remains banned beside a protected path, so `git add
+# src/x.py; rm -rf src` is still refused — the category is one command, not a
+# chain that begins with one.
 #
 # Only `add` in the second position. `git -C <dir> add` is refused, because an
 # option before the subcommand is how a git invocation stops meaning what its
 # second token says.
 STAGE_GIT = frozenset({"add"})
+
+# The flags staging may carry — an allowlist, for the reason `find` is absent
+# above: admitting `git add` "minus the dangerous flags" would be a denylist over
+# flags. Everything the ordinary flow needs, and nothing else. The review named
+# three that were admitted and should not be: `-f` stages a gitignored file,
+# which is how `.env` and `notes/` leave the machine; `--chmod` changes a mode
+# no guard reads; `--pathspec-from-file` stages paths that never appear in the
+# command, so no test over the command's text can see what it touched.
+#
+# **Checked on every `git add`, protected path named or not**, and that is the
+# half that makes the list mean anything. Two of the review's three examples —
+# `git add -f .env` and `--pathspec-from-file=list` — name no protected path, so
+# `evaluate` permitted them at its first line and never reached `is_stage`.
+# Narrowing only the protected-path branch would have fixed the demonstrated
+# case and left the class open.
+STAGE_FLAGS = frozenset({"-A", "--all", "-u", "--update"})
 
 # Interpreters permitted to *run* an existing script under a protected path,
 # mapped to the extension they may run. Executing a script is not writing it,
@@ -151,6 +177,9 @@ EXECUTE = {"sh": ".sh", "python3": ".py", "python": ".py"}
 # An interpreter and the script it runs. Fewer tokens than this is an
 # interactive interpreter, which is not "running an existing script".
 INTERPRETER_AND_SCRIPT = 2
+
+# `git` and its subcommand. Fewer tokens than this is a bare `git`.
+COMMAND_AND_SUBCOMMAND = 2
 
 # No shell operator may appear beside a protected path. Not `;`, `&&`, `||`,
 # `|`, a redirect, a subshell or a substitution.
@@ -218,6 +247,40 @@ def is_stage(tokens: list[str]) -> bool:
     return command == "git" and len(tokens) > 1 and tokens[1] in STAGE_GIT
 
 
+def segments(tokens: list[str]) -> list[list[str]]:
+    """The commands in a line, split on operator tokens. Used to find a
+    `git add` wherever it sits — `true && git add -f .env` names no protected
+    path, so the operator ban never sees it — and by `commit_review.py` to find
+    a `git commit` the same way, so the two cannot disagree about where a
+    command begins."""
+    segments: list[list[str]] = [[]]
+    for token in tokens:
+        if token and all(char in OPERATOR_CHARS for char in token):
+            segments.append([])
+        else:
+            segments[-1].append(token)
+    return [segment for segment in segments if segment]
+
+
+def _staging_refusal(tokens: list[str]) -> str | None:
+    """A `git add` anywhere in the line that carries a flag outside
+    `STAGE_FLAGS`, or that hides `add` behind an option."""
+    for segment in segments(tokens):
+        if segment[0].rsplit("/", 1)[-1] != "git" or len(segment) < COMMAND_AND_SUBCOMMAND:
+            continue
+        if segment[1].startswith("-") and "add" in segment:
+            return "an option before `git add` — the second token must be the subcommand"
+        if segment[1] not in STAGE_GIT:
+            continue
+        for argument in segment[2:]:
+            if argument == "--":
+                break
+            if argument.startswith("-") and argument not in STAGE_FLAGS:
+                allowed = ", ".join(sorted(STAGE_FLAGS))
+                return f"`git add {argument}` — staging may carry only {allowed}"
+    return None
+
+
 def is_execute(tokens: list[str]) -> bool:
     """Running an existing script, as opposed to writing one.
 
@@ -281,6 +344,11 @@ def evaluate(command: str) -> tuple[int, str]:
         # (H-1); the raw string is not consulted, because a guard that falls
         # back to substring matching when its parser fails is guessing.
         return REFUSE, "the command could not be parsed, so it could not be checked"
+
+    # Before the protected-path test, not after it: see STAGE_FLAGS.
+    staging = _staging_refusal(tokens)
+    if staging:
+        return REFUSE, staging
 
     if not any(mentions_protected(token) for token in tokens):
         return PERMIT, ""

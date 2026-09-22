@@ -211,12 +211,18 @@ deterministic output is silent under `determinism-guard.sh` until it is added.
 
 What costs time every session, and how it goes instead:
 
-- **Staging protected paths is permitted** (owner decision, 2026-09-22). `git add` writes the
-  index and never the file, so `bash-guard.sh` admits it as its own category beside reading and
-  running a script — **one command only**; `git add x && …` is still refused, as is `git -C dir
-  add`, `git rm` and `git mv`. Until then the owner staged protected paths by hand with
-  `! git add …`; the human checkpoint has moved to commit, which is still asked every time, as is
-  push.
+- **Staging protected paths is permitted** (owner decision, 2026-09-22), and the checkpoint it
+  removed was *moved*, not dropped. Until then the owner staged protected paths by hand, and that
+  was the one place a protected file changed **without** a Write or Edit would have been noticed —
+  a review demonstrated one: a test file writing into `threat-models/` under the auto-approved
+  gate, since `pytest` is code execution and `tests/` is not protected. The first version of this
+  rule said staged content was "what the guards already saw"; it is what the *session* wrote,
+  which the guards see only when it arrives through Write or Edit. So `commit-review.sh` asks at
+  every `git commit` with the staged set in the dialog, protected paths and executable bits
+  marked — the owner's look now happens there. `git add` flags are an **allowlist** (`-A`,
+  `--all`, `-u`, `--update`), checked on *every* `git add` in the line whether or not a
+  protected path is named: `-f` (gitignored files — `.env`, `notes/`), `--chmod` and
+  `--pathspec-from-file` are refused, as are a chain after a stage and an option before `add`.
 - **Commit messages and PR bodies.** A command naming a protected path *and* containing a newline
   is refused. Word the message without the path tokens, and pass PR bodies with `--body-file`.
 - **Branch names.** `m2/surfaces` itself matches the protected token, so `git push -u origin
@@ -457,6 +463,7 @@ them, no tool that can write to a protected path is unwatched (H-3).
 | Hook | Event | Effect |
 |---|---|---|
 | `bash-guard.sh` | PreToolUse Bash | **Refuses** a Bash command touching `src/`, `patterns/`, `surfaces/`, `structure/`, `scripts/` or `.claude/` unless it reads (allowlisted command), stages (`git add`), or runs an existing script (`sh <x.sh>`, `python3 <x.py>`, no flags). Every shell operator refuses — chaining carries a write past the command that was checked |
+| `commit-review.sh` | PreToolUse Bash | **Asks** on any `git commit`, with the staged set in the approval dialog — protected paths and executable bits marked, unstaged tracked changes listed. The replacement for hand-staging (2026-09-22), not an optional extra; refuses when the index cannot be read (H-9) |
 | `self-application-guard.sh` | PreToolUse Write/Edit | **Blocks** a write that would put `eval`, `exec`, `pickle`, `shell=True`, `yaml.load`, `Loader=`, or a network client into Python under `src/` or `scripts/` |
 | `scope-guard.sh` | PreToolUse Write/Edit | **Asks** when a write reaches past the milestone in `.claude/MILESTONE`; **refuses** when that milestone has no rules (H-6) |
 | `spec-guard.sh` | PreToolUse Write/Edit | **Asks** before any edit to the PRD, `STACK.md`, or a brief, restating precedence |

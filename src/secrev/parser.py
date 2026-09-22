@@ -545,16 +545,37 @@ class PythonParser:
         return relative_path.lower().endswith(".py")
 
     def parse(self, text: str, relative_path: str) -> Unit:
+        """The file's vocabulary, or `ParseFailure` — for *every* way a file can
+        fail to be read here, not only a syntax error.
+
+        **`RecursionError` and `MemoryError` are caught around parsing *and*
+        extraction**, and the second half is the one that was missing. Found in
+        review: a valid 3 KB file — one expression of 1,500 `p+p+…` terms,
+        which CPython compiles — ended `secrev structure` with exit 3. `ast.parse`
+        runs in C and survives that depth; `_BodyCollector` and `_looks_stringy`
+        recurse in Python and hit the 1,000-frame limit long before. Deeper input
+        fails inside `ast.parse` itself, with either error.
+
+        That is M3.5's C1 and C2 again: hostile input classified as a bug in the
+        tool, and one file ending the review of every other. A target plants it
+        once and the structural review of the whole tree is gone. Caught here,
+        per file, the run continues and the file lands in `unparsed`, which
+        `cli.py` turns into a named gap and exit 2.
+
+        Deliberately not answered by raising the recursion limit: that moves the
+        threshold to a depth the attacker also chooses, and trades a clean
+        exception for a C-stack overflow that kills the process.
+        """
         try:
             tree = ast.parse(text, filename=relative_path)
-        except (SyntaxError, ValueError) as exc:
+            functions = [_module_function(tree)]
+            functions.extend(_function(node) for node in _definitions(tree))
+        except (SyntaxError, ValueError, RecursionError, MemoryError) as exc:
             # ValueError covers a NUL byte reaching `compile`, which a decoded
             # binary can carry even after the 5% classification let the file
-            # through. Both mean the same thing to the caller: not reviewed.
-            raise ParseFailure(f"{relative_path}: {exc}") from exc
+            # through. All four mean the same thing to the caller: not reviewed.
+            raise ParseFailure(f"{relative_path}: {type(exc).__name__}: {exc}") from exc
 
-        functions = [_module_function(tree)]
-        functions.extend(_function(node) for node in _definitions(tree))
         # `(line, name)`, so two definitions on one line — a `def` inside a
         # one-line `if`, which is legal — cannot swap between runs.
         functions.sort(key=lambda function: (function.line, function.name))

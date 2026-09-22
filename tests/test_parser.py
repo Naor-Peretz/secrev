@@ -317,6 +317,25 @@ def test_a_nul_byte_raises_the_same_failure(parser: PythonParser) -> None:
         parser.parse("x = 1\0\n", "nul.py")
 
 
+def test_depth_that_python_compiles_is_a_parse_failure_not_a_crash(
+    parser: PythonParser,
+) -> None:
+    """The half the first version missed. `ast.parse` survives 1,500 terms; the
+    collector's own recursion does not, so the error came from *extraction*,
+    outside the `try` that only wrapped parsing."""
+    deep = "def f(p):\n    x = " + "+".join(["p"] * 1500) + "\n    open(x)\n"
+    with pytest.raises(ParseFailure) as failure:
+        parser.parse(deep, "deep.py")
+    assert "RecursionError" in str(failure.value)
+
+
+def test_depth_that_defeats_ast_parse_itself_is_a_parse_failure(parser: PythonParser) -> None:
+    """The other half: deep enough that `ast.parse` raises before any
+    extraction runs. Either error type, same meaning to the caller."""
+    with pytest.raises(ParseFailure):
+        parser.parse("x = " + "(" * 200_000 + "1" + ")" * 200_000 + "\n", "deeper.py")
+
+
 def test_the_parser_claims_python_whatever_the_case_of_the_extension(
     parser: PythonParser,
 ) -> None:

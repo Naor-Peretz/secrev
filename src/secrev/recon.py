@@ -36,6 +36,7 @@ import json
 import re
 import tomllib
 import unicodedata
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -210,11 +211,55 @@ def git_identity(root: Path) -> tuple[str, str | None]:
     return ("directory", None)
 
 
-def _entrypoints(root: Path, found: frozenset[str]) -> dict[str, list[str]]:
+def _read_manifest(
+    path: Path, parse: Callable[[str], Any], unreadable: list[str]
+) -> dict[str, Any]:
+    """A target's manifest as a mapping, or `{}` with the reason recorded.
+
+    **Every way this can fail is a fact about the target, never a crash.** Until
+    M4's review this caught only the decoder's own error and `OSError`, and four
+    measured inputs ended every command with exit 3 — because `recon` runs
+    inside every subcommand's `_prepare`, one manifest took `sweep`, `surfaces`
+    and `structure` down with it:
+
+    - `package.json` containing `[]` — two bytes, valid JSON, and a list has no
+      `.get`. `project = "x"` in `pyproject.toml` is the same shape.
+    - deep nesting in either: both decoders recurse, and `RecursionError` is not
+      a decode error. `MemoryError` is its sibling at larger depths.
+    - invalid UTF-8, which raised out of `read_text` before the decoder ran and
+      ended the run with exit 2 over one metadata file.
+
+    The same class as M3.5's C1 and C2 — hostile input reported as a defect in
+    the tool, and one file ending the review of all the others — and the same
+    answer: catch per file, record it, continue.
+
+    **Recorded, not dropped.** This used to return `{}` in silence, so a
+    manifest that could not be read and a manifest declaring no entry points
+    produced the same `recon.json`. They are different facts, and only one of
+    them means the entry points were looked for.
+    """
+    try:
+        data = parse(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, RecursionError, MemoryError) as exc:
+        # ValueError covers JSONDecodeError, TOMLDecodeError and
+        # UnicodeDecodeError, all three of which subclass it.
+        unreadable.append(f"{path.name} ({type(exc).__name__})")
+        return {}
+    if not isinstance(data, dict):
+        unreadable.append(f"{path.name} (top level is {type(data).__name__}, not a mapping)")
+        return {}
+    return data
+
+
+def _entrypoints(root: Path, found: frozenset[str], unreadable: list[str]) -> dict[str, list[str]]:
     """Declared metadata only. §3: "Deeper enumeration is M2's job; do not
     attempt it here." Reading a manifest is reading a declaration; walking
     imports to find what is reachable is the surface source, and doing it here
     would put M2's semantics in M1's output under M1's field name.
+
+    `unreadable` collects manifests that were present and could not be read,
+    so `coverage_gaps` can say so rather than leaving it to be inferred from an
+    empty `declared`.
     """
     declared: list[str] = []
 
@@ -229,20 +274,15 @@ def _entrypoints(root: Path, found: frozenset[str]) -> dict[str, list[str]]:
     # every file it went looking for. That is the shape worth remembering: the
     # exception to a rule is wherever the rule is not the thing doing the work.
     if "pyproject.toml" in found:
-        try:
-            data = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
-        except (tomllib.TOMLDecodeError, OSError):
-            data = {}
-        scripts = data.get("project", {}).get("scripts", {})
+        data = _read_manifest(root / "pyproject.toml", tomllib.loads, unreadable)
+        project = data.get("project")
+        scripts = project.get("scripts") if isinstance(project, dict) else None
         if isinstance(scripts, dict):
             declared += [f"{name} = {target}" for name, target in sorted(scripts.items())]
 
     # The same breach by the other manifest; see the note above `pyproject`.
     if "package.json" in found:
-        try:
-            data = json.loads((root / "package.json").read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError):
-            data = {}
+        data = _read_manifest(root / "package.json", json.loads, unreadable)
         binaries = data.get("bin")
         if isinstance(binaries, dict):
             declared += [f"{name} = {target}" for name, target in sorted(binaries.items())]
@@ -484,8 +524,13 @@ def _coverage_gaps(
     languages: dict[str, int],
     applied: list[str] | None = None,
     unread: dict[str, list[str]] | None = None,
+    manifests_unreadable: list[str] | None = None,
 ) -> list[str]:
     """FR-3.8: degrade honestly rather than pass over what is not covered.
+
+    `manifests_unreadable` names the manifests present and not readable. Their
+    declared entry points are missing from `entrypoints.declared`, and without
+    this line that absence reads the same as a manifest declaring none.
 
     `applied` names the excluded directories that were actually present, so a
     skipped directory is a *stated* gap rather than one a reader has to infer
@@ -552,6 +597,14 @@ def _coverage_gaps(
             extra = len(paths) - GAP_LIST_LIMIT
             shown += f", and {extra} more — the full list is inventory.{key}"
         not_read.append(f"present but not read, {why}: {shown}")
+
+    # With the unread files and for the same reason, and never more than two
+    # names long, since only two manifests are read by name.
+    if manifests_unreadable:
+        not_read.append(
+            "present but not read, a manifest that could not be parsed — its declared "
+            f"entry points are not listed: {', '.join(sorted(manifests_unreadable))}"
+        )
 
     return [
         *skipped,
@@ -633,6 +686,9 @@ def recon(
 
     source, sha = git_identity(root)
 
+    manifests_unreadable: list[str] = []
+    entrypoints = _entrypoints(root, found, manifests_unreadable)
+
     return Recon(
         target={
             "root": slug(root.resolve().name),
@@ -697,9 +753,9 @@ def recon(
             # was simply never called.
             "excluded": applied,
         },
-        entrypoints=_entrypoints(root, found),
+        entrypoints=entrypoints,
         security_process=_security_process(entries, found),
-        coverage_gaps=_coverage_gaps(languages, applied, unread),
+        coverage_gaps=_coverage_gaps(languages, applied, unread, manifests_unreadable),
     )
 
 

@@ -172,7 +172,7 @@ def _read_run_json(path: Path) -> dict[str, object]:
     return kept
 
 
-def write_run_json(directory: Path, command: str, entry: dict[str, str]) -> None:
+def write_run_json(directory: Path, command: str, entry: dict[str, object]) -> None:
     """`run.json` — the one artifact NFR-3 exempts, and the only place a
     timestamp may appear (`STACK.md` §5). Everything time-dependent lives here
     precisely so that nothing time-dependent can leak into the artifacts that
@@ -555,7 +555,17 @@ def run_structure(
     write_run_json(
         directory,
         "structure",
-        {"rules_version": rules.version, "window_spec": BLOCK_WINDOW_SPEC},
+        {
+            "rules_version": rules.version,
+            "window_spec": BLOCK_WINDOW_SPEC,
+            # In an artifact, not only on stderr. Found in review: a file that
+            # did not parse was named on the console and nowhere a later phase
+            # can read, so the gap existed for exactly as long as someone was
+            # watching the terminal. `run.json` is per command and NFR-3-exempt,
+            # which is the right home for "what this run could not read" —
+            # `recon.json` is a peer that parses nothing and cannot know.
+            "unparsed": produced.unparsed,
+        },
     )
     sys.stdout.write(block)
     sys.stderr.write(f"{len(produced.hits)} structural candidates, all unresolved\n")

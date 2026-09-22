@@ -59,6 +59,30 @@ def test_sweep_succeeds(tmp_path: Path) -> None:
     assert run(["sweep", str(FIXTURES), "--workspace", str(tmp_path)]) == EXIT_OK
 
 
+def test_a_file_the_parser_cannot_read_is_exit_two_and_recorded(tmp_path: Path) -> None:
+    """Found in review: a valid 3 KB file ended `secrev structure` with exit 3.
+
+    Exit 2, not 3 — the tool worked and one file in the target could not be
+    reviewed, which is a fact about the input (`STACK.md` §3). Not 0 either: the
+    rest of the tree was reviewed, and reporting that as a clean run would be
+    H-1. And named in `run.json`, not only on stderr, because a gap that exists
+    only while someone watches the terminal is not in the artifact a later phase
+    reads.
+    """
+    target = tmp_path / "target"
+    target.mkdir()
+    deep = "def f(p):\n    x = " + "+".join(["p"] * 1500) + "\n    open(x)\n"
+    (target / "deep.py").write_text(deep, encoding="utf-8")
+    (target / "fine.py").write_text("x = 1\n", encoding="utf-8")
+    workspace = tmp_path / "ws"
+
+    assert run(["structure", str(target), "--workspace", str(workspace)]) == EXIT_USAGE
+
+    [run_json] = sorted(workspace.rglob("run.json"))
+    entry = json.loads(run_json.read_text(encoding="utf-8"))["structure"]
+    assert entry["unparsed"] == ["deep.py"]
+
+
 def test_a_code_file_removed_from_review_is_not_exit_zero(tmp_path: Path) -> None:
     """The half of `_incomplete` that a second review found missing.
 

@@ -406,3 +406,11 @@ Still open, and each is named here so it is not mistaken for settled:
   `ALLOWED_IMPORTS` to pass its own control test. The stricter reading is defensible and is the
   owner's to take.
 - The **HARNESS-CI approval gate**, an open M2 task.
+- **Test code is a write path around every guard** — the residual of M3.5's E3, demonstrated in
+  M4's review. `Bash(pytest:*)` was removed from the allowlist, but `sh scripts/check.sh` stays
+  auto-approved and runs pytest, and `tests/` is not protected, so a test file can write into
+  `threat-models/` or `src/` with no guard in the path. Until 2026-09-22 the owner's hand on
+  staging would have caught the result; `commit-review.sh` now shows it at commit instead, which
+  makes it **visible, not prevented**. Closing it means either protecting `tests/` (every test
+  edit then asks) or taking the gate off the auto-approved list — both change the daily flow, so
+  both are the owner's call.

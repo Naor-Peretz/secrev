@@ -422,6 +422,35 @@ def test_a_file_that_does_not_parse_is_recorded_and_the_run_continues(
     ]
 
 
+# The reviewer's input, byte for byte in shape: one expression of 1,500 terms,
+# 3,030 bytes, which CPython compiles. Built here rather than committed under
+# `tests/fixtures/`: that tree feeds the determinism check, which requires every
+# command to exit 0, and a file that is *meant* to exit 2 would turn it red for
+# the right reason and be misread as the wrong one.
+DEEP = "def f(p):\n    x = " + "+".join(["p"] * 1500) + "\n    open(x)\n"
+
+
+def test_a_valid_deeply_nested_file_is_unparsed_and_does_not_end_the_run(
+    rules: StructureRules, tmp_path: Path
+) -> None:
+    """Found in review: this ended `secrev structure` with exit 3.
+
+    `ast.parse` runs in C and survives the depth; the vocabulary extraction
+    recurses in Python and does not. One such file, planted anywhere, removed the
+    structural review of the whole target — M3.5's C1 and C2 again, in code this
+    milestone added. The file compiles, so it is code that runs, which is why
+    "unparsed" rather than "skipped" is the honest word for it.
+    """
+    compile(DEEP, "deep.py", "exec")
+    (tmp_path / "deep.py").write_text(DEEP, encoding="utf-8")
+    (tmp_path / "fine.py").write_text(
+        "import os\n\n\ndef run(name):\n    os.system('x ' + name)\n", encoding="utf-8"
+    )
+    result = structure(tmp_path, rules)
+    assert result.unparsed == ["deep.py"]
+    assert {hit.file for hit in result.hits} == {"fine.py"}
+
+
 def test_nothing_unparsed_is_an_empty_list_and_not_a_missing_field(
     rules: StructureRules, tmp_path: Path
 ) -> None:

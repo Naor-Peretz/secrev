@@ -557,6 +557,168 @@ def test_bash_refuses_an_option_before_the_staging_subcommand() -> None:
     assert bash("git -C src add secrev/x.py") == BLOCK
 
 
+def test_staging_flags_are_an_allowlist_checked_on_every_git_add() -> None:
+    """The review's three, and the reason the check sits before the
+    protected-path test rather than inside it.
+
+    `-f` stages a gitignored file — how `.env` and `notes/` leave the machine.
+    `--chmod` changes a mode no guard reads. `--pathspec-from-file` stages paths
+    that never appear in the command. Two of the three name no protected path, so
+    a check living in `is_stage` would never have seen them: `evaluate` permits a
+    command with no protected token at its first line. Fixing only that branch
+    would have fixed the demonstrated case and left the class open.
+    """
+    assert bash("git add -f .env") == BLOCK
+    assert bash("git add --force notes/finding.md") == BLOCK
+    assert bash("git add --chmod=+x src/secrev/x.py") == BLOCK
+    assert bash("git add --pathspec-from-file=list") == BLOCK
+    # Combined short flags are one token beginning with `-`, so `-fA` is refused
+    # without a rule for it — the property an allowlist has and a denylist lacks.
+    assert bash("git add -fA") == BLOCK
+
+
+def test_a_forbidden_staging_flag_is_refused_inside_a_chain() -> None:
+    """`true && git add -f .env` names no protected path, so the operator ban
+    never looks at it. The staging check reads every command in the line."""
+    assert bash("true && git add -f .env") == BLOCK
+
+
+def test_ordinary_staging_is_not_disturbed() -> None:
+    """The control. Every refusal above is worth nothing if the flow the owner
+    asked for stops working — and a path beginning with `-` stays stageable
+    after `--`, which is what `--` is for."""
+    assert bash("git add -A") == PASS_THROUGH
+    assert bash("git add -u") == PASS_THROUGH
+    assert bash("git add src/secrev/x.py tests/test_x.py") == PASS_THROUGH
+    assert bash("git add -- -odd-name.txt") == PASS_THROUGH
+    assert bash("git commit -m add") == PASS_THROUGH
+
+
+# ------------------------------------------------------ the commit checkpoint
+#
+# Owner decision 2026-09-22 moved the human look at staged content from staging
+# to commit. commit-review.sh is what makes commit able to carry it: before, the
+# approval showed `git commit -m "..."` and nothing of the index.
+
+
+def commit_tree() -> tempfile.TemporaryDirectory[str]:
+    """A throwaway git repository carrying the hook and everything it loads.
+
+    The hook resolves its reader, asker and reviewer from CLAUDE_PROJECT_DIR, so
+    a tree without them measures the missing file rather than the review (the
+    lesson `milestone_tree` records)."""
+    tmp = tempfile.TemporaryDirectory()
+    root = Path(tmp.name)
+    hooks = root / ".claude" / "hooks"
+    shutil.copytree(HOOKS / "lib", hooks / "lib")
+    for name in ("commit_review.py", "bash_guard.py"):
+        shutil.copy2(HOOKS / name, hooks / name)
+    git = shutil.which("git")
+    assert git, "git is required for the commit checkpoint tests"
+    identity = ["-c", "user.name=t", "-c", "user.email=t@t.invalid"]
+    for args in (
+        ["init", "-q"],
+        [*identity, "commit", "-q", "--allow-empty", "-m", "base"],
+    ):
+        subprocess.run([git, *args], cwd=root, check=True, capture_output=True)
+    return tmp
+
+
+def stage(root: Path, relative: str, *extra: str) -> None:
+    git = shutil.which("git")
+    assert git
+    path = root / relative
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("x\n", encoding="utf-8")
+    subprocess.run([git, "add", *extra, relative], cwd=root, check=True, capture_output=True)
+
+
+def commit_review(root: Path, command: str) -> tuple[int, str, str]:
+    return run_hook(
+        "commit-review.sh",
+        {"tool_name": "Bash", "tool_input": {"command": command}},
+        project_dir=root,
+    )
+
+
+def test_commit_review_is_wired_on_bash() -> None:
+    settings = json.loads((REPO / ".claude" / "settings.json").read_text("utf-8"))
+    commands = [
+        hook["command"]
+        for block in settings["hooks"]["PreToolUse"]
+        if block["matcher"] == "Bash"
+        for hook in block["hooks"]
+    ]
+    assert any(command.endswith("/commit-review.sh") for command in commands)
+
+
+def test_commit_review_is_silent_on_other_commands() -> None:
+    with commit_tree() as tmp:
+        rc, out, _ = commit_review(Path(tmp), "ls -la")
+    assert rc == PASS_THROUGH and out == ""
+
+
+def test_commit_review_asks_with_the_staged_set_and_marks_protected_paths() -> None:
+    """The checkpoint doing its job: the approval carries what is in the index,
+    and a protected path cannot pass as an ordinary one."""
+    with commit_tree() as tmp:
+        root = Path(tmp)
+        stage(root, "threat-models/_agentic-core.md")
+        stage(root, "notes.txt")
+        rc, out, _ = commit_review(root, 'git commit -m "docs"')
+    assert rc == PASS_THROUGH
+    decision = json.loads(out)["hookSpecificOutput"]
+    assert decision["permissionDecision"] == "ask"
+    reason = decision["permissionDecisionReason"]
+    assert "threat-models/_agentic-core.md   <- PROTECTED" in reason
+    assert "notes.txt" in reason and "notes.txt   <- PROTECTED" not in reason
+    assert "1 protected path(s) staged" in reason
+
+
+def test_commit_review_shows_executable_bits_both_ways_they_arrive() -> None:
+    """`--chmod` is now refused at staging, but a mode can still reach the index
+    another way, and no guard reads modes — so the checkpoint names them.
+
+    Both shapes, because the first draft caught one: a changed mode on a file
+    already committed reads `mode change`, while a new file staged executable
+    reads `create mode 100755`. Its own test was written with the second and
+    failed against a check for the first.
+    """
+    git = shutil.which("git")
+    assert git
+    with commit_tree() as tmp:
+        root = Path(tmp)
+        identity = ["-c", "user.name=t", "-c", "user.email=t@t.invalid"]
+        stage(root, "existing.sh")
+        subprocess.run([git, *identity, "commit", "-qm", "x"], cwd=root, check=True)
+        subprocess.run([git, "add", "--chmod=+x", "existing.sh"], cwd=root, check=True)
+        stage(root, "new.sh", "--chmod=+x")
+        _, out, _ = commit_review(root, "git commit -m x")
+    reason = json.loads(out)["hookSpecificOutput"]["permissionDecisionReason"]
+    assert "mode change" in reason and "existing.sh" in reason
+    assert "create mode 100755" in reason and "new.sh" in reason
+
+
+def test_commit_review_finds_a_commit_inside_a_chain() -> None:
+    with commit_tree() as tmp:
+        root = Path(tmp)
+        stage(root, "src/secrev/x.py")
+        _, out, _ = commit_review(root, "git status && git commit -m x")
+    assert "PROTECTED" in json.loads(out)["hookSpecificOutput"]["permissionDecisionReason"]
+
+
+def test_commit_review_refuses_when_it_cannot_read_the_index() -> None:
+    """H-9. A checkpoint that cannot show what it gates must not wave the commit
+    through with an empty list — that is the same approval without the look."""
+    with milestone_tree("M4") as tmp:
+        root = Path(tmp)
+        for name in ("commit_review.py", "bash_guard.py"):
+            shutil.copy2(HOOKS / name, root / ".claude" / "hooks" / name)
+        rc, _, err = commit_review(root, "git commit -m x")
+    assert rc == BLOCK
+    assert "cannot read the index" in err
+
+
 def test_bash_does_not_read_staging_as_permission_for_other_writes_to_the_index() -> None:
     """`git rm` and `git mv` touch the working tree as well as the index —
     they delete and move the file itself. Staging is `add`, and only `add`."""

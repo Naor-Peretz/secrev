@@ -689,6 +689,44 @@ def test_entrypoints_are_declared_metadata_only(tmp_path: Path) -> None:
     assert result.entrypoints["declared"] == ["demo = demo.cli:main"]
 
 
+@pytest.mark.parametrize(
+    ("name", "body", "reason"),
+    [
+        # Two bytes, valid JSON, and a list has no `.get` — exit 3 until M4's review.
+        ("package.json", b"[]", "top level is list"),
+        # Valid TOML whose `project` is a string: the same shape one key down.
+        ("pyproject.toml", b'project = "x"\n', None),
+        # Both decoders recurse; RecursionError is not a decode error.
+        ("package.json", b"[" * 200_000 + b"]" * 200_000, "RecursionError"),
+        ("pyproject.toml", b"a = " + b"[" * 200_000 + b"]" * 200_000 + b"\n", "RecursionError"),
+        # Raised out of `read_text` before the decoder ran, and ended the whole
+        # run with exit 2 over one metadata file.
+        ("package.json", b'{"bin": "\xff\xfe"}', "UnicodeDecodeError"),
+    ],
+)
+def test_no_manifest_shape_ends_the_run(
+    tmp_path: Path, name: str, body: bytes, reason: str | None
+) -> None:
+    """Found while fixing M4's review finding, and older than M4: `recon` runs
+    inside every subcommand's `_prepare`, so each of these ended `sweep`,
+    `surfaces` and `structure` too. Measured at exit 3 for four of the five.
+
+    Each one must complete, declare nothing, and — for the four that could not
+    be read at all — say so in `coverage_gaps`. The `project = "x"` case parses
+    fine and simply declares no scripts, so it adds no gap line: the manifest
+    *was* read, and there was nothing in it.
+    """
+    (tmp_path / name).write_bytes(body)
+    result = recon(tmp_path)
+    assert result.entrypoints["declared"] == []
+    gaps = [gap for gap in result.coverage_gaps if "a manifest that could not be parsed" in gap]
+    if reason is None:
+        assert not gaps
+    else:
+        [line] = gaps
+        assert name in line and reason in line
+
+
 def test_a_malformed_manifest_does_not_crash_the_run(tmp_path: Path) -> None:
     """A target's manifest is untrusted input like everything else in it. An
     unparseable one means "no declared entry points found", not a traceback —
