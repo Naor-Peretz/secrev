@@ -119,6 +119,23 @@ READ_ONLY = frozenset({"cat", "grep", "egrep", "fgrep", "head", "tail", "wc", "l
 # `git` is not the unit of trust; these two subcommands are.
 READ_ONLY_GIT = frozenset({"diff", "log", "show", "status", "blame"})
 
+# Staging, admitted by owner decision on 2026-09-22 — its own category, not an
+# entry in READ_ONLY_GIT, because it is not read-only and a list whose name is
+# false is how a later reader widens it by analogy.
+#
+# `git add` writes the *index*, never the working tree, so a staged protected
+# path has exactly the content the Write/Edit guards already saw. What it
+# removes is the owner's hand on staging, which had been the human checkpoint
+# for protected paths since M0; the owner moved that checkpoint to commit, which
+# `settings.json` still refuses to auto-approve, as it does push. Every operator
+# remains banned below, so `git add src/x.py; rm -rf src` is still refused — the
+# category covers one command, not a chain that begins with one.
+#
+# Only `add` in the second position. `git -C <dir> add` is refused, because an
+# option before the subcommand is how a git invocation stops meaning what its
+# second token says.
+STAGE_GIT = frozenset({"add"})
+
 # Interpreters permitted to *run* an existing script under a protected path,
 # mapped to the extension they may run. Executing a script is not writing it,
 # and the brief's allowlist has two categories where three are needed.
@@ -195,6 +212,12 @@ def is_read_only(tokens: list[str]) -> bool:
     return command in READ_ONLY
 
 
+def is_stage(tokens: list[str]) -> bool:
+    """`git add`, and nothing that merely begins with `git`."""
+    command = tokens[0].rsplit("/", 1)[-1]
+    return command == "git" and len(tokens) > 1 and tokens[1] in STAGE_GIT
+
+
 def is_execute(tokens: list[str]) -> bool:
     """Running an existing script, as opposed to writing one.
 
@@ -242,10 +265,10 @@ def _syntax_refusal(command: str, tokens: list[str]) -> str | None:
 
 
 def _command_refusal(tokens: list[str]) -> str | None:
-    """A command that neither reads nor runs an existing script."""
-    if is_read_only(tokens) or is_execute(tokens):
+    """A command that neither reads, stages, nor runs an existing script."""
+    if is_read_only(tokens) or is_stage(tokens) or is_execute(tokens):
         return None
-    return f"{tokens[0]!r} neither reads nor runs an existing script"
+    return f"{tokens[0]!r} neither reads, stages, nor runs an existing script"
 
 
 def evaluate(command: str) -> tuple[int, str]:
@@ -285,8 +308,9 @@ def main() -> int:
         "to them (BRIEF_M0.md §1). Use the Write or Edit tool for this change so "
         "the self-application and scope guards can see it.\n"
         "Reading one of these paths is unaffected — cat, grep, head, tail, wc, ls, "
-        "rg, git diff, git log — and so is running an existing script: sh <x.sh>, "
-        "python3 <x.py>. One command at a time: no `;`, `&&`, `|`, redirect or "
+        "rg, git diff, git log — and so is staging it with git add, and running an "
+        "existing script: sh <x.sh>, python3 <x.py>. One command at a time: no `;`, "
+        "`&&`, `|`, redirect or "
         "substitution beside a protected path, because each of those carries a "
         "write past the command that was checked.\n"
     )

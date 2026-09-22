@@ -535,6 +535,35 @@ def test_bash_refuses_unlisted_git_subcommand() -> None:
     assert bash("git checkout -- src/secrev/cli.py") == BLOCK
 
 
+def test_bash_permits_staging_a_protected_path() -> None:
+    """Owner decision, 2026-09-22: staging no longer needs the owner's hand.
+    `git add` writes the index and never the file, so what it stages is exactly
+    what the Write/Edit guards already saw. The human checkpoint moved to
+    commit, which `settings.json` still asks about every time."""
+    assert bash("git add src/secrev/structure.py .claude/hooks/lib/paths.sh") == PASS_THROUGH
+    assert bash("git add -A") == PASS_THROUGH
+
+
+def test_bash_still_refuses_a_write_chained_after_staging() -> None:
+    """H-8: the permit is for one command, not for a chain that begins with
+    one. This is the bypass a new category invites first."""
+    assert bash("git add src/secrev/x.py && echo x > src/secrev/y.py") == BLOCK
+    assert bash("git add src/secrev/x.py; rm -rf src") == BLOCK
+
+
+def test_bash_refuses_an_option_before_the_staging_subcommand() -> None:
+    """`git -C <dir> add` is not what its second token says it is. Only `add` in
+    the second position is the category."""
+    assert bash("git -C src add secrev/x.py") == BLOCK
+
+
+def test_bash_does_not_read_staging_as_permission_for_other_writes_to_the_index() -> None:
+    """`git rm` and `git mv` touch the working tree as well as the index —
+    they delete and move the file itself. Staging is `add`, and only `add`."""
+    assert bash("git rm src/secrev/cli.py") == BLOCK
+    assert bash("git mv src/secrev/cli.py src/secrev/x.py") == BLOCK
+
+
 # ------------------------------------------------- the harness guards itself
 #
 # Open question 4, decided. Nothing guarded .claude/: a `sed -i` on

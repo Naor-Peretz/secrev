@@ -211,10 +211,12 @@ deterministic output is silent under `determinism-guard.sh` until it is added.
 
 What costs time every session, and how it goes instead:
 
-- **Staging protected paths.** `bash-guard.sh` refuses `git add` naming `src/`, `patterns/`,
-  `structure/`,
-  `surfaces/`, `scripts/` or `.claude/`. The owner stages those with `! git add …`; then commit
-  with no pathspec. Never route around it (`git add -A`, `commit -a`, assembling the path).
+- **Staging protected paths is permitted** (owner decision, 2026-09-22). `git add` writes the
+  index and never the file, so `bash-guard.sh` admits it as its own category beside reading and
+  running a script — **one command only**; `git add x && …` is still refused, as is `git -C dir
+  add`, `git rm` and `git mv`. Until then the owner staged protected paths by hand with
+  `! git add …`; the human checkpoint has moved to commit, which is still asked every time, as is
+  push.
 - **Commit messages and PR bodies.** A command naming a protected path *and* containing a newline
   is refused. Word the message without the path tokens, and pass PR bodies with `--body-file`.
 - **Branch names.** `m2/surfaces` itself matches the protected token, so `git push -u origin
@@ -273,8 +275,9 @@ message names the token so a reader can tell. Enforcement of the harness's own f
 layers that do not read shell text (STACK.md §8 H-2).
 
 What it permits beside a protected path: the read-only set (`cat`, `grep`, `head`, `tail`, `wc`,
-`ls`, `rg`, `git diff`, `git log`), and running an existing script — `sh <x.sh>`, `python3 <x.py>`
-with no flag after the interpreter. What it refuses: everything else, **and every shell operator**.
+`ls`, `rg`, `git diff`, `git log`), staging with `git add` (since 2026-09-22 — the index, never
+the file), and running an existing script — `sh <x.sh>`, `python3 <x.py>` with no flag after the
+interpreter. What it refuses: everything else, **and every shell operator**.
 No `;`, `&&`, `||`, `|`, newline, redirect, subshell or substitution, because each of those carries
 a write past the command that was actually checked. That costs read-only pipelines: `cat src/x.py |
 grep foo` is refused, and reading a protected file takes one command or the `Read` tool.
@@ -453,7 +456,7 @@ them, no tool that can write to a protected path is unwatched (H-3).
 
 | Hook | Event | Effect |
 |---|---|---|
-| `bash-guard.sh` | PreToolUse Bash | **Refuses** a Bash command touching `src/`, `patterns/`, `surfaces/`, `structure/`, `scripts/` or `.claude/` unless it reads (allowlisted command) or runs an existing script (`sh <x.sh>`, `python3 <x.py>`, no flags). Every shell operator refuses — chaining carries a write past the command that was checked |
+| `bash-guard.sh` | PreToolUse Bash | **Refuses** a Bash command touching `src/`, `patterns/`, `surfaces/`, `structure/`, `scripts/` or `.claude/` unless it reads (allowlisted command), stages (`git add`), or runs an existing script (`sh <x.sh>`, `python3 <x.py>`, no flags). Every shell operator refuses — chaining carries a write past the command that was checked |
 | `self-application-guard.sh` | PreToolUse Write/Edit | **Blocks** a write that would put `eval`, `exec`, `pickle`, `shell=True`, `yaml.load`, `Loader=`, or a network client into Python under `src/` or `scripts/` |
 | `scope-guard.sh` | PreToolUse Write/Edit | **Asks** when a write reaches past the milestone in `.claude/MILESTONE`; **refuses** when that milestone has no rules (H-6) |
 | `spec-guard.sh` | PreToolUse Write/Edit | **Asks** before any edit to the PRD, `STACK.md`, or a brief, restating precedence |
