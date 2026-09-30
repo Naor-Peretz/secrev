@@ -503,6 +503,25 @@ Still open, and each is named here so it is not mistaken for settled:
   guard exits before ever reaching the case it claimed to control. Both are the vacuous-test
   failure recorded above, reproduced inside the round that was correcting it.
 
+  **The owner then found the one that beats all of them: the checker ran under an interpreter a
+  test can replace.** `check.sh` and `async-check.sh` invoked `protected_snapshot.py` with
+  `.venv/bin/python`. `.venv/` is not a protected root, and what was watched inside it was three
+  name shapes in site-packages — not the interpreter. One test overwriting that file, or
+  `pyvenv.cfg`, which names the base interpreter, replaced *the program that reports*: the run in
+  which it landed finished green, and from the next run on the plant **was** the checker, printing
+  the line that says nothing changed. `-I -S` are no answer, being flags to the interpreter that
+  was replaced. Every other vector in these rounds put planted code inside a hook; this one put it
+  in place of the control, and it arrived through `async-check.sh` too, which runs the suite after
+  every edit with no approval at all.
+
+  Both halves are fixed, and neither would have sufficed. The gate runs the checker with the
+  system interpreter — it is stdlib-only, every hook already did this, and pytest stays a child
+  under the venv — which makes the comparison honest. And `bin/` and `pyvenv.cfg` of both virtual
+  environments are now watched, which makes the plant a finding *in the run that lands it* rather
+  than a resident the honest checker merely declines to be. The watch is not another name on a
+  list: it answers a question the file had not asked, which is "what does the gate execute",
+  beside "what runs when Python starts".
+
   **Still not covered, and stated as a class rather than a list:** a test that writes and restores
   within the run, a process it detaches, a pytest plugin registered through a planted
   `*.dist-info` entry point, a forged background log in `.claude/hooks/state/` (advisory text,

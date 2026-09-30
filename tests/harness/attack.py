@@ -1470,6 +1470,53 @@ def _shell_code(path: Path) -> str:
     return "\n".join(kept)
 
 
+def test_the_protected_path_check_does_not_run_under_the_interpreter_it_watches() -> None:
+    """Fifth review, and the one finding that replaced the control itself.
+
+    `check.sh` and `async-check.sh` ran `protected_snapshot.py` with
+    `.venv/bin/python`. `.venv/` is not a protected root, so a single test
+    overwriting that file made the plant *the checker* from the next run on,
+    printing the line that says nothing changed — and `-I -S` are flags to the
+    interpreter that was replaced. The checker is stdlib-only and takes the
+    system interpreter, as every hook already does; pytest stays under the venv,
+    being the thing run rather than the thing checking.
+
+    **An allowlist of callers, not a ban on `$PY`.** The first version of this
+    assertion looked for `.venv` or `$PY` in the token before the script name
+    and passed happily on `gate_script`, which is a wrapper that expands to
+    exactly that — a denylist over spellings, defeated by indirection, which is
+    the shape H-2 exists to refuse and the shape this project was founded on
+    finding. Two things are pinned instead: the caller is one of the forms known
+    to carry the system interpreter, and the wrapper named among them really
+    does use it.
+    """
+    system_callers = {"sys_gate_script", '"$SYSPY"', "$SYSPY", "python3"}
+    for path in (REPO / "scripts" / "check.sh", HOOKS / "async-check.sh"):
+        code = _shell_code(path)
+        calls = re.findall(r"(\S+)((?:\s+-[A-Za-z]+)*)\s+\S*protected_snapshot\.py", code)
+        assert calls, f"{path.name} no longer runs the protected-path check"
+        for raw, _flags in calls:
+            # One of these calls sits inside `out=$(…)`, so the captured token
+            # carries the assignment and the substitution. Strip up to the last
+            # `$(` rather than matching a looser pattern: the point of the
+            # assertion is which program runs, and that is what follows it.
+            caller = re.sub(r"^.*\$\(", "", raw)
+            assert caller in system_callers, (
+                f"{path.name} runs the checker through {raw!r}, which is not known to "
+                "carry the system interpreter — a test can overwrite .venv/bin/python, and "
+                "then the plant is the checker"
+            )
+
+    # And the wrapper means what its name says.
+    gate = _shell_code(REPO / "scripts" / "check.sh")
+    assert re.search(r"sys_gate_script\(\)\s*\{\s*_gate_script\s+\"\$SYSPY\"", gate), (
+        "sys_gate_script no longer runs its argument under $SYSPY"
+    )
+    assert re.search(r"SYSPY=\$\(command -v python3\)", gate), (
+        "$SYSPY is no longer the system python3"
+    )
+
+
 def test_no_shell_hook_calls_git_without_the_disarming() -> None:
     """The class, statically — because the two hooks above were found by a
     reviewer reading files, not by anything here.

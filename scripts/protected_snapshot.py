@@ -86,6 +86,24 @@ executed. What it *is* is text: the background log is printed into the
 session, so a test can forge that advisory report. That is recorded, not
 closed, and it is not the gate's own result.
 
+**The interpreter the gate runs is watched, and it was the worst gap of the
+five rounds.** `check.sh` and `async-check.sh` ran this checker with
+`.venv/bin/python`. `.venv/` is not a protected root, and what was watched
+inside it was three name shapes in site-packages — not the interpreter. So one
+test overwriting `.venv/bin/python` replaced *the program that reports*: the run
+in which it landed finished green, and from the next run on the plant was the
+checker, printing the line that says nothing changed. `-I -S` are no answer,
+being flags to the interpreter that was replaced, and `pyvenv.cfg` reaches the
+same place by naming the base interpreter. Every other vector in this file put
+planted code inside a hook; this one put it in place of the control.
+
+Both halves are needed and neither is sufficient. The gate now runs this file
+with the system interpreter, which every hook already used and which the suite
+has no ordinary way to write — that makes the *comparison* honest. And
+`bin/` and `pyvenv.cfg` of both virtual environments are watched, which makes
+the plant a finding in the run that lands it rather than a resident that only an
+honest checker declines to be.
+
 **Python's startup files are watched too, outside the tree.** A `.pth` or a
 `sitecustomize.py` planted in the venv or the user site directory runs in every
 later interpreter started from there. The checker itself runs `-I -S`, so it
@@ -377,6 +395,37 @@ def _git_files() -> list[Path]:
     return found
 
 
+# The interpreters and tools the gate *executes*. Not another name on the
+# watch list — a different question from the ones above, and the one that was
+# missing: those ask "what runs when Python starts", this asks "what does the
+# gate run at all".
+#
+# `.venv/` is not a protected path, and only three name shapes inside
+# site-packages were watched, so `.venv/bin/python` was writable by the suite
+# and watched by nothing. A test that overwrote it replaced the program the gate
+# runs for every later stage — ruff, mypy, pytest and the self-application check
+# — and the run in which that landed finished green. `pyvenv.cfg` is the same
+# vector one level out: it names the base interpreter.
+#
+# `bin/` whole rather than `python` alone, for the reason `.git/` is watched
+# whole: `pytest`, `ruff` and `mypy` are executables the gate runs too, and a
+# list of the three that matter today is a list someone extends after the next
+# review. `.venv-audit/` joins it because the licence and audit stages run its
+# tools. Both directories are stable during a run — nothing installs mid-gate —
+# and hashing 23 MB twice costs a fraction of a second.
+_VENVS = (".venv", ".venv-audit")
+
+
+def _interpreter_files() -> list[Path]:
+    found: list[Path] = []
+    for venv in _VENVS:
+        found.extend(_walk(ROOT / venv / "bin"))
+        config = ROOT / venv / "pyvenv.cfg"
+        if config.exists() or config.is_symlink():
+            found.append(config)
+    return found
+
+
 def _startup_files() -> list[Path]:
     import site  # noqa: PLC0415 - imported here because the checker runs with -S
 
@@ -410,6 +459,7 @@ def snapshot() -> dict[str, str]:
     # and H-1 codes are expensive precisely because they mean something.
     outside_files = [("git", path) for path in _git_files()]
     outside_files += [("startup", path) for path in _startup_files()]
+    outside_files += [("interpreter", path) for path in _interpreter_files()]
     for label, outside in outside_files:
         try:
             state[f"{label}:{outside}"] = _digest(outside)

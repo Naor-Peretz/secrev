@@ -66,6 +66,33 @@ else
 fi
 runpy() { "$PY" -m "$@"; }
 
+# The system interpreter, kept apart from $PY on purpose.
+#
+# `.venv/` is not a protected path, and the snapshot watched three name shapes
+# inside site-packages — not the interpreter itself. So a test that overwrote
+# `.venv/bin/python`, or `pyvenv.cfg`, which names the base interpreter,
+# replaced the program that is supposed to notice: the run in which it landed
+# finished green, and from the next run on the plant *was* the checker,
+# including the line that reports nothing changed. `-I -S` are no defence,
+# being flags to the interpreter that was replaced.
+#
+# The checker is stdlib-only, so it takes the system interpreter, as every hook
+# already does. pytest keeps the venv — it is the thing being run, not the
+# thing doing the checking. This does not make `.venv/bin/` safe to overwrite;
+# it makes the overwrite something an honest checker can report, which is the
+# other half, and `_interpreter_files` in the checker is that half.
+if have python3; then
+    SYSPY=$(command -v python3)
+elif [ -x .venv/bin/python ]; then
+    # Better than nothing and stated as such: with no system python3 the
+    # checker shares an interpreter with the tests it watches.
+    SYSPY=.venv/bin/python
+    printf 'no system python3: the protected-path check runs under the venv it watches\n' >&2
+else
+    echo "no python3 available" >&2
+    exit 2
+fi
+
 HAS_SRC=0
 [ -d src/secrev ] && HAS_SRC=1
 
@@ -88,11 +115,20 @@ missing() {
 # this one: 0 pass, 1 finding, 2 could not check. The last is fatal here rather
 # than a failure, because "the audit did not run" must not be recorded as "the
 # audit found nothing" — the same distinction H-1 draws, one level down.
-gate_script() {
+gate_script() { _gate_script "$PY" "$@"; }
+
+# The same, under the system interpreter. For a check whose own integrity is
+# the point: it must not run under an interpreter that the code it watches can
+# replace. See the SYSPY block above for what that bought before it was split.
+sys_gate_script() { _gate_script "$SYSPY" "$@"; }
+
+_gate_script() {
+    interpreter=$1
+    shift
     # `status=$?` after a bare `if` is not portable — the shell may have reset
     # it by then. Capture it in the `||` branch, where it is the command's own.
     status=0
-    "$PY" "$@" || status=$?
+    "$interpreter" "$@" || status=$?
     if [ "$status" = 2 ]; then
         exit 2
     fi
@@ -135,8 +171,13 @@ elif [ -d tests ]; then
     # it compares with; `-S` keeps a `.pth` planted in the venv's
     # site-packages from running inside it and forging the comparison. The
     # checker is stdlib-only, so neither flag costs it anything.
+    #
+    # And `sys_gate_script`, not `gate_script`: the flags above are given to
+    # the interpreter, so they are worth nothing if the interpreter is the
+    # thing a test replaced. `.venv/bin/python` was writable by the suite and
+    # watched by nobody.
     printf '\n\033[1m── pytest\033[0m\n'
-    gate_script -I -S scripts/protected_snapshot.py run -- "$PY" -m pytest
+    sys_gate_script -I -S scripts/protected_snapshot.py run -- "$PY" -m pytest
 else
     skip "pytest" "no tests/ yet — nothing to run"
 fi

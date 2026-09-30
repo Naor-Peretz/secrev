@@ -93,9 +93,20 @@ fi
                 # dialog to do it. `-I` on the checker, not on pytest: pytest
                 # needs the project on sys.path; the checker must not have a
                 # planted scripts/ module in place of the stdlib.
+                #
+                # **The checker runs under the system interpreter, not the
+                # venv's.** `.venv/` is not a protected path, so a test that
+                # overwrites `.venv/bin/python` — or `pyvenv.cfg`, which names
+                # the base interpreter — replaces the very program that is
+                # supposed to notice. The run in which that lands ends green,
+                # and from the next one on the plant *is* the checker, printing
+                # the line that says nothing changed. `-I -S` cannot help: they
+                # are flags to the interpreter that was replaced. The checker
+                # is stdlib-only and has no reason to want the venv; pytest,
+                # which does, stays a child under `$PY`.
                 case "$check" in
                   ruff)    out=$("$PY" -I -m ruff check "$ROOT" 2>&1) ;;
-                  pytest)  out=$("$PY" -I -S "$ROOT/scripts/protected_snapshot.py" run -- \
+                  pytest)  out=$("$SYSPY" -I -S "$ROOT/scripts/protected_snapshot.py" run -- \
                                      "$PY" -m pytest -x -q "$ROOT" 2>&1) ;;
                   *)       out=$("$PY" -I "$ROOT/scripts/self_check.py" 2>&1) ;;
                 esac

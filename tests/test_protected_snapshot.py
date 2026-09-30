@@ -271,6 +271,33 @@ def test_a_symlink_to_a_fifo_does_not_hang_the_gate(repo: Path) -> None:
     assert result.returncode == 0, result.stderr
 
 
+def test_overwriting_the_interpreter_the_gate_runs_is_a_change(repo: Path) -> None:
+    """The fifth review's worst finding, and the only one that replaced the
+    control rather than running inside a hook.
+
+    The gate ran this checker with `.venv/bin/python`. `.venv/` is not a
+    protected root and only three name shapes in site-packages were watched, so
+    one test overwriting that file made the plant *the checker* from the next
+    run on — including the line reporting that nothing changed. Two things
+    answer it, and this asserts the second: the gate runs the checker with the
+    system interpreter (`attack.py` holds that), and the interpreter is watched,
+    so the overwrite is a finding in the run that does it.
+    """
+    venv_bin = repo / ".venv" / "bin"
+    venv_bin.mkdir(parents=True)
+    (venv_bin / "python").write_text("#!/bin/sh\nexec /usr/bin/true\n", encoding="utf-8")
+    (repo / ".venv" / "pyvenv.cfg").write_text("home = /usr/bin\n", encoding="utf-8")
+
+    code = (
+        "open('.venv/bin/python', 'w').write('#!/bin/sh\\nexec /bin/echo planted\\n')\n"
+        "open('.venv/pyvenv.cfg', 'w').write('home = /tmp/planted\\n')\n"
+    )
+    result = suite(repo, code)
+    assert result.returncode == 1
+    assert "python" in result.stderr
+    assert "pyvenv.cfg" in result.stderr
+
+
 def test_a_fifo_outside_the_walk_does_not_hang_the_gate(repo: Path) -> None:
     """The same hang, by the route the walk does not control.
 
