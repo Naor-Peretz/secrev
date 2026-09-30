@@ -26,6 +26,19 @@ Binding text, read before this was written: PRD FR-3.5, FR-3.6, FR-3.7, NFR-3, N
 **In:** `structure.py`, `_structure.yaml`, `secrev structure <target>`, the four FR-3.6 rules, their
 fixtures and goldens, the determinism coverage, and the scope-guard rules for this milestone.
 
+**And, by owner decision (2026-09-22), one class of harness hardening**: code that test code
+plants and that later runs inside a guard. This does not belong to a source milestone — §6 Q5 says
+so in as many words — and it is here because four external review rounds found live vectors in
+machinery *this milestone added*, and the owner chose to fix them before merge rather than let
+them reach `main` while a hardening milestone waits to be opened. The alternative considered and
+declined was M3.5's precedent: close M4 on the structural source and open M4.5 for this.
+
+**Scope freeze, part of the same decision.** What enters this milestone is that one class, plus
+the F2 corrections its findings make necessary. **Every further finding from 2026-09-22 onward is
+recorded and not fixed here**, however small, because "fix it before `main`" is what turned one
+review round into five. `.claude/TASKS_M2.md`'s HARNESS-CI and HARNESS-FS remain the owners of
+what is left.
+
 **Python only.** `STACK.md` §7 is explicit: *"Do not adopt tree-sitter in v1 — Python-only is an
 acceptable v1 position; a half-built multi-language layer is not."* Every closure member in another
 language is a **recorded coverage gap** (FR-3.8), never silence.
@@ -392,6 +405,13 @@ Answered:
   reaches. That class stays a reading problem. Not scheduled into M4; it is harness work and this
   milestone is a source.
 
+  **That last sentence stated the rule this milestone then broke, twice, and §1 now records the
+  exception rather than leaving the two to sit side by side.** The rule still holds for the lint
+  above: it is harness work nobody's review found running. What §1 admits is narrower — harness
+  work where an external review demonstrated live code execution in machinery M4 itself added.
+  The distinction is "a reviewer ran it", not "it seemed important", and the scope freeze in §1
+  is what stops that distinction from widening again.
+
 Still open, and each is named here so it is not mistaken for settled:
 
 - The **single-read architecture**. Three consumers re-read every file after `inventory` already
@@ -429,8 +449,89 @@ Still open, and each is named here so it is not mistaken for settled:
   Python's startup files in the venv and user site are watched. Following the class found two
   more instances than the review named: `async-check.sh` ran the same suite after *every* edit
   with no snapshot at all, and the checker could be reached through a `.pth` in the venv.
-  **Still not covered, and stated:** a test that writes and restores within the run, a process it
-  detaches, a pytest plugin registered through a planted `*.dist-info` entry point, and a forged
-  background log in `.claude/hooks/state/` — advisory text, never the gate's result. For those,
-  `commit-review.sh` shows protected paths in the index at commit, whatever put them there. Two
-  layers, neither adding an approval.
+  **A fourth review found that this residue list was not a list of what remains — it was a list
+  of what we had thought to look for.** Three more vectors, each confirmed running end to end: a
+  clean filter in `.git/config` with `.git/info/attributes`, firing on the auto-approved
+  `git add`; `core.fsmonitor`, firing on `git status`; and a global `~/.gitconfig`, reaching
+  every other repository on the machine. All three were invisible to the checker *structurally* —
+  `git ls-files` lists worktree files, so nothing under `.git/` was reachable by it. Worse, the
+  commit checkpoint **executed** two of them, because it shells out to `git diff`: round 3's
+  finding one layer out, in the control that replaced hand-staging.
+
+  Now: the checker walks in Python and runs no git at all — the listing was the one child process
+  a planted `.git/config` could steer; `.git/` is resolved (it is a file, not a directory, in a
+  linked worktree) and then watched whole minus git's own churn; the checkpoint's git calls are
+  disarmed — every hook that shells to git, through one shared definition, not only the one where
+  a finding was demonstrated — `core.fsmonitor` by name and filters by blanking every configured
+  driver through the environment, since a driver's name is arbitrary, a fixed list of options never
+  reaches it, and the name may contain the `=` that `-c` splits on; and the suite runs with `HOME` and the global git config redirected, which *prevents* the
+  global vector rather than watching it.
+
+  **An internal review of that fix, before it was pushed, found three defects in it** — the same
+  shape as every round above, this time in our own work and caught by `python-reviewer` rather
+  than by the owner. They are written here rather than only in the ledger because the paragraph
+  above would otherwise read as a closure it had not reached. (1) The snapshot recorded a symlink
+  by hashing what it *pointed at*, so the one entry a link can be — repointed at another file —
+  read as unchanged, and a link to a FIFO hung the gate instead of failing it; it now records the
+  target path. (2) `-c filter.<driver>.clean=` splits its argument at the first `=`, so a driver
+  named `a=b` set an unrelated key and the planted filter ran straight through the disarming; the
+  keys go through `GIT_CONFIG_COUNT`/`KEY_n`/`VALUE_n`, which passes key and value separately.
+  (3) In a linked worktree `.git` is a *file*, and a walk of a non-directory returns nothing — the
+  whole `.git` half watched zero files while the stage printed its success line; the gitdir and
+  its common directory are resolved, and a `.git` file naming nothing refuses (H-1). Worst of the
+  three, and the reason they are listed: the regression test for (2) asserted **after** its
+  temporary tree was deleted, so it could not fail however the hook behaved — deleting the
+  disarming outright left it green. A guard that only exists is the failure this milestone is
+  about, and the test for it had the same defect.
+
+  **A second internal review, of those three fixes, found the pattern again — twice in the code
+  and twice in the tests.** (4) The FIFO hang was closed for the entries `_walk` collects, and
+  `_walk` is not how the global git configs or the venv's `*.pth` files are collected: a named
+  pipe at either hung the gate with no exit code at all, measured end to end. The branch moved
+  into `_digest`, which all three collectors go through. (5) `core.fsmonitor` was disarmed in
+  `commit_review.py`, which runs `git diff` — while the trigger this brief *names* for it is
+  `git status`, which `session-start.sh` and `session-end.sh` run, on SessionStart and at the end
+  of every turn. The fix had gone to the file where the finding was demonstrated rather than to
+  the hooks that make the call. They now share `lib/git_safe.sh`, pinned equal to the Python list,
+  with a static assertion that no shell hook calls git without it — which immediately found a
+  third hook. (6) `GIT_CHURN` skipped `modules`, the one name in a set documented as "executes
+  nothing" that is a submodule's real gitdir, holding its own `config` and `hooks/`. (7) A
+  `commondir` naming a non-directory was dropped silently while the branch four lines above it
+  refused — the same false green, one branch over. And in the tests: the linked-worktree assertion
+  passed with the fix removed on any machine that has a `~/.gitconfig`, because it asserted on a
+  list that also contains the global configs; and the new scope-guard "control" used a path the
+  guard exits before ever reaching the case it claimed to control. Both are the vacuous-test
+  failure recorded above, reproduced inside the round that was correcting it.
+
+  **Still not covered, and stated as a class rather than a list:** a test that writes and restores
+  within the run, a process it detaches, a pytest plugin registered through a planted
+  `*.dist-info` entry point, a forged background log in `.claude/hooks/state/` (advisory text,
+  never the gate's result), and — the honest general case — any further configuration git or
+  another tool grows that runs a command. Four rounds have each widened what is watched, and each
+  time the next review found the next file. `commit-review.sh` still shows protected paths in the
+  index at commit whatever put them there, which is a second layer and not a closure. **The class
+  closes when the test run is confined**, which is HARNESS-FS in `.claude/TASKS_M2.md`, accepted
+  and unbuilt. Nothing here claims otherwise.
+
+  **Three further findings from the same internal review are recorded here and deliberately not
+  fixed**, under the owner's scope freeze for this branch: what enters it is the one class — code
+  planted by test code reaching the guards — and F2. Each is a nuisance or a conflation, none is a
+  route past a guard. (i) *Denial of the gate*: a test that makes a watched file unreadable
+  (`chmod 000`) turns the snapshot into `CannotCheck`, exit 2. That is the correct direction — it
+  refuses rather than passing — but a test can stop the gate from running, and the operator sees a
+  broken harness rather than a hostile test. (ii) *pytest's exit codes 3 and 4 collapse into 1*:
+  the wrapper reports "the command failed", so "tests failed" and "pytest could not run" arrive as
+  one signal. H-1's shape, in the mild direction. (iii) *System git configuration is off for the
+  child* (`GIT_CONFIG_NOSYSTEM`), which also drops a system-level `safe.directory` — in a
+  container where the checkout is owned by another uid, tests that shell out to git would fail.
+  Not the case in this CI, and the gate would say so loudly rather than quietly. (iv) *Neither
+  `is_scoped_path` nor `scope-guard.sh` normalises a path*, so `…/.claude/../src/secrev/x.py`
+  matches the harness case and is asked about rather than dispatched to the milestone that would
+  refuse it, and `tests/fixtures/.claude/…` produces a question it need not. The missing
+  normalisation is pre-existing and shared by every glob in `paths.sh`; what round 5 added is a
+  case that *permits* ahead of every refusal, so the precedence inverts rather than merely
+  over-matching. Fixing it means normalising `$path` once for all branches, which is a change to
+  every guard's input and not to this class. (v) Same file: if `hook_ask.py` fails, `set -e` exits
+  1, which `PreToolUse` treats as a non-blocking error — the write proceeds. H-9 asks for exit 2.
+  The pattern is pre-existing at the file's other `ask` site, so it is consistency rather than a
+  regression, and it is recorded here rather than fixed one call site at a time.

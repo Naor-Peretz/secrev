@@ -11,15 +11,34 @@ the way `check.sh` runs pytest: `protected_snapshot.py run -- <command>`.
 
 from __future__ import annotations
 
+import importlib.util
+import os
 import shutil
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = ROOT / "scripts" / "protected_snapshot.py"
+
+
+def _checker_rooted_at(root: Path) -> Any:
+    """The checker loaded as a module, with its `ROOT` pointed at `root`.
+
+    Most cases here run it as a child process in a throwaway repository, which
+    is how the gate runs it. These two are about how it resolves `.git` before
+    any file is read, so they call the functions directly — a child process
+    would report the same exit code for "watched nothing" and "watched
+    everything and found no change", which is the defect, not the test."""
+    spec = importlib.util.spec_from_file_location(f"protected_snapshot_{id(root)}", SCRIPT)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    module.ROOT = root
+    return module
 
 
 @pytest.fixture
@@ -176,6 +195,208 @@ def test_a_startup_file_planted_in_the_venv_is_a_change(repo: Path) -> None:
     result = suite(repo, code)
     assert result.returncode == 1
     assert "evil.pth" in result.stderr
+
+
+@pytest.mark.parametrize(
+    ("relative", "content"),
+    [
+        (".git/config", "[core]\n\tfsmonitor = touch /tmp/x\n"),
+        (".git/info/attributes", "*.py filter=x\n"),
+        (".git/hooks/pre-commit", "#!/bin/sh\ntouch /tmp/x\n"),
+    ],
+)
+def test_git_configuration_that_runs_code_is_watched(
+    repo: Path, relative: str, content: str
+) -> None:
+    """The fourth review's vectors. `git ls-files` lists worktree files, so the
+    old listing could not see anything under `.git/` at all — these were not
+    merely unwatched, they were unreachable by that mechanism."""
+    path = repo / relative
+    path.parent.mkdir(parents=True, exist_ok=True)
+    code = f"open({str(path)!r}, 'w').write({content!r})\n"
+    result = suite(repo, code)
+    assert result.returncode == 1
+    assert relative.rsplit("/", 1)[-1] in result.stderr
+
+
+def test_repointing_a_symlink_under_a_protected_root_is_a_change(repo: Path) -> None:
+    """A symlink is recorded by its *target path*, not by the target's content.
+
+    The first version hashed `read_bytes()`, which follows the link — so the
+    digest described a file outside the watched tree rather than the link. The
+    link here already exists when the baseline is taken, which makes this a
+    test of the digest rather than of the walk: the entry is in both snapshots
+    and only its meaning differs.
+
+    **The two targets hold identical content, and that is the whole test.** The
+    first draft gave them different content and passed against the unfixed
+    code, because hashing the target still saw *that* difference — it proved
+    nothing about which of the two things was being recorded. Equal content is
+    the case that separates them: the link now points somewhere else and no
+    byte anywhere has changed.
+    """
+    decoy = repo / "outside"
+    decoy.mkdir()
+    (decoy / "one.py").write_text("same = 1\n", encoding="utf-8")
+    (decoy / "two.py").write_text("same = 1\n", encoding="utf-8")
+    (repo / "src" / "link.py").symlink_to(decoy / "one.py")
+
+    code = (
+        "import os\n"
+        "os.unlink('src/link.py')\n"
+        f"os.symlink({str(decoy / 'two.py')!r}, 'src/link.py')\n"
+    )
+    result = suite(repo, code)
+    assert result.returncode == 1
+    assert "changed   src/link.py" in result.stderr
+
+
+def test_a_symlink_to_a_fifo_does_not_hang_the_gate(repo: Path) -> None:
+    """The same defect's other half, and the one with no error message: reading
+    *through* the link opens whatever it points at, and opening a FIFO with no
+    writer blocks forever — no exception, no timeout, the gate simply never
+    returns. M3.5 removed this from the tool (`inventory.py`, C1) and it was
+    still here. The timeout is the assertion; there is nothing else to see.
+    """
+    os.mkfifo(repo / "pipe")
+    (repo / "src" / "link.py").symlink_to(repo / "pipe")
+    result = subprocess.run(  # noqa: S603 - fixed argv, no shell
+        [sys.executable, str(repo / "scripts" / "protected_snapshot.py"), "run", "--", "true"],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=30,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_a_fifo_outside_the_walk_does_not_hang_the_gate(repo: Path) -> None:
+    """The same hang, by the route the walk does not control.
+
+    `_walk` admits only links and regular files, so the symlink test above
+    passes on a fix that covers nothing else. `_startup_files` globs `*.pth`
+    in site-packages and `_git_files` tests `~/.gitconfig` with `exists()` —
+    neither asks whether the entry is a regular file, and a review measured
+    the gate hanging on a FIFO at either. That is worse than the `chmod 000`
+    case recorded as open: no exit code at all.
+
+    A test can reach site-packages, which `test_a_startup_file_planted_in_the
+    _venv_is_a_change` already demonstrates. The timeout is the assertion.
+    """
+    site_packages = repo / ".venv" / "lib" / "python3.11" / "site-packages"
+    site_packages.mkdir(parents=True)
+    code = f"import os\nos.mkfifo({str(site_packages / 'evil.pth')!r})\n"
+    result = subprocess.run(  # noqa: S603 - fixed argv, no shell
+        [
+            sys.executable,
+            str(repo / "scripts" / "protected_snapshot.py"),
+            "run",
+            "--",
+            sys.executable,
+            "-c",
+            code,
+        ],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=30,
+    )
+    # And it is a *change*, not merely survivable: a named pipe appearing
+    # where Python reads startup files is exactly what this watches for.
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert "evil.pth" in result.stderr
+
+
+def test_a_linked_worktree_does_not_silently_watch_nothing(tmp_path: Path) -> None:
+    """In a linked worktree `.git` is a one-line *file* naming the real gitdir,
+    and walking a non-directory returns nothing — so the entire `.git` half of
+    this checker watched zero files while the stage printed its success line. A
+    false green, which is worse than a missing check (H-1).
+
+    This asserts on the checker's own view rather than through a child run,
+    because what failed was the resolution, and the resolution is what a
+    reviewer needs named.
+    """
+    git = shutil.which("git")
+    assert git
+    identity = ["-c", "user.name=t", "-c", "user.email=t@t.invalid"]
+    main = tmp_path / "main"
+    main.mkdir()
+    (main / "a.txt").write_text("x\n", encoding="utf-8")
+    for args in (["init", "-q"], ["add", "-A"], [*identity, "commit", "-qm", "base"]):
+        subprocess.run(  # noqa: S603 - absolute binary, fixed argv, no shell
+            [git, *args], cwd=main, check=True, capture_output=True
+        )
+    linked = tmp_path / "linked"
+    subprocess.run(  # noqa: S603 - absolute binary, fixed argv, no shell
+        [git, "worktree", "add", "-q", str(linked)], cwd=main, check=True, capture_output=True
+    )
+    assert (linked / ".git").is_file(), "a linked worktree's .git is a file, not a directory"
+
+    module = _checker_rooted_at(linked)
+    # **On the resolution, and on paths inside this tree only.** `_git_files`
+    # also returns the machine's global configs, so `assert watched` passes
+    # with the resolution mutated away on any machine that has a
+    # `~/.gitconfig` — and `any(name == "config")` passes on any machine using
+    # the XDG location, where the global config is itself named `config`. Both
+    # were true of the first version of this test: the regression test for
+    # this round's headline fix was green without the fix. Twice in one round
+    # is a pattern, and the pattern is asserting on whatever the function
+    # happened to return.
+    assert module._git_directories(), "the .git file resolved to no directory"
+    inside = [path for path in module._git_files() if path.is_relative_to(tmp_path)]
+    assert inside, "the .git watch resolved to nothing in a linked worktree"
+    # The shared configuration — where a clean filter is planted — lives in the
+    # common directory, not in the worktree's own gitdir.
+    assert any(path.name == "config" for path in inside)
+
+
+def test_a_dot_git_file_naming_nothing_refuses(tmp_path: Path) -> None:
+    """H-1 for the resolution itself: unreadable state is a refusal, never an
+    empty watch that reads as clean."""
+    (tmp_path / ".git").write_text("this names no gitdir\n", encoding="utf-8")
+    module = _checker_rooted_at(tmp_path)
+    with pytest.raises(module.CannotCheck):
+        module._git_files()
+
+
+def test_gits_own_bookkeeping_is_not_a_change(repo: Path) -> None:
+    """The control for the rule above. `.git/` is watched whole *minus* the
+    churn git makes of its own accord; without this the gate would fail on
+    every run that touches the index."""
+    code = "open('.git/index', 'ab').write(b'\\0')\nopen('.git/COMMIT_EDITMSG', 'w').write('x')\n"
+    result = suite(repo, code)
+    assert result.returncode == 0, result.stderr
+
+
+def test_the_suite_cannot_reach_the_real_home_or_global_git_config(repo: Path) -> None:
+    """Prevention rather than detection, for the one vector where it is free.
+
+    A global `~/.gitconfig` written by a test reaches every other repository on
+    the machine — confirmed in review. The child runs with HOME in a scratch
+    directory and with `GIT_CONFIG_GLOBAL` pointed at the null device, so a
+    test that writes "the global config" writes nowhere that anything later
+    reads. This asserts on the *real* paths: they must be untouched.
+    """
+    real_home = Path.home()
+    config = real_home / ".gitconfig"
+    before = config.read_bytes() if config.exists() else None
+
+    code = (
+        "import os, pathlib, subprocess\n"
+        "home = pathlib.Path(os.environ['HOME'])\n"
+        f"assert home != pathlib.Path({str(real_home)!r}), 'HOME was not redirected'\n"
+        "assert os.environ['GIT_CONFIG_GLOBAL'] == os.devnull\n"
+        "(home / '.gitconfig').write_text('[core]\\n\\tfsmonitor = touch /tmp/x\\n')\n"
+        "subprocess.run(['git', 'config', '--global', 'core.pager', 'touch /tmp/x'])\n"
+    )
+    result = suite(repo, code)
+
+    assert result.returncode == 0, result.stderr
+    after = config.read_bytes() if config.exists() else None
+    assert after == before, "the suite reached the real global git config"
 
 
 def test_hook_state_is_the_one_exclusion(repo: Path) -> None:

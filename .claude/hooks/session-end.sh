@@ -15,7 +15,16 @@ cd "$ROOT" 2>/dev/null || exit 0
 # it. The harness reads it; nothing in the product writes here.
 STAMP=".gate-passed"
 
-changed=$(git status --porcelain -- src tests patterns scripts 2>/dev/null | wc -l | tr -d ' ')
+# See lib/git_safe.sh: `git status` executes `core.fsmonitor`, and this hook
+# runs at the end of every turn.
+GIT_SAFE="$ROOT/.claude/hooks/lib/git_safe.sh"
+[ -f "$GIT_SAFE" ] || {
+    echo "session-end: $GIT_SAFE is missing — refusing to shell out to git (H-1)." >&2
+    exit 2
+}
+. "$GIT_SAFE"
+
+changed=$(git_ro status --porcelain -- src tests patterns scripts 2>/dev/null | wc -l | tr -d ' ')
 [ "$changed" = "0" ] && exit 0
 
 # Newest mtime among the paths the gate actually covers.

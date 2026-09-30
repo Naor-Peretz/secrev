@@ -69,7 +69,7 @@ full again. Enabled by `git config core.hooksPath .githooks`, which is repo-loca
 ├── disabled/            # agents kept but not scanned; see its README
 ├── commands/            # /check, /milestone, /commit, /pr
 ├── hooks/               # 12 sh hooks + the Python skill router
-│   └── lib/             # hook_input, hook_ask, paths — shared, policy-free
+│   └── lib/             # hook_input, hook_ask, paths, git_safe — shared, policy-free
 └── skills/              # 9 skills + skill-rules.json
 ```
 

@@ -10,11 +10,22 @@ set -eu
 ROOT="${CLAUDE_PROJECT_DIR:-.}"
 cd "$ROOT" 2>/dev/null || exit 0
 
+# Sourced, not duplicated: `git_ro` turns off the configuration keys that make
+# git run a command. `git status --porcelain` executes `core.fsmonitor` from
+# the repository's own `.git/config`, measured, and this hook runs before the
+# owner has read anything.
+GIT_SAFE="$ROOT/.claude/hooks/lib/git_safe.sh"
+[ -f "$GIT_SAFE" ] || {
+    echo "session-start: $GIT_SAFE is missing — refusing to shell out to git (H-1)." >&2
+    exit 2
+}
+. "$GIT_SAFE"
+
 MILESTONE=$(cat .claude/MILESTONE 2>/dev/null || echo "unset")
 BRIEF="BRIEF_${MILESTONE}.md"
-BRANCH=$(git branch --show-current 2>/dev/null || echo "?")
-DIRTY=$(git status --porcelain 2>/dev/null | wc -l | tr -d ' ')
-COMMITS=$(git rev-list --count HEAD 2>/dev/null || echo 0)
+BRANCH=$(git_ro branch --show-current 2>/dev/null || echo "?")
+DIRTY=$(git_ro status --porcelain 2>/dev/null | wc -l | tr -d ' ')
+COMMITS=$(git_ro rev-list --count HEAD 2>/dev/null || echo 0)
 
 echo "<session-context>"
 echo "Milestone: ${MILESTONE}  ·  branch: ${BRANCH}  ·  uncommitted paths: ${DIRTY}"

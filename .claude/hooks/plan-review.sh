@@ -31,8 +31,20 @@ read_field() {
 tool=$(read_field tool_name)
 [ "$tool" = "ExitPlanMode" ] || exit 0
 
+GIT_SAFE="$ROOT/.claude/hooks/lib/git_safe.sh"
+[ -f "$GIT_SAFE" ] || {
+    echo "plan-review: $GIT_SAFE is missing — refusing to shell out to git (H-1)." >&2
+    exit 2
+}
+. "$GIT_SAFE"
+
 MILESTONE=$(cat "$ROOT/.claude/MILESTONE" 2>/dev/null || echo M1)
-BRANCH=$(git -C "$ROOT" branch --show-current 2>/dev/null || echo "?")
+# `git branch --show-current` was measured *not* firing `core.fsmonitor`, and
+# it goes through `git_ro` anyway: the rule is the call site, not the
+# subcommand. A rule that exempted the subcommands checked today would have to
+# be re-audited every time git grows a trigger, which is the denylist this
+# milestone keeps finding under a different name.
+BRANCH=$(git_ro -C "$ROOT" branch --show-current 2>/dev/null || echo "?")
 
 cat <<EOF
 <plan-review-workflow>

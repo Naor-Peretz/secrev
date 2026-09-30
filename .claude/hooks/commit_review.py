@@ -28,6 +28,8 @@ from __future__ import annotations
 
 import importlib.machinery
 import importlib.util
+import os
+import re
 import shutil
 import subprocess
 import sys
@@ -93,14 +95,108 @@ def is_commit(command: str) -> bool:
     return False
 
 
-def _git(git: str, root: Path, *args: str) -> str:
-    """One `git diff` call, argument list only. Raises on failure so the caller
-    can refuse — an unreadable index is not an empty one."""
+# Configuration that makes git run someone else's code, turned off for the
+# calls this checkpoint makes. A review demonstrated all three from a test:
+# `core.fsmonitor` and a clean filter (`.git/config` plus
+# `.git/info/attributes`) both executed *inside this hook*, because it shells
+# out to `git diff` — the control that replaced hand-staging was itself an
+# execution site. `core.hooksPath` is here for the same family though it fires
+# only on a real commit.
+#
+# This disarms **our** calls. It does not make a planted filter harmless: the
+# owner's own `git add` still runs it, which is why `protected_snapshot.py`
+# watches `.git/` and why the class stays open until HARNESS-FS confines the
+# test run. Nor is it an allowlist — naming mechanisms is a denylist, and git
+# adds more of them. It is the narrow half that is free.
+GIT_DISARMED = (
+    "-c",
+    "core.fsmonitor=false",
+    "-c",
+    "core.hooksPath=/dev/null",
+    "-c",
+    "protocol.ext.allow=never",
+    # A program run in place of git's own diff. It fires only when a patch is
+    # generated, which none of the calls below ask for — it is here because
+    # the next person to add `_git(git, root, blanking)` with no `--name-status`
+    # would otherwise add an execution site, not because it is live today.
+    "-c",
+    "diff.external=",
+)
+
+# The mechanisms above are named; these are not, and that is the whole
+# difficulty. A clean filter is `filter.<anything>.clean`, so no fixed list of
+# `-c` options reaches it — after `core.fsmonitor` was disarmed the planted
+# filter still ran. What is enumerable is the configuration actually present:
+# ask git which of these keys are set, in every scope it reads, and blank each
+# one. That covers a driver by any name, including one a future git adds under
+# these prefixes, without naming drivers.
+_EXECUTABLE_KEYS = re.compile(
+    r"^(filter\..*\.(clean|smudge|process)|diff\..*\.(textconv|command))$"
+)
+
+
+def _blanked(git: str, root: Path) -> dict[str, str]:
+    """Environment blanking every configured key in the driver families below.
+
+    Not "every key that makes git run a command" — that was the first wording
+    and it is a promise `_EXECUTABLE_KEYS` does not keep. `merge.*.driver`,
+    `difftool.*.cmd`, `mergetool.*.cmd` and `trailer.*.command` are equally
+    name-arbitrary and equally listed; none of them fires on the three calls
+    this hook makes, so they are absent rather than unhandled. The comment
+    above already argues that naming mechanisms is a denylist; a docstring
+    claiming the denylist is complete is the same error in prose, and it will
+    be read as a guarantee by whoever adds a fourth call.
+
+    Reading configuration executes nothing; it is using it that does.
+
+    **Through the environment rather than `-c key=`, because `-c` cannot carry
+    these keys.** `-c` takes one `key=value` string and splits it at the first
+    `=`, so a driver named with an `=` in it — `filter.a=b.clean` — makes
+    `-c filter.a=b.clean=` set the key `filter.a` to `b.clean=`, leaving the
+    real key untouched. A review planted exactly that and the filter ran. The
+    `GIT_CONFIG_COUNT`/`KEY_n`/`VALUE_n` form passes key and value in separate
+    variables, with no splitting to exploit; the same plant was measured inert
+    against it. `GIT_CONFIG_KEY_n` is also the only form that can express an
+    empty value unambiguously.
+    """
     proc = subprocess.run(  # noqa: S603 - fixed argv, no shell
-        [git, "diff", *args],
+        [git, *GIT_DISARMED, "config", "--list", "--name-only"],
         capture_output=True,
         text=True,
         cwd=root,
+        check=False,
+    )
+    # H-1 in the small: a listing that failed is not a repository without
+    # dangerous keys. Refusing here surfaces as the checkpoint's exit 2.
+    if proc.returncode != 0:
+        raise RuntimeError(proc.stderr.strip() or "git config --list failed")
+    keys = sorted({key for key in proc.stdout.splitlines() if _EXECUTABLE_KEYS.match(key)})
+    # **Extend the caller's pairs, never replace them.** git reads exactly
+    # indices 0..count-1, so starting from zero silently drops whatever the
+    # environment already carried — a CI image passing `safe.directory` that
+    # way would lose it, and this hook would then fail with an exit 2 nobody
+    # could trace. Anything hostile passed in is listed by the call above and
+    # blanked like any other key, so inheriting costs nothing.
+    try:
+        inherited = int(os.environ.get("GIT_CONFIG_COUNT", "0"))
+    except ValueError:
+        inherited = 0
+    environment = {"GIT_CONFIG_COUNT": str(inherited + len(keys))}
+    for offset, key in enumerate(keys):
+        environment[f"GIT_CONFIG_KEY_{inherited + offset}"] = key
+        environment[f"GIT_CONFIG_VALUE_{inherited + offset}"] = ""
+    return environment
+
+
+def _git(git: str, root: Path, blanking: dict[str, str], *args: str) -> str:
+    """One `git diff` call, argument list only. Raises on failure so the caller
+    can refuse — an unreadable index is not an empty one."""
+    proc = subprocess.run(  # noqa: S603 - fixed argv, no shell
+        [git, *GIT_DISARMED, "diff", *args],
+        capture_output=True,
+        text=True,
+        cwd=root,
+        env={**os.environ, **blanking},
         check=False,
     )
     if proc.returncode != 0:
@@ -135,7 +231,10 @@ def review(root: Path) -> str:
     if git is None:
         raise RuntimeError("no git on PATH")
 
-    staged = _entries(_git(git, root, "--cached", "--name-status", "-z"))
+    # Read the configuration once: three `git diff` calls do not need three
+    # listings, and one answer for all three cannot disagree with itself.
+    blanking = _blanked(git, root)
+    staged = _entries(_git(git, root, blanking, "--cached", "--name-status", "-z"))
     # A changed mode on an existing file, and a new file created executable.
     # The first draft looked only for "mode change", and its own test showed
     # that a new file staged with the executable bit reports as
@@ -143,10 +242,10 @@ def review(root: Path) -> str:
     # read content and never modes.
     modes = [
         line.strip()
-        for line in _git(git, root, "--cached", "--summary").splitlines()
+        for line in _git(git, root, blanking, "--cached", "--summary").splitlines()
         if "mode change" in line or ("create mode" in line and "100755" in line)
     ]
-    unstaged = _entries(_git(git, root, "--name-status", "-z"))
+    unstaged = _entries(_git(git, root, blanking, "--name-status", "-z"))
 
     lines = [
         "Commit checkpoint. Staging no longer needs your hand (owner decision,",

@@ -34,6 +34,15 @@ kept beside this, because their existence is the thing that was exploited.
 A test that rewrites this script is caught too: `scripts/` is a protected root,
 and the code doing the comparison was loaded before the child started.
 
+**This closes the vectors that have been found, not the class**, and the
+difference is the point rather than a caveat. Four rounds each widened what is
+watched, and each time a reviewer found another file that runs code — git alone
+offers several configuration-driven mechanisms and new versions add more. What
+closes the class is confinement: a test run that cannot write outside a scratch
+directory, which is `HARNESS-FS` in `.claude/TASKS_M2.md` and is open. The one
+piece of confinement that costs nothing is done here — `HOME` and the global
+git config are redirected for the child — and the rest is not claimed.
+
 **What it cannot see**, stated so nobody reads more into a green stage than it
 holds: a test that writes and restores a file within the run, and a process a
 test detaches that writes after the child returns. The commit checkpoint
@@ -42,16 +51,26 @@ put them there. The exit code is what gates: a test can print anything to the
 shared terminal, including a copy of the success line, but it cannot set this
 process's status.
 
-**Which files: all of them, ignore rules included.** This listed files with
+**Which files: everything under the protected roots, plus `.git/`, plus the
+files Python and git execute at startup.** Two reviews moved this line, and
+each time the previous wording was too confident. It listed files with
 `git ls-files --others --exclude-standard`, so anything in `.gitignore` or
-`.git/info/exclude` was never counted — and `.git/info/exclude` is not
-protected, and a change to it shows in no `git status`. A third review planted
-`.claude/hooks/shutil.py`, excluded it there, and the stage printed "no
-protected path changed" while every later `git commit` ran that module inside
-the commit checkpoint. So there is no exclusion by ignore rule. `__pycache__`
-is counted too, and not blindly left out: a `.pyc` whose header matches a
-source file's mtime and size is loaded *instead of* the source, which makes a
-planted one a vector in its own right.
+`.git/info/exclude` went uncounted — and `.git/info/exclude` is not protected,
+and a change to it shows in no `git status`. A third review planted
+`.claude/hooks/shutil.py`, hid it there, and the stage printed "no protected
+path changed" while every later `git commit` ran that module inside the commit
+checkpoint. The answer then said "all of them, ignore rules included", which a
+fourth review showed was still false in the direction that mattered:
+`git ls-files` lists *worktree* files, so nothing under `.git/` was reachable
+by that mechanism at all — and `.git/config` plus `.git/info/attributes` are
+where a clean filter and `core.fsmonitor` execute code.
+
+So: a Python walk, no ignore rules anywhere, `.git/` watched whole minus the
+churn git makes of its own accord, and no git subprocess in this file at all —
+the listing was the one child process a planted `.git/config` could steer.
+`__pycache__` is counted and not blindly left out: a `.pyc` whose header
+matches a source file's mtime and size is loaded *instead of* the source, which
+makes a planted one a vector in its own right.
 
 That would fire on every run, since importing the package writes bytecode —
 so the child runs with `PYTHONPYCACHEPREFIX` pointed at a directory outside the
@@ -82,7 +101,15 @@ cost is honest: granting a permission *while* a gate runs makes the gate name
 that file. It says which file, so the reason is never a mystery.
 
 Content and the executable bit both, because no guard reads modes and a changed
-bit is a change.
+bit is a change. **A symlink is recorded by its target path, not by what the
+target contains** — recording the content was following the link at the one
+moment the link is the thing being watched, so repointing it read as unchanged,
+and a link to a FIFO hung the gate instead of failing it.
+
+`.git` is resolved rather than assumed to be a directory: in a linked worktree
+it is a one-line file naming the real gitdir, and a walk of it returns nothing
+at all — watched-whole becomes watched-not-at-all with no change in what the
+stage prints.
 
 The roots mirror `STACK.md` §8 H-4. They are a second copy of that list, which
 H-7 would object to on its own; `tests/harness/attack.py` pins this tuple equal
@@ -93,7 +120,6 @@ from __future__ import annotations
 
 import hashlib
 import os
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -127,22 +153,86 @@ class CannotCheck(Exception):
     """The snapshot could not be taken — exit 2, never 0."""
 
 
+def _digest(path: Path) -> str:
+    """What this path *is*, as one string: a symlink's target, or a file's
+    bytes and executable bit.
+
+    **The symlink branch is not a refinement — without it the entry is worse
+    than useless.** `_walk` records a symlink and never follows it, and the
+    first version of this then called `read_bytes()` on that entry, which
+    follows it at the one moment it matters: the digest was of the *target's*
+    content. A link planted under a watched root and later repointed at a
+    different file reads as unchanged, because the digest never described the
+    link. A review measured it: the recorded value was the outside target's
+    hash. Reading through also hands the checker whatever the target is — a
+    FIFO blocks the gate forever, which is the hang M3.5 removed from the tool
+    and had left in the harness.
+    """
+    if path.is_symlink():
+        return f"link:{path.readlink()}"
+    if not path.is_file():
+        # **Not a refinement either.** `_walk` admits only links and regular
+        # files, so the first version's symlink branch was enough for
+        # everything it collected — and a review then measured the gate
+        # *hanging*, with no exit code and no message, on a FIFO named
+        # `evil.pth` in the venv and on a FIFO at the watched `~/.gitconfig`.
+        # `_git_files` and `_startup_files` do not go through `_walk`: one
+        # tests `exists()`, the other globs. Reading a FIFO with no writer
+        # blocks forever, which is worse than exit 2 — "never finished" is not
+        # even "did not check" (H-1).
+        #
+        # The branch is here rather than in the two collectors because a third
+        # collector would have to remember, and the fix that covers only the
+        # collector a review demonstrated is this milestone's whole pattern.
+        # A non-regular file has no content to hash and is recorded as what it
+        # is: appearing, vanishing or changing kind is a change.
+        return "not-regular"
+    data = path.read_bytes()
+    executable = path.stat().st_mode & 0o111
+    return f"{hashlib.sha256(data).hexdigest()}{'+x' if executable else ''}"
+
+
+def _walk(base: Path, skip: frozenset[str] = frozenset()) -> list[Path]:
+    """Every file under `base`, skipping any path component in `skip`.
+
+    Symlinks are recorded as entries and never followed, so a link planted
+    under a watched root cannot make this read — or hash — a file outside it.
+    """
+    found: list[Path] = []
+    if not base.is_dir():
+        return found
+    for entry in sorted(base.rglob("*")):
+        if skip.intersection(entry.relative_to(base).parts):
+            continue
+        if entry.is_symlink() or entry.is_file():
+            found.append(entry)
+    return found
+
+
 def _files() -> list[str]:
-    git = shutil.which("git")
-    if git is None:
-        raise CannotCheck("no git on PATH")
-    proc = subprocess.run(  # noqa: S603 - fixed argv, no shell
-        # No `--exclude-standard`: see the module docstring. `--others` alone
-        # lists every untracked file, ignored ones included.
-        [git, "ls-files", "-z", "--cached", "--others", "--", *PROTECTED_ROOTS],
-        cwd=ROOT,
-        capture_output=True,
-        check=False,
-    )
-    if proc.returncode != 0:
-        raise CannotCheck(proc.stderr.decode("utf-8", errors="replace").strip())
-    names = {name for name in proc.stdout.decode("utf-8").split("\0") if name}
-    return sorted(name for name in names if not name.startswith(HOOK_STATE))
+    """The watched paths under the protected roots, relative to the repository.
+
+    **A Python walk, not `git ls-files`** — and dropping git here is the point
+    rather than a tidy-up. The listing was the checker's one child process, and
+    a fourth review showed that repo-local git configuration executes code:
+    `core.fsmonitor` and a clean filter both ran from `.git/config`. A checker
+    that asks git for its file list can be steered by the very files it exists
+    to watch. It also could not see them: `git ls-files` lists worktree files,
+    so nothing under `.git/` was reachable by that mechanism at all — the
+    docstring's "all of them, ignore rules included" was false for the
+    directory that matters most.
+
+    The walk is also simpler: no ignore rules to opt out of, no `--cached` half
+    that only ever bought a file deleted before the run, and no
+    "git is not installed" failure mode.
+    """
+    names: list[str] = []
+    for root in PROTECTED_ROOTS:
+        for path in _walk(ROOT / root):
+            relative = path.relative_to(ROOT).as_posix()
+            if not relative.startswith(HOOK_STATE):
+                names.append(relative)
+    return sorted(names)
 
 
 # What Python executes at *every* start, before any script: a `.pth` line that
@@ -153,6 +243,138 @@ def _files() -> list[str]:
 # too, by name rather than by walking site-packages, which would hash
 # thousands of files to watch three shapes.
 _STARTUP = ("*.pth", "sitecustomize.py", "usercustomize.py")
+
+# `.git/` is watched whole, minus the churn git makes of its own accord. A
+# fourth review confirmed three executions from files in here: a clean filter
+# (`.git/config` plus `.git/info/attributes`) firing on `git add`,
+# `core.fsmonitor` firing on `git status`, and a global config reaching other
+# repositories. `.git/hooks/` joins them: it only fires on a real commit, after
+# the checkpoint, which makes it the weakest of the four and still one to see.
+#
+# Whole-minus-churn rather than a list of the four, for the reason the same
+# review gave: every round of this so far extended a list of names and the
+# class stayed open, because git keeps adding configuration that runs code. A
+# key added by a future git lands in `.git/config`, which is already watched.
+# What is skipped is git's own bookkeeping, which changes constantly and
+# executes nothing.
+GIT_CHURN = frozenset(
+    {
+        "objects",
+        "refs",
+        "logs",
+        # `modules` was here, and it was the one entry in this set that does
+        # **not** execute nothing: `.git/modules/<name>/` is a submodule's real
+        # gitdir, holding its own `config` and `hooks/`. Skipping it dropped a
+        # clean filter and a `core.fsmonitor` from the watch while the comment
+        # above claimed the set executes nothing. Its churn is skipped anyway,
+        # because the names below match on *any* path component — a submodule's
+        # `objects`, `refs` and `index` are covered exactly as the superproject's
+        # are. This repository has no submodules, which made it cheap to get
+        # wrong and cheap to fix.
+        "rebase-merge",
+        "rebase-apply",
+        "sequencer",
+        "index",
+        "HEAD",
+        "ORIG_HEAD",
+        "FETCH_HEAD",
+        "MERGE_HEAD",
+        "MERGE_MSG",
+        "AUTO_MERGE",
+        "REBASE_HEAD",
+        "CHERRY_PICK_HEAD",
+        "COMMIT_EDITMSG",
+        "packed-refs",
+        "shallow",
+        # Held for the length of a `git add`, and gone by the time anything
+        # reads the snapshot. Counting it makes a concurrent git command the
+        # gate's verdict.
+        "index.lock",
+    }
+)
+
+
+def _git_directories() -> tuple[Path, ...]:
+    """Where this checkout's git administrative files actually live.
+
+    `ROOT/.git` is a directory in an ordinary clone and a **file** in a linked
+    worktree (`git worktree add`) or a submodule — one line, `gitdir: <path>`.
+    `_walk` returns nothing for a path that is not a directory, so the whole
+    `.git` half of this checker went silently empty there: zero files watched,
+    the stage still printing its success line. A review measured both halves of
+    that. It is the shape this file has been corrected for four times — a check
+    that cannot run must say so (H-1), and a watch that resolves to nothing is
+    a check that did not run.
+
+    A worktree's own gitdir holds `HEAD`, `index` and `config.worktree`; the
+    shared `config` and `hooks/` live in the common directory it names. Both
+    are watched, because a clean filter planted in either one executes here.
+    """
+    marker = ROOT / ".git"
+    if marker.is_dir():
+        return (marker,)
+    if not marker.exists():
+        # No repository at all — an exported tree. Nothing to watch, and no
+        # git-configuration vector to watch it for.
+        return ()
+    try:
+        text = marker.read_text(encoding="utf-8", errors="replace")
+    except OSError as exc:
+        raise CannotCheck(f"{marker}: {exc}") from exc
+    line = next((row for row in text.splitlines() if row.startswith("gitdir:")), None)
+    if line is None:
+        raise CannotCheck(f"{marker} is a file but names no gitdir")
+    gitdir = Path(line.split(":", 1)[1].strip())
+    if not gitdir.is_absolute():
+        gitdir = (ROOT / gitdir).resolve()
+    if not gitdir.is_dir():
+        raise CannotCheck(f"{marker} names {gitdir}, which is not a directory")
+    directories = [gitdir]
+    common = gitdir / "commondir"
+    if common.is_file():
+        try:
+            shared = Path(common.read_text(encoding="utf-8", errors="replace").strip())
+        except OSError as exc:
+            raise CannotCheck(f"{common}: {exc}") from exc
+        if not shared.is_absolute():
+            shared = (gitdir / shared).resolve()
+        if not shared.is_dir():
+            # The sibling branch four lines up refuses when `gitdir` names a
+            # non-directory; this one used to drop it and carry on. The
+            # directory it drops is the one holding the shared `config` and
+            # `hooks/` — the worktree's own gitdir has `config.worktree` and
+            # little else — so continuing means watching the half that cannot
+            # execute anything and printing the same success line. That is the
+            # defect this function was written to fix, one branch over.
+            raise CannotCheck(f"{common} names {shared}, which is not a directory")
+        directories.append(shared)
+    return tuple(directories)
+
+
+def _git_files() -> list[Path]:
+    """`.git/` minus its churn, and the global git configs.
+
+    The global ones are outside the repository and are the vector a review
+    confirmed reaches *other* repositories on the machine: `HOME` is writable
+    by the test suite, so `~/.gitconfig` is as plantable as `.git/config`.
+    `XDG_CONFIG_HOME` is read ahead of `~/.config` when it is set, so watching
+    only the latter watches the wrong file on a machine that sets it.
+    """
+    found = [path for directory in _git_directories() for path in _walk(directory, GIT_CHURN)]
+    home = Path.home()
+    candidates = [home / ".gitconfig", home / ".config" / "git" / "config"]
+    xdg = os.environ.get("XDG_CONFIG_HOME")
+    if xdg:
+        candidates.append(Path(xdg) / "git" / "config")
+    seen: set[Path] = set()
+    for path in candidates:
+        # `exists()` follows a link and so answers about the target; a dangling
+        # link at `~/.gitconfig` is still a file git will read once something
+        # creates its target.
+        if (path.exists() or path.is_symlink()) and path not in seen:
+            seen.add(path)
+            found.append(path)
+    return found
 
 
 def _startup_files() -> list[Path]:
@@ -170,28 +392,38 @@ def _startup_files() -> list[Path]:
 
 
 def snapshot() -> dict[str, str]:
-    """Path -> digest of content and executable bit. A tracked file that no
-    longer exists is recorded as absent rather than skipped, so a deletion is a
-    change like any other. Startup files are keyed by absolute path, since
-    they live outside the tree."""
+    """Path -> what the path is: a digest of content and executable bit, or a
+    symlink's target. A file listed and then found missing is recorded as
+    absent rather than skipped, so a deletion mid-run is a change like any
+    other. Files outside the tree are keyed by absolute path under a label
+    saying why they are watched."""
     state: dict[str, str] = {}
-    for startup in _startup_files():
+    # Outside the tree, keyed by absolute path. The label is carried from the
+    # collector rather than guessed from the path: it used to be "does this
+    # start with ROOT/.git", which called `~/.gitconfig` a startup file and
+    # would call a linked worktree's gitdir one too.
+    #
+    # **Absent is a value, not a failure**: `_git_files` lists `~/.gitconfig`
+    # only when it exists, so this branch is the file vanishing between
+    # listing and reading — a race, not a machine without one. A CannotCheck
+    # for the ordinary missing case would be an exit 2 on a clean checkout,
+    # and H-1 codes are expensive precisely because they mean something.
+    outside_files = [("git", path) for path in _git_files()]
+    outside_files += [("startup", path) for path in _startup_files()]
+    for label, outside in outside_files:
         try:
-            state[f"startup:{startup}"] = hashlib.sha256(startup.read_bytes()).hexdigest()
+            state[f"{label}:{outside}"] = _digest(outside)
+        except FileNotFoundError:
+            state[f"{label}:{outside}"] = "absent"
         except OSError as exc:
-            raise CannotCheck(f"{startup}: {exc}") from exc
+            raise CannotCheck(f"{outside}: {exc}") from exc
     for name in _files():
-        path = ROOT / name
         try:
-            data = path.read_bytes()
-            executable = path.stat().st_mode & 0o111
+            state[name] = _digest(ROOT / name)
         except FileNotFoundError:
             state[name] = "absent"
-            continue
         except OSError as exc:
             raise CannotCheck(f"{name}: {exc}") from exc
-        digest = hashlib.sha256(data).hexdigest()
-        state[name] = f"{digest}{'+x' if executable else ''}"
     return state
 
 
@@ -222,8 +454,35 @@ def main(argv: list[str]) -> int:
 
     # Bytecode for the run goes outside the tree, so the in-tree __pycache__
     # is neither written nor read by the suite (module docstring).
-    with tempfile.TemporaryDirectory(prefix="secrev-pycache-") as cache:
-        environment = {**os.environ, "PYTHONPYCACHEPREFIX": cache}
+    with (
+        tempfile.TemporaryDirectory(prefix="secrev-pycache-") as cache,
+        tempfile.TemporaryDirectory(prefix="secrev-home-") as home,
+    ):
+        environment = {
+            **os.environ,
+            "PYTHONPYCACHEPREFIX": cache,
+            # **Prevention, not detection, for the one vector where it is
+            # free.** A review confirmed that a global `~/.gitconfig` written
+            # by a test reaches every other repository on the machine. The
+            # suite has no business in the real HOME, so it does not get one:
+            # HOME points at a scratch directory, and git is told explicitly
+            # which config files exist, since it reads `GIT_CONFIG_GLOBAL`
+            # ahead of HOME. Watching these files catches a plant; this stops
+            # the plant from landing where anything later reads it.
+            #
+            # It is *not* confinement: a test can still write to the real
+            # HOME by absolute path. Making that impossible needs an OS
+            # sandbox and is HARNESS-FS's, which stays open.
+            "HOME": home,
+            # Read ahead of `~/.config` when it is set, so redirecting HOME
+            # alone leaves the real one in play for every tool that honours it.
+            "XDG_CONFIG_HOME": str(Path(home) / ".config"),
+            "GIT_CONFIG_GLOBAL": os.devnull,
+            # `GIT_CONFIG_NOSYSTEM` and not `GIT_CONFIG_SYSTEM=/dev/null`:
+            # NOSYSTEM wins over the path variable, so setting both left one
+            # of them dead and reading as though it did something.
+            "GIT_CONFIG_NOSYSTEM": "1",
+        }
         try:
             child = subprocess.run(  # noqa: S603 - argv from check.sh
                 command, cwd=ROOT, env=environment, check=False
@@ -235,7 +494,11 @@ def main(argv: list[str]) -> int:
             )
             return 2
 
-    print("\n\033[1m── tests wrote no protected path\033[0m")
+    # The header states what the stage *is*, and is printed before the answer
+    # is known — it used to read "tests wrote no protected path" here, a
+    # conclusion on screen above the check that reaches it. CLAUDE.md puts a
+    # printed string first in the reading order for exactly this reason.
+    print("\n\033[1m── did the tests write a protected path?\033[0m")
     try:
         after = snapshot()
     except CannotCheck as exc:
