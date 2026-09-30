@@ -481,9 +481,15 @@ It is in scope for AC-10, and the rules below are binding on it.
   NFR-6), so a kind edited without review narrows the review's scope with nothing reporting it. A
   rule or kind added without review is a check that silently disappears. `surfaces/` joined in M2
   (`TASKS_M2.md`, C-1), in the same change that created it — protecting an input after it exists
-  leaves a window in which it is not. `.claude/` is protected against **`Bash` only** — writes through `Write`/`Edit` stay
-  permitted there, so repairing the harness remains possible and remains visible, while the path
-  that disables a guard without anything objecting closes. Nothing guarded the harness itself: a
+  leaves a window in which it is not. `.claude/` is **refused to `Bash` and asked about for
+  `Write`/`Edit`** — a write there is never blocked, so repairing the harness from the session that
+  noticed the breakage remains possible; `scope-guard.sh` asks, so it remains visible. Those two
+  halves were written together here and only the first was built: until M4's fifth review a write
+  to a guard produced silence, and the look came at commit, after the session had already run with
+  the changed guard. The question is answered ahead of the per-milestone dispatch — a milestone
+  branch written before a directory existed permits it by silence (`TASKS_M3.md` D-1), and
+  repairing a guard is the same act under every milestone. Scoping the directory *without* that
+  ordering makes M0, and any milestone with no rules, refuse the repair. Nothing guarded the harness itself: a
   `sed -i` on `bash-guard.sh` removed the control, and no component was defective on its own. That
   is composition risk in the sense of FR-0.8, found in the reviewer rather than the reviewed.
 - **H-5 — Path globs carry no leading anchor.** Use `src/secrev/*.py|*/src/secrev/*.py`, not

@@ -76,12 +76,19 @@ REFUSE = 2
 # `src/`. Taking the broader one -- STACK.md wins on mechanism -- and the
 # divergence is open question 5.
 #
-# `.claude` is here and deliberately NOT in lib/paths.sh. The harness is
-# protected against Bash and not against Write/Edit, and the asymmetry is the
-# whole answer to the bootstrap objection: a `sed -i` on this file removed the
-# control with nothing objecting, while a Write to it passes in front of every
-# hook that watches writes. Repair stays possible and stays visible; the
-# silent-disable path closes.
+# `.claude` is here, and since M4's fifth review it is in lib/paths.sh too.
+# The asymmetry is in the *answer*, not in which file knows the name: a `sed
+# -i` on this file is refused, because a shell write removed the control with
+# nothing objecting; a `Write` to it is asked about and never blocked, because
+# the session that finds a guard broken has to be able to repair it. Repair
+# stays possible and stays visible.
+#
+# This comment said `.claude` was "deliberately NOT in lib/paths.sh" for four
+# milestones, and the second half of that sentence — "and stays visible" — was
+# true of nothing: `scope-guard.sh` consults `is_scoped_path`, so leaving the
+# name out meant no Write or Edit to any guard was ever remarked on, and the
+# only look came at commit, after the session had already run with the changed
+# guard.
 #
 # Nothing guarded the harness until now, and no component was defective on its
 # own -- the guards covered the tool, and the tool's guards were not covered.

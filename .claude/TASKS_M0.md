@@ -93,6 +93,11 @@ One task per iteration. Do not start a second.
       able to disable another's control, neither defective alone.
       Note the set diverges — `.claude/` is protected against **Bash only**, so it belongs in
       `bash_guard.py` and not in `paths.sh`, which governs the Write/Edit hooks.
+      **Superseded in M4 (round 5), and the divergence was the defect.** "Stays visible" above
+      needed a mechanism and had none: leaving `.claude/` out of `paths.sh` meant no Write or Edit
+      to a guard was ever remarked on. `is_scoped_path` now names it and `scope-guard.sh` asks,
+      ahead of the milestone dispatch so a repair is never refused. The *decision* recorded here
+      stands; the note about where it belongs does not.
       *Files:* `.claude/hooks/bash_guard.py`, `tests/harness/attack.py`.
       *Accept:* `sed -i` on `bash-guard.sh` refuses; `cat` of it permits; a `Write` to it is
       untouched by this guard.

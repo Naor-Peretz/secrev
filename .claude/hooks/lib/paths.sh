@@ -8,8 +8,15 @@
 #   is_self_application_path — Python under src/ and scripts/. What §2.1 forbids
 #   is a construct in code the tool ships or runs.
 #
-#   is_scoped_path — anything under src/, patterns/, surfaces/ and scripts/. Milestone
-#   scope is about what is being built, whatever the file format.
+#   is_scoped_path — anything under src/secrev/, patterns/, surfaces/,
+#   structure/, scripts/, threat-models/ and .claude/. Milestone scope is about
+#   what is being built, whatever the file format. The list is kept current
+#   here because a comment naming four of seven directories reads as a decision
+#   that the other three are out — and it says `src/secrev/`, not `src/`,
+#   because that is what the glob says: `src/other.py` is protected against
+#   Bash and watched by the snapshot, and is *not* scope-guarded. A comment
+#   that rounds the rule up is how the next reader learns a rule that is not
+#   there.
 #
 # patterns/ is in the second and absent from the first, and that is the whole
 # point of separating them. The catalog is the tool's *input*: a rule that
@@ -60,6 +67,22 @@ is_scoped_path() {
       # later review of that archetype. Scoped, so an M4 change cannot rewrite
       # the threat model while calling itself structural work.
       threat-models/*|*/threat-models/*) return 0 ;;
+      # The harness itself (M4, round 5). Every other entry here is something
+      # the project *builds*; this one is what builds it. It was outside this
+      # function entirely, so `scope-guard.sh` exited 0 on every write to a
+      # guard, an agent definition or a hook — the layer with the most
+      # authority in the repository was the one nothing asked about.
+      #
+      # `Bash` is refused against `.claude/` and `Write`/`Edit` deliberately
+      # are not: repairing a guard has to stay possible, and has to stay
+      # visible. Visible was the half that was missing — the commit checkpoint
+      # saw it only once it was staged, which is after the session had already
+      # run with the changed guard in place.
+      #
+      # Scoped, not self-application-checked: `is_self_application_path` is
+      # unchanged, for the reason patterns/ is absent from it. A guard names
+      # the constructs it refuses.
+      .claude/*|*/.claude/*) return 0 ;;
       *) return 1 ;;
     esac
 }

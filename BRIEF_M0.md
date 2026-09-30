@@ -155,7 +155,11 @@ Three items grew beyond what is written above, and the difference is worth keepi
 
 `.claude/` was added to the protected set — nothing guarded the harness itself, and a `sed -i` on
 a guard removed the control with nothing objecting. Protected against `Bash` only, so `Write` and
-`Edit` still reach it and repair stays visible.
+`Edit` still reach it and repair stays possible. *"And repair stays visible"* stood here too, and
+was an assumption: nothing watched a `Write` to a guard until M4's fifth review put `.claude/` into
+`is_scoped_path`, so between M0 and M4 the only look came at commit — after the session had already
+run with the changed guard. Left as a record of what M0 delivered, corrected so it does not read as
+a mechanism that existed.
 
 `STACK.md` §8 gained **H-9** from this milestone's own findings: a guard answers in the protocol's
 vocabulary, and reads the state it gates on rather than assuming it.

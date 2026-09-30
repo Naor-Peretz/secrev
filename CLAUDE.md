@@ -291,9 +291,17 @@ grep foo` is refused, and reading a protected file takes one command or the `Rea
 `find` is deliberately absent from the read-only set — it carries `-delete` and `-exec`, and
 admitting it "minus those flags" would be a denylist over flags (P3).
 
-`.claude/` is protected against `Bash` only. A `Write` or `Edit` to a guard is untouched by this
-hook and passes in front of the ones that watch writes, so repairing the harness stays possible and
-stays visible while the silent-disable path closes.
+`.claude/` is refused to `Bash` and **asked about** for `Write` and `Edit`. A write to a guard is
+untouched by *this* hook, so repairing the harness from the session that noticed the breakage stays
+possible; `scope-guard.sh` then asks, so it also stays visible. That second half is OQ4's own
+wording (`TASKS_M0.md`) and was not enforced until M4's fifth review: `is_scoped_path` did not name
+`.claude/`, so a write to a hook, an agent definition or the milestone marker produced silence, and
+the only look came at commit — after the session had already been running with the changed guard.
+The question is answered **before** the per-milestone dispatch, because a milestone branch written
+before a directory existed permits that directory by silence (the D-1 failure), and because
+repairing a guard is the same act under every milestone. Scoping it without that ordering turns a
+repair into a refusal under M0 and under any milestone with no rules, which two assertions now
+hold.
 
 M0 exists because a harness that reports green while verifying nothing is worse than no harness:
 the green is taken as evidence.
@@ -466,7 +474,7 @@ them, no tool that can write to a protected path is unwatched (H-3).
 | *(every hook)* | — | **Starts Python isolated**: `-I` always, `-S` where the script is stdlib-only. Python puts a script's own directory first on `sys.path`, so a `json.py` planted in `lib/` owned every guard until M4's third review. No hook imports our own code through the bytecode cache — `commit_review.py` loads `bash_guard` from source — so a planted `.pyc` has nothing to replace. Both are held by `attack.py`, statically and by running the plants against the real hooks |
 | `commit-review.sh` | PreToolUse Bash | **Asks** on any `git commit`, with the staged set in the approval dialog — protected paths and executable bits marked, unstaged tracked changes listed. The replacement for hand-staging (2026-09-22), not an optional extra; refuses when the index cannot be read (H-9) |
 | `self-application-guard.sh` | PreToolUse Write/Edit | **Blocks** a write that would put `eval`, `exec`, `pickle`, `shell=True`, `yaml.load`, `Loader=`, or a network client into Python under `src/` or `scripts/` |
-| `scope-guard.sh` | PreToolUse Write/Edit | **Asks** when a write reaches past the milestone in `.claude/MILESTONE`; **refuses** when that milestone has no rules (H-6) |
+| `scope-guard.sh` | PreToolUse Write/Edit | **Asks** when a write reaches past the milestone in `.claude/MILESTONE`, and on every write to `.claude/` whatever the milestone — the harness is what writes the project, and a change to it takes effect immediately rather than at commit; **refuses** when that milestone has no rules (H-6) |
 | `spec-guard.sh` | PreToolUse Write/Edit | **Asks** before any edit to the PRD, `STACK.md`, or a brief, restating precedence |
 | `determinism-guard.sh` | PostToolUse | Re-runs the determinism check when a file named by `is_nfr3_path` is touched |
 | `async-check.sh` | PostToolUse | Runs ruff + pytest + self-check in the background, debounced |
@@ -640,7 +648,8 @@ stays there.
   question-id pin had to be data rather than Python for AC-4 to stay true, and a pin editable
   without review is protection one step from what it protects. The artifact goldens inherit it,
   which is right — a golden edited without review is a comparison that stops comparing. `.claude/`
-  is protected against `Bash` only.
+  is refused to `Bash` and asked about for `Write`/`Edit`, so a guard can still be repaired by the
+  session that found it broken, and the repair is seen when it happens rather than at commit.
 - **H-5** Path globs carry no leading anchor: `src/secrev/*.py|*/src/secrev/*.py`, not
   `*/src/secrev/*.py` alone, which relies on the client always sending absolute paths. The earlier
   form `*src/secrev/*.py` over-matched — `scripts/` caught `transcripts/`.

@@ -48,6 +48,46 @@ read_field() {
 path=$(read_field file_path)
 is_scoped_path "$path" || exit 0
 
+# The harness is answered HERE, ahead of the milestone dispatch, and never in a
+# per-milestone branch. Two reasons, and the first is the expensive one:
+#
+#   1. A branch written before a directory existed permits that directory by
+#      silence — the D-1 lesson M3 paid a failed assertion to learn, and the
+#      one every case below now guards against by naming each directory. Put
+#      `.claude/` into those branches and the next milestone's branch inherits
+#      the same hole. Answered before the dispatch, it cannot be forgotten by
+#      a branch that has not been written yet.
+#   2. A change to a guard is not milestone work. It is the same act under M0
+#      and under M12, so a rule that varies by milestone would be describing
+#      something that does not vary.
+#
+# It *asks*; it does not refuse. Repairing the harness from inside a session
+# has to stay possible — `bash-guard.sh` refuses `Bash` against `.claude/` and
+# points at Write/Edit for exactly that reason. What was missing is the second
+# half of that sentence: it stays *visible*. Until now the only look came at
+# commit, by which time the session had already been running with the changed
+# guard.
+#
+# This does not need the milestone, so it is placed before the marker is read:
+# an unreadable marker is not "no rules for this state" here (H-6), because
+# the rule is the same for every state.
+case "$path" in
+  .claude/*|*/.claude/*)
+    harness_reason="A write to the harness itself: ${path}
+
+This is the layer that writes the project — guards, hooks, agent definitions,
+the milestone marker. A change here changes what every later tool call in this
+session is allowed to do, and it takes effect immediately, not at commit.
+
+Nothing is refused: repairing a guard from inside a session is deliberate
+(STACK.md §8, and bash-guard.sh points here for it). This is the look. Read the
+diff as a change to the rules, not to the code: does it narrow what a guard
+refuses, remove a check, or widen an allowlist?"
+    printf '%s' "$harness_reason" | "$SYSPY" -I -S "$ROOT/.claude/hooks/lib/hook_ask.py"
+    exit 0
+    ;;
+esac
+
 # H-6: a guard with no rules for the current state refuses. This was
 # `|| echo M1` followed by `|| exit 0` — two H-1 breaches in two lines. Unable
 # to read the marker it assumed the one milestone it had rules for, and given
@@ -62,7 +102,12 @@ MILESTONE=$(printf '%s' "$MILESTONE" | tr -d ' \t\n\r')
 refuse_no_rules() {
     {
       echo "BLOCKED — milestone ${MILESTONE:-<empty>} has no rules permitting this write, and it"
-      echo "touches ${path##*/}, which is inside the scoped tree (src/, patterns/, surfaces/, scripts/)."
+      # The list is the one a reader can act on: the directories that can
+      # actually reach this message. `.claude/` is scoped too and never
+      # arrives here — it is answered before the milestone is read, because a
+      # repair must not depend on the marker being recognised.
+      echo "touches ${path##*/}, which is inside the scoped tree (src/, patterns/, surfaces/,"
+      echo "structure/, scripts/, threat-models/)."
       echo
       echo "STACK.md §8 H-6: a guard with no rules for the current state refuses. Not knowing"
       echo "what is permitted is not the same as concluding that everything is."
