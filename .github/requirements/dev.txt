@@ -23,15 +23,15 @@
 # Do not describe this file as hash-locked until it is.
 
 # Direct
-mypy==2.3.1
+mypy==2.4.0
 pytest==9.1.1
-ruff==0.16.7
+ruff==0.16.10
 
 # Transitive, pinned so the resolution is reproducible rather than merely
 # constrained. Generated from a working environment with `pip freeze`.
-ast_serialize==0.11.1
+ast_serialize==0.12.1
 iniconfig==2.3.0
-librt==0.15.0
+librt==0.16.0
 mypy_extensions==1.1.0
 packaging==26.3
 pathspec==1.1.1
