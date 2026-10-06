@@ -41,6 +41,72 @@
 # this repository does not contain. That is still the wrong behaviour: a
 # control that fires on the wrong file teaches people to work around it.
 
+# Lexical normalisation, applied before any of the predicates below.
+#
+# **Recorded as open in `BRIEF_M4.md` §6 and closed here.** None of these globs
+# normalised, so `…/.claude/../src/secrev/x.py` matched the harness case and was
+# asked about rather than dispatched to the milestone that would have refused it
+# — the harness case answers *before* the milestone, so an unnormalised path
+# inverted the precedence rather than merely over-matching. `tests/fixtures/
+# .claude/…` produced a question for nothing by the same route.
+#
+# Lexical and not `realpath`: resolving symlinks needs a process per call and a
+# utility whose flags differ between GNU and BSD (STACK.md §1 keeps that class
+# out). The two are not equivalent, and the difference is stated rather than
+# hidden: with a symlinked component the lexical answer can disagree with the
+# real one, and it disagrees in the direction that *over*-matches — our globs
+# fire on a segment appearing anywhere, so collapsing `x/..` can only remove
+# segments that would have matched, never invent one. Over-matching a guard that
+# asks is a question nobody needed; under-matching would be a write nobody saw.
+#
+# **Call it as its own statement**, never `normalise_path "$(read_field …)"`:
+# nested, the reader's `exit 2` ends only the subshell, the outer command
+# succeeds, and `set -e` sees nothing — which turned a malformed payload into
+# exit 0 in two guards until two assertions caught it.
+normalise_path() {
+    _np=$1
+    # `//` → `/`, then `/./` → `/`, then `x/../` → ``, each to a fixed point.
+    # Parameter expansion throughout: `tr -s /` would have been shorter and
+    # would have cost a process on every tool call, which is the one thing these
+    # hooks are careful about.
+    while :; do
+        case "$_np" in
+          *//*) _np="${_np%%//*}/${_np#*//}" ;;
+          *) break ;;
+        esac
+    done
+    while :; do
+        case "$_np" in
+          ./*) _np=${_np#./} ;;
+          */./*) _np="${_np%%/./*}/${_np#*/./}" ;;
+          *) break ;;
+        esac
+    done
+    while :; do
+        case "$_np" in
+          # A leading `../` has no parent to cancel, so it is left alone.
+          ../*|..) break ;;
+          */../*)
+            _np_head=${_np%%/../*}
+            _np_tail=${_np#*/../}
+            case "$_np_head" in
+              */*) _np="${_np_head%/*}/$_np_tail" ;;
+              *) _np=$_np_tail ;;
+            esac
+            ;;
+          */..)
+            _np_head=${_np%/..}
+            case "$_np_head" in
+              */*) _np=${_np_head%/*} ;;
+              *) _np=. ;;
+            esac
+            ;;
+          *) break ;;
+        esac
+    done
+    printf '%s' "$_np"
+}
+
 is_self_application_path() {
     case "$1" in
       src/secrev/*.py|*/src/secrev/*.py|scripts/*.py|*/scripts/*.py) return 0 ;;

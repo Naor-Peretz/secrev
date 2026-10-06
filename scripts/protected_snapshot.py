@@ -526,20 +526,37 @@ def snapshot() -> dict[str, str]:
     outside_files += [("startup", path) for path in _startup_files()]
     outside_files += [("interpreter", path) for path in _interpreter_files()]
     for label, outside in outside_files:
-        try:
-            state[f"{label}:{outside}"] = _digest(outside)
-        except FileNotFoundError:
-            state[f"{label}:{outside}"] = "absent"
-        except OSError as exc:
-            raise CannotCheck(f"{outside}: {exc}") from exc
+        state[f"{label}:{outside}"] = _state_of(outside)
     for name in _files():
-        try:
-            state[name] = _digest(ROOT / name)
-        except FileNotFoundError:
-            state[name] = "absent"
-        except OSError as exc:
-            raise CannotCheck(f"{name}: {exc}") from exc
+        state[name] = _state_of(ROOT / name)
     return state
+
+
+def _state_of(path: Path) -> str:
+    """`_digest`, with the two unreadable cases recorded as values.
+
+    **Unreadable is a value, and that closes a denial of the gate.** A
+    `PermissionError` used to raise `CannotCheck`, which is exit 2 — the right
+    direction, since refusing beats passing, but it handed any test the power to
+    *stop the gate* with one `chmod 000`, and the operator saw a broken harness
+    rather than a hostile test. The mode is observable even when the content is
+    not, so this is not a check that could not run: a file that becomes
+    unreadable during the run has *changed*, and saying so is both true and more
+    useful. A file already unreadable when the baseline was taken reads the same
+    way in both snapshots and raises nothing, which is what keeps the honest
+    case quiet. Recorded as open in `BRIEF_M4.md` §6 and closed here.
+
+    Any other `OSError` still raises: an I/O error or a path that cannot be
+    stat'd at all is genuinely "did not check" (H-1).
+    """
+    try:
+        return _digest(path)
+    except FileNotFoundError:
+        return "absent"
+    except PermissionError:
+        return "unreadable"
+    except OSError as exc:
+        raise CannotCheck(f"{path}: {exc}") from exc
 
 
 def changes(before: dict[str, str], after: dict[str, str]) -> list[str]:
@@ -550,7 +567,16 @@ def changes(before: dict[str, str], after: dict[str, str]) -> list[str]:
         elif name not in after:
             found.append(f"removed   {name}")
         elif before[name] != after[name]:
-            kind = "removed" if after[name] == "absent" else "changed"
+            if after[name] == "absent":
+                kind = "removed"
+            elif after[name] == "unreadable":
+                # Named for what it is rather than folded into "changed": the
+                # remedy is a file mode, and sending a reader to look for edited
+                # content would be the same conflation `recon.json` keeps apart
+                # between `unreadable` and `too_large`.
+                kind = "locked"
+            else:
+                kind = "changed"
             found.append(f"{kind:<9} {name}")
     return found
 
@@ -593,10 +619,17 @@ def main(argv: list[str]) -> int:
             # alone leaves the real one in play for every tool that honours it.
             "XDG_CONFIG_HOME": str(Path(home) / ".config"),
             "GIT_CONFIG_GLOBAL": os.devnull,
-            # `GIT_CONFIG_NOSYSTEM` and not `GIT_CONFIG_SYSTEM=/dev/null`:
-            # NOSYSTEM wins over the path variable, so setting both left one
-            # of them dead and reading as though it did something.
-            "GIT_CONFIG_NOSYSTEM": "1",
+            # **The system config is left alone, and that is a correction.**
+            # `GIT_CONFIG_NOSYSTEM=1` was here, turning it off as well. It
+            # bought nothing: the vector is a test writing the *global* config,
+            # which the line above redirects, and `/etc/gitconfig` is not
+            # writable by the user whose tests these are — if it were, the test
+            # could do anything regardless. What it cost was real: a
+            # system-level `safe.directory`, which is how a container with a
+            # checkout owned by another uid makes git usable at all, so every
+            # test that shells out to git would fail there for a reason nobody
+            # would connect to this line. Recorded as open in `BRIEF_M4.md` §6
+            # and closed by removing the thing that was not earning its cost.
         }
         try:
             child = subprocess.run(  # noqa: S603 - argv from check.sh
@@ -632,7 +665,18 @@ def main(argv: list[str]) -> int:
             print(f"  … and {len(found) - SHOWN} more", file=sys.stderr)
         return 1
     print(f"no protected path changed during the test run ({len(after)} checked)")
-    return 0 if child.returncode == 0 else 1
+    # **The child's own status, not `1`.** This read `0 if returncode == 0 else
+    # 1`, which flattened every way a command can fail into "it failed" —
+    # pytest's 1 (tests failed) arrived indistinguishable from its 3 (internal
+    # error), 4 (usage error) and 5 (nothing collected), and "the suite says no"
+    # is not "the suite could not run". That is H-1's distinction, mild here
+    # because both are non-zero, and still the one this project exists to keep.
+    # Recorded as open in `BRIEF_M4.md` §6 and closed by passing the number
+    # through: this wrapper runs an arbitrary command and has no business
+    # interpreting another program's exit codes, which is exactly why it must
+    # not overwrite them. `check.sh` maps them, where pytest is known to be the
+    # command.
+    return child.returncode
 
 
 if __name__ == "__main__":

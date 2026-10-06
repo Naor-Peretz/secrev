@@ -49,7 +49,18 @@ read_field() {
 # unknown milestone exit 2; with the milestone checked first, that refusal
 # would land on every write in the repository rather than on the scoped ones.
 # A guard that refuses everything is as useless as one that refuses nothing.
+# Normalised before any case below looks at it. An unnormalised `..` did not
+# merely over-match here: the harness case answers *before* the milestone
+# dispatch, so `…/.claude/../src/secrev/x.py` was asked about and permitted
+# where the milestone would have refused it — the precedence inverted.
+# Two statements, never `normalise_path "$(read_field …)"`. Nested, the inner
+# substitution's `exit 2` ends only the subshell, the outer command succeeds, and
+# `set -e` sees nothing — a malformed payload then returned 0 from a guard whose
+# whole contract is to refuse when it cannot read the state it gates on. Two
+# assertions caught it immediately, which is the third time this repository has
+# paid for the same shape (`out=$(cmd)` followed by `status=$?`).
 path=$(read_field file_path)
+path=$(normalise_path "$path")
 is_scoped_path "$path" || exit 0
 
 # The harness is answered HERE, ahead of the milestone dispatch, and never in a
@@ -87,7 +98,7 @@ Nothing is refused: repairing a guard from inside a session is deliberate
 (STACK.md §8, and bash-guard.sh points here for it). This is the look. Read the
 diff as a change to the rules, not to the code: does it narrow what a guard
 refuses, remove a check, or widen an allowlist?"
-    printf '%s' "$harness_reason" | "$SYSPY" -I -S "$ROOT/.claude/hooks/lib/hook_ask.py"
+    syspy_ask "$harness_reason" "$ROOT/.claude/hooks/lib/hook_ask.py" scope-guard
     exit 0
     ;;
 esac
@@ -414,5 +425,5 @@ Building it now is not merely early — the brief says each of these gets design
 prerequisite lands. If it is genuinely needed, that is a conflict with the brief and should be
 raised (BRIEF_M1.md §8 states the rule), not resolved here."
 
-printf '%s' "$reason" | "$SYSPY" -I -S "$ROOT/.claude/hooks/lib/hook_ask.py"
+syspy_ask "$reason" "$ROOT/.claude/hooks/lib/hook_ask.py" scope-guard
 exit 0

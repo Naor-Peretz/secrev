@@ -38,7 +38,9 @@ read_field() {
         exit 2
     }
 }
+# Two statements; see scope-guard.sh for why nesting these loses the refusal.
 path=$(read_field file_path)
+path=$(normalise_path "$path")
 
 is_nfr3_path "$path" || exit 0
 

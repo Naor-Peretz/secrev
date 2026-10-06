@@ -2217,6 +2217,32 @@ def test_a_write_to_the_harness_is_asked_about_under_every_milestone() -> None:
         assert "bash-guard.sh" in out, f"the question must name the file ({where})"
 
 
+def test_a_dot_dot_path_does_not_buy_the_harness_answer() -> None:
+    """Recorded as open in `BRIEF_M4.md` §6, closed here.
+
+    None of the globs normalised, and for the harness case that was worse than
+    an over-match: it is answered *before* the milestone dispatch, so
+    `…/.claude/../src/secrev/x.py` was asked about and permitted where M3 would
+    have refused it. The precedence inverted rather than merely widening.
+
+    Normalisation is lexical — `realpath` would cost a process per tool call and
+    a utility whose flags differ between GNU and BSD. With a symlinked component
+    the lexical answer can differ from the real one, and only in the direction
+    that over-matches, since these globs fire on a segment appearing anywhere:
+    collapsing `x/..` can remove a segment that would have matched, never invent
+    one. A question nobody needed beats a write nobody saw.
+    """
+    rc, out = scope_at("M3", ".claude/../src/secrev/x.py", "x = 1\n")
+    assert rc == BLOCK, (
+        f"a `..` path reached the harness case and was permitted under M3 (rc={rc}): {out}"
+    )
+
+    # The control: the real harness path still asks, so normalisation has not
+    # quietly removed the case it was added beside.
+    rc, out = scope_at("M3", ".claude/hooks/bash-guard.sh", "exit 0\n")
+    assert rc == PASS_THROUGH and asks(out)
+
+
 def test_the_harness_question_does_not_fire_on_the_rest_of_the_tree() -> None:
     """The control. A guard that asks about everything is one people click
     through, and this one sits in front of Write and Edit — the two tools that

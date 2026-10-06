@@ -176,6 +176,22 @@ resolve_syspy() {
 # out as 1, and `PreToolUse` reads 1 as a non-blocking error, so the write went
 # ahead. A guard that permits when it breaks is the H-1 collapse this harness was
 # built to remove, and it was reachable by any means of breaking the guard.
+# An `ask` that could not be emitted is not a permit.
+#
+# Recorded as open in `BRIEF_M4.md` §6 and closed here. `hook_ask.py` writes the
+# JSON that carries a question to the owner; when it failed, `set -e` ended the
+# hook with status 1, which `PreToolUse` treats as a non-blocking error — so the
+# write proceeded with nobody asked. The whole point of these two guards is that
+# somebody looks, and the one path where the looking breaks was the path that
+# waved it through. H-9 wants the protocol's own vocabulary: exit 2.
+syspy_ask() {
+    printf '%s' "$1" | "$SYSPY" -I -S "$2" || {
+        echo "${3:-hook}: could not put the question to you — refusing rather than" >&2
+        echo "proceeding with nobody asked (H-1, H-9)." >&2
+        exit 2
+    }
+}
+
 syspy_status() {
     case "$1" in
       0|2) return "$1" ;;
