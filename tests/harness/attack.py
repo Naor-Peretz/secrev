@@ -1474,6 +1474,93 @@ def _shell_code(path: Path) -> str:
     return re.sub(r"\\\n\s*", " ", "\n".join(kept))
 
 
+def test_a_guard_whose_decider_cannot_run_refuses_rather_than_permits() -> None:
+    """The hole that made the interpreter question safe to answer cheaply.
+
+    `bash-guard.sh` ended with the decider's status as its own. `bash_guard.py`
+    returns 0 to permit and 2 to refuse; everything else — a crash, an
+    ImportError, an interpreter too old to parse it — is 1, and `PreToolUse`
+    reads 1 as a non-blocking error, so the write went through unexamined. Any
+    way of breaking the guard was a way of turning it into a permit.
+
+    This is why `lib/syspy.sh` does not verify that the interpreter it picks can
+    run each module: that would cost an extra interpreter start on every tool
+    call, while mapping an undefined status to a refusal is free and covers more
+    than the interpreter case. A decider that exits 1 for *any* reason now
+    refuses, and the refusal says the check did not run rather than implying it
+    found nothing.
+    """
+    command = "tee src/secrev/x.py"
+    payload = {"tool_name": "Bash", "tool_input": {"command": command}}
+    with plant_tree() as tmp:
+        root = Path(tmp)
+        decider = root / ".claude" / "hooks" / "bash_guard.py"
+        # A decider that fails the way a broken one does: status 1, the value the
+        # protocol gives no meaning to.
+        decider.write_text("import sys\n\nsys.exit(1)\n", encoding="utf-8")
+        rc, _, err = run_hook("bash-guard.sh", payload, project_dir=root)
+    assert rc == BLOCK, f"a broken guard permitted the write (rc={rc})"
+    assert "no" in err and "meaning" in err, f"the refusal does not say why: {err!r}"
+
+
+def test_no_hook_resolves_its_own_interpreter_through_path() -> None:
+    """The owner's finding, applied to the hooks rather than to the gate.
+
+    Every hook resolved its interpreter with `command -v python3`, which
+    searches PATH in order — and a developer PATH begins with directories the
+    user owns. A test creating `~/.cargo/bin/python3` would own `bash_guard.py`,
+    the scope guard and the commit checkpoint, which is every decision this
+    harness makes about a write. `skill-activation.sh` was worse: it *preferred*
+    `.venv/bin/python`, writable by the suite and watched by nothing, on every
+    prompt.
+
+    One resolution, in `lib/syspy.sh`, so there is one place to correct. The
+    hooks that still name `.venv` do it to run `ruff` and `pytest`, which live
+    there — `test_quality_checks_do_not_fall_back_to_path` is the other half of
+    that distinction.
+    """
+    offenders = []
+    for script in sorted(HOOKS.glob("*.sh")):
+        code = _shell_code(script)
+        if "command -v python3" in code:
+            offenders.append(f"{script.name} resolves python3 through PATH itself")
+        if '"$SYSPY"' in code and "lib/syspy.sh" not in code:
+            offenders.append(f"{script.name} uses $SYSPY without sourcing the shared resolver")
+        # The two exempt hooks run ruff, mypy and pytest, which are *in* the venv.
+        tools = script.name in {"async-check.sh", "determinism-guard.sh"}
+        if not tools and re.search(r'(?:^|[^\w])PY="?\$(?:ROOT/)?\.venv/bin/python', code):
+            offenders.append(f"{script.name} starts the venv's interpreter, which a test can write")
+    assert not offenders, f"hooks resolving their own interpreter: {offenders}"
+
+
+def test_the_two_interpreter_resolutions_agree() -> None:
+    """H-7: the gate and the hooks answer the same question, so they answer it
+    from the same list. Two copies exist because `scripts/check.sh` may not read
+    from `.claude/` — an assertion holds that boundary — and this pins them."""
+
+    def candidates(path: Path) -> set[str]:
+        code = _shell_code(path)
+        lists = re.findall(r"for _?candidate in (.+?); do", code)
+        assert lists, f"{path.name} no longer loops over interpreter candidates"
+        # Every loop in one file must use the same list, or the file disagrees
+        # with itself about which interpreters are acceptable.
+        assert len(set(lists)) == 1, f"{path.name} has disagreeing candidate lists: {set(lists)}"
+        return set(lists[0].split())
+
+    gate = candidates(REPO / "scripts" / "check.sh")
+    hooks = candidates(HOOKS / "lib" / "syspy.sh")
+    assert gate == hooks, (
+        f"only the gate tries: {sorted(gate - hooks)}; only the hooks try: {sorted(hooks - gate)}"
+    )
+    assert "/usr/bin/python3" in gate, "neither tries a fixed absolute path before PATH's answer"
+
+    # And both require the chosen one to be unwritable by this user.
+    library = _shell_code(HOOKS / "lib" / "syspy.sh")
+    assert re.search(r'\[ -w "\$_candidate" \]', library), (
+        "lib/syspy.sh no longer prefers an interpreter this user cannot write"
+    )
+
+
 def test_the_protected_path_check_does_not_run_under_the_interpreter_it_watches() -> None:
     """Fifth review, and the one finding that replaced the control itself.
 

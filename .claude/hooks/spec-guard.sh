@@ -14,10 +14,13 @@ READER="$ROOT/.claude/hooks/lib/hook_input.py"
 
 # JSON is read by lib/hook_input.py, not jq (STACK.md §2). Every path that
 # cannot complete the check exits 2, never 0 (H-1).
-SYSPY=$(command -v python3 2>/dev/null) || {
-    echo "spec-guard: no python3 — cannot check (STACK.md §8 H-1)." >&2
+SYSPY_LIB="$ROOT/.claude/hooks/lib/syspy.sh"
+[ -f "$SYSPY_LIB" ] || {
+    echo "spec-guard: $SYSPY_LIB is missing — cannot check (H-1)." >&2
     exit 2
 }
+. "$SYSPY_LIB"
+resolve_syspy spec-guard
 [ -f "$READER" ] || {
     echo "spec-guard: $READER is missing — cannot check (H-1)." >&2
     exit 2

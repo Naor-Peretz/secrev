@@ -534,14 +534,30 @@ Still open, and each is named here so it is not mistaken for settled:
   both CI platforms: the stage ran and printed its count on ubuntu and on macOS with no fallback
   notice, so the interpreter chosen there was unwritable too.
 
-  **Recorded and not closed, in the same breath:** every hook resolves its own interpreter the same
-  way, so a plant earlier on PATH would own `bash-guard.sh`, `scope-guard.sh` and the commit
-  checkpoint as surely as it would have owned the checker. The watch above makes that a *finding in
-  the run that lands it*, since the glob covers PATH rather than just the gate — but prevention
-  means changing the resolution in every hook, which is ten files and the owner's call. Two limits
-  of the detection half, stated rather than implied: a PATH directory that cannot be listed is
-  skipped, and a plant already in place before the first snapshot is the baseline rather than a
-  change.
+  **Recorded as the owner's call, and then made by them: the hooks are converted too.** Every hook
+  resolved its own interpreter the same way, so a plant earlier on PATH would have owned
+  `bash-guard.sh`, `scope-guard.sh` and the commit checkpoint — every decision this harness makes
+  about a write — and `skill-activation.sh` was worse, *preferring* `.venv/bin/python` on every
+  prompt. `.claude/check.sh` ran the guard assertions themselves under it, so a planted interpreter
+  would have been the thing printing "all N guard assertions hold"; the comment four lines above
+  that call claimed they ran on the system interpreter, which had not been true since it was
+  written. One resolution now, `lib/syspy.sh`, pinned against the gate's copy, with a static
+  assertion that no hook resolves its own.
+
+  **A hole found while writing it, and the reason the resolver can afford to be cheap.**
+  `bash-guard.sh` ended with the decider's status as its own. `bash_guard.py` returns 0 to permit
+  and 2 to refuse; everything else — a crash, an `ImportError`, an interpreter too old to parse it —
+  is 1, which `PreToolUse` treats as a non-blocking error, so the write proceeded unexamined. *Any*
+  way of breaking that guard was a way of turning it into a permit. Undefined statuses now map to a
+  refusal, which covers more than the interpreter case and costs nothing, where verifying each
+  interpreter would have cost an extra process start on every tool call.
+
+  **Two limits of the detection half, stated rather than implied:** a PATH directory that cannot be
+  listed is skipped, and a plant already in place before the first snapshot is the baseline rather
+  than a change. And one practical note from doing it: converting `self-application-guard.sh` left
+  it referring to a variable it no longer set, so it refused every `Write` and `Edit` — including
+  its own repair. Fail-closed worked exactly as designed, and the repair took the owner's hand,
+  which is OQ4's bootstrap case arriving in practice rather than in principle.
 
   **Still not covered, and stated as a class rather than a list:** a test that writes and restores
   within the run, a process it detaches, a pytest plugin registered through a planted

@@ -15,10 +15,14 @@ READER="$ROOT/.claude/hooks/lib/hook_input.py"
 ASKER="$ROOT/.claude/hooks/lib/hook_ask.py"
 REVIEWER="$ROOT/.claude/hooks/commit_review.py"
 
-PY=$(command -v python3 2>/dev/null) || {
-    echo "commit-review: no python3 — cannot check (STACK.md §8 H-1)." >&2
+SYSPY_LIB="$ROOT/.claude/hooks/lib/syspy.sh"
+[ -f "$SYSPY_LIB" ] || {
+    echo "commit-review: $SYSPY_LIB is missing — cannot check (H-1)." >&2
     exit 2
 }
+. "$SYSPY_LIB"
+resolve_syspy commit-review
+
 for required in "$READER" "$ASKER" "$REVIEWER"; do
     [ -f "$required" ] || {
         echo "commit-review: $required is missing — cannot check (H-1)." >&2
@@ -28,15 +32,17 @@ done
 
 # `-I -S` for the reason bash-guard.sh records: a module planted beside a hook
 # must not be what the hook imports.
-command=$(printf '%s' "$INPUT" | "$PY" -I -S "$READER" command) || {
+command=$(printf '%s' "$INPUT" | "$SYSPY" -I -S "$READER" command) || {
     echo "commit-review: unreadable hook payload — refusing (H-1)." >&2
     exit 2
 }
 
 # `if reason=$(...)` so a failure is caught here rather than by `set -e`, which
 # would exit with the reviewer's status unexamined (the async-check lesson).
+# Every failure is exit 2 here, whatever the status was: this checkpoint cannot
+# show what a commit records, so it refuses rather than waving it through.
 cd "$ROOT"
-if reason=$(printf '%s' "$command" | "$PY" -I -S "$REVIEWER"); then
+if reason=$(printf '%s' "$command" | "$SYSPY" -I -S "$REVIEWER"); then
     :
 else
     exit 2
@@ -44,4 +50,4 @@ fi
 
 # Not a commit: no opinion, no output.
 [ -n "$reason" ] || exit 0
-printf '%s' "$reason" | "$PY" -I -S "$ASKER"
+printf '%s' "$reason" | "$SYSPY" -I -S "$ASKER"

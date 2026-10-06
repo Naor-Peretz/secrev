@@ -15,10 +15,14 @@ ROOT="${CLAUDE_PROJECT_DIR:-.}"
 READER="$ROOT/.claude/hooks/lib/hook_input.py"
 DECIDER="$ROOT/.claude/hooks/bash_guard.py"
 
-PY=$(command -v python3 2>/dev/null) || {
-    echo "bash-guard: no python3 — cannot check (STACK.md §8 H-1)." >&2
+SYSPY_LIB="$ROOT/.claude/hooks/lib/syspy.sh"
+[ -f "$SYSPY_LIB" ] || {
+    echo "bash-guard: $SYSPY_LIB is missing — cannot check (H-1)." >&2
     exit 2
 }
+. "$SYSPY_LIB"
+resolve_syspy bash-guard
+
 for required in "$READER" "$DECIDER"; do
     [ -f "$required" ] || {
         echo "bash-guard: $required is missing — cannot check (H-1)." >&2
@@ -34,9 +38,20 @@ done
 # drops site-packages altogether, so a `.pth` or `sitecustomize` in whatever
 # virtualenv `python3` resolves to cannot run here either. The hooks are
 # stdlib-only, so neither costs anything they use.
-command=$(printf '%s' "$INPUT" | "$PY" -I -S "$READER" command) || {
+#
+# The flags are given to the interpreter, so which interpreter it is comes first:
+# `lib/syspy.sh` picks one the reviewed code cannot rewrite, because
+# `command -v python3` searched a PATH whose first entries the user owns.
+command=$(printf '%s' "$INPUT" | "$SYSPY" -I -S "$READER" command) || {
     echo "bash-guard: unreadable hook payload — refusing (H-1)." >&2
     exit 2
 }
 
-printf '%s' "$command" | "$PY" -I -S "$DECIDER"
+# The decision, with its status mapped: 0 permits, 2 refuses, and anything else
+# is "the guard did not run" rather than "the guard found nothing". It used to be
+# this line alone, so a crash — or an interpreter too old to parse the decider —
+# exited 1, which PreToolUse treats as a non-blocking error, and the write went
+# through unexamined.
+status=0
+printf '%s' "$command" | "$SYSPY" -I -S "$DECIDER" || status=$?
+syspy_status "$status" bash-guard

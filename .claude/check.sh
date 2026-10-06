@@ -33,11 +33,19 @@ have() { command -v "$1" >/dev/null 2>&1; }
 run()  { printf '\n\033[1m── %s\033[0m\n' "$1"; shift; "$@" || fail=1; }
 
 # Tools come from the project venv when it exists. That is a convenience, not a
-# coupling: the guard assertions below are stdlib-only and run on the system
-# interpreter, so the stage that actually protects this repository never
+# coupling: the guard assertions below are stdlib-only and run on an interpreter
+# of their own, so the stage that actually protects this repository never
 # depends on an environment being built first. A second venv to lint four files
 # would be cost without benefit, and this sentence is here so that stays a
 # decision rather than becoming an oversight.
+#
+# **That sentence was false until M4's sixth review.** It said the assertions ran
+# on the system interpreter; they ran under `$PY`, which is `.venv/bin/python` —
+# writable by the test suite and watched by nothing. A test overwriting it owned
+# the stage that prints "all N guard assertions hold". `$GUARD_PY` is now
+# resolved by `lib/syspy.sh`, the same resolution every hook uses: fixed absolute
+# candidates ahead of PATH, and the chosen one unwritable by the user whose code
+# is under review.
 if [ -x .venv/bin/python ]; then
     PY=.venv/bin/python
 elif have python3; then
@@ -46,6 +54,15 @@ else
     echo "no python3 available" >&2
     exit 2
 fi
+
+SYSPY_LIB="$(dirname "$0")/hooks/lib/syspy.sh"
+[ -f "$SYSPY_LIB" ] || {
+    echo "harness gate: $SYSPY_LIB is missing — cannot check (H-1)." >&2
+    exit 2
+}
+. "$SYSPY_LIB"
+resolve_syspy "harness gate"
+GUARD_PY=$SYSPY
 
 missing() {
     printf '\n\033[31m── %s: not installed — cannot check\033[0m\n' "$1" >&2
@@ -73,13 +90,15 @@ run "mypy --strict (harness)" "$PY" -m mypy --strict --ignore-missing-imports \
 # ------------------------------------------------------------------ 4. tests
 # H-8: a guard nobody has tried to defeat is an assumption, not a control. The
 # driver attempts the bypass against every guard and fails if one stops
-# refusing. Stdlib-only and run on whatever interpreter exists, because the
-# guards are what stand between an agent and this repository and gating their
-# check on an environment that may be missing is the H-1 mistake this stage
-# exists to catch.
+# refusing. Stdlib-only, so it runs on an interpreter resolved for the purpose
+# rather than on the venv's: the guards are what stand between an agent and this
+# repository, gating their check on an environment that may be missing is the H-1
+# mistake this stage exists to catch — and running it under an interpreter the
+# reviewed code can overwrite is the same mistake with the answer forged instead
+# of absent.
 printf '\n\033[1m── guard assertions (STACK.md §8 H-8)\033[0m\n'
 if [ -f tests/harness/attack.py ]; then
-    if guard_out=$("$PY" tests/harness/attack.py 2>&1); then
+    if guard_out=$("$GUARD_PY" tests/harness/attack.py 2>&1); then
         printf '%s\n' "$guard_out" | tail -1
     else
         printf '%s\n' "$guard_out"
