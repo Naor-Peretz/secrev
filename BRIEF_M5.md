@@ -46,7 +46,7 @@ spent three milestones accumulating the evidence.
 
 | File | Owns | Must not know about |
 |---|---|---|
-| `src/secrev/closure.py` *(new)* | The reachable artifact set from a declared entry point: files referenced, progressively or conditionally loaded resources, bundled scripts and binaries, and resources fetched at load or run time — the last recorded as **unresolved**, never followed | `sweep`, `surfaces`, `structure`. If closure enters the ledger at all (§6 Q1) it does so through `ledger.py`, as the three sources do |
+| `src/secrev/closure.py` *(new)* | The reachable artifact set from a declared entry point: files referenced, progressively or conditionally loaded resources, bundled scripts and binaries, and resources fetched at load or run time — the last recorded as **unresolved**, never followed | `sweep`, `surfaces`, `structure`. Its unresolved members reach `hits.jsonl` through `ledger.py` under `source: closure` (§6 Q1, answered), exactly as the three detection sources do — never by importing one of them |
 | `patterns/_instruction.yaml` *(new, see §6 Q2)* | FR-3.13's seven classes as prose patterns, each with the question it raises | Anything that concludes. FR-3.15 is a permanent constraint, not a gap |
 | `patterns/_manifest.yaml` *(new, see §6 Q2)* | FR-3.14's five classes over capability grants and configuration | The archetype. A wildcard grant is a question about *this* manifest, not about what kind of artifact it is |
 | `src/secrev/cli.py` | `secrev closure <target>` → `closure.json`, and the `run.json` that records it | The closure algorithm |
@@ -101,9 +101,16 @@ prevent, and M4's F2 found three documents asserting mechanisms that had been re
       expectation in the test, not only a golden.
 - [ ] **A2 — A cycle terminates, and the output does not depend on the entry order.** Evidence: the
       fixture contains one, and the test enters it from both ends and compares bytes.
-- [ ] **A3 — An unresolved member is a finding candidate, not an omission** (FR-1.2). Evidence: the
-      record exists, says why it could not be resolved, and nothing in `closure.py` attempts the
-      fetch — asserted by the self-application check, which forbids runtime network calls.
+- [ ] **A3 — An unresolved member is a finding candidate, not an omission** (FR-1.2, and §6 Q1 as
+      the owner answered it). Evidence: the record is in `hits.jsonl` under `source: closure`, so
+      FR-4.3 refuses to render a report while it is `unresolved`; it says why it could not be
+      resolved; and nothing in `closure.py` attempts the fetch — asserted by the self-application
+      check, which forbids runtime network calls. A `coverage_gaps` line instead of a ledger record
+      would leave it through a *passing* gate, which is the omission FR-1.2 forbids.
+- [ ] **A4 — `cli.SOURCES` gains `closure`, and every check deriving its block list from it covers
+      the fourth block without being told.** Evidence: the determinism stage's artifact half, which
+      derives the blocks it requires from `cli.SOURCES` precisely so that a new source is covered
+      by adding it in one place — remove the entry and that stage must go red.
 - [ ] **B1 — Every FR-3.13 class has a pattern, and every pattern has a positive and a negative
       fixture.** Evidence: the seven classes listed against the pattern ids that cover them, with
       the gaps named where a class has no regex worth shipping.
@@ -144,11 +151,15 @@ prevent, and M4's F2 found three documents asserting mechanisms that had been re
 
 ## 5. Notes for the implementer
 
-**`patterns/` is permitted here and was refused by every milestone since M1.** That is a real
-widening and it is bounded by this brief rather than by the guard: the packs are
-`_instruction.yaml` and `_manifest.yaml`, and a change to `_base.yaml` or `python.yaml` is an M1
-correction in its own commit. The positive/negative fixture pair every pattern ships is what
-catches a rule that drifted while nobody was looking.
+**`patterns/` is permitted here and was refused by every milestone since M1 — by filename, not by
+directory.** `scope-guard.sh` permits `_instruction.yaml` and `_manifest.yaml` and refuses every
+other file in the catalog, because a change to `_base.yaml` or `python.yaml` is an M1 correction in
+its own commit. The first draft of that rule permitted the whole directory and justified it by
+saying the bound was this brief and not the guard — the owner's correction, which is worth keeping
+as a rule of its own: **a brief that names files names something a guard can check, and declining
+to check it is a weaker rule arguing for itself.** What a guard still cannot check is the content
+rule — that no existing question changes — and the positive/negative fixture pair every pattern
+ships is what catches that.
 
 **P8 is why this milestone is uncomfortable.** The instruction layer reads prose and asks whether it
 is trying to steer an agent — and this repository's own `.claude/` is full of prose that steers an
@@ -164,18 +175,36 @@ finding candidate and not a shrug.
 
 ---
 
-## 6. Open questions — for the owner, before implementation
+## 6. Questions — Q1 answered, four open
 
-These are raised rather than resolved. Each names what would be lost by deciding it the wrong way.
+Raised rather than resolved, each naming what would be lost by deciding it the wrong way. Q1 is
+answered and kept in place with the reasoning, because the reasoning is the part that will matter
+when the next conflict of this shape appears.
 
-**Q1 — Does the closure enter `hits.jsonl`, and if so as what?** FR-1.2 says `closure.py` produces
-`closure.json`, which makes it recon-side. It also says an unresolvable member *is itself a finding
-candidate* — and candidates live in the ledger. D-11 says there are **three** peer candidate
-sources, and `cli.SOURCES` has three entries that several checks derive from. So either an
-unresolved member is a fourth `source:` value (contradicting D-11 as written), or it is a
-`coverage_gaps` line in `recon.json` (contradicting "finding candidate" as written), or
-`closure.json` carries it and Phase 4 reads it there. **This is a PRD/decision conflict, not a
-preference, which is why it is the first question.**
+**Q1 — ANSWERED by the owner (2026-10-07): the ledger, and D-11's wording is corrected rather than
+FR-1.2 bent.** The question was whether an unresolvable closure member is a fourth `source:` value
+(contradicting D-11 as written), a `coverage_gaps` line (contradicting "finding candidate" as
+written), or something `closure.json` carries for Phase 4 to read.
+
+The owner's reasoning, which is the part to keep: ask what FR-1.2 is *for*. It says such a member is
+a finding candidate **"not an omission"** — the requirement is that it cannot be passed over in
+silence. In this system exactly one mechanism guarantees that, and it is the ledger plus FR-4.3,
+which refuses to render a report while any hit is `unresolved`. Recorded only in `closure.json` or
+as a gap line, a remote fetch nobody assessed leaves through a *passing* gate, which is the omission
+FR-1.2 forbids arriving by another door.
+
+D-11's rationale is entirely about **detection** mechanisms, and three remains the right number of
+those; an unresolved closure member is not a detection but a hole in the set that was examined. So
+the word *detection* enters D-11 and `cli.SOURCES` holds four values with the fourth documented as a
+different kind. **One addition from reading FR-4.4 while making the change:** the status such a
+member is normally resolved as already exists — `deferred`, with a mandatory reason, surfaced under
+"Not conclusively assessed", and the PRD says deferred items "are never silently dropped". The
+mechanism FR-1.2 needs was already there; what was missing was the route into it.
+
+Consequences for this milestone, which are now requirements rather than questions: `closure.py`
+emits ledger records through `ledger.py` for unresolved members, `cli.SOURCES` gains `closure`, and
+every check that derives its block list from `cli.SOURCES` — the determinism stage's artifact half
+among them — covers the fourth block by construction rather than by someone remembering.
 
 **Q2 — Do the two new packs live in `patterns/`?** The PRD §7 tree says yes. But M2 set the opposite
 precedent for data read by a different mechanism — surface kinds went to `surfaces/`, structural

@@ -2125,9 +2125,43 @@ def test_m5_permits_the_closure_and_the_two_packs_it_owns() -> None:
     rc, out = scope_at("M5", "src/secrev/closure.py", "def closure(root):\n    return []\n")
     assert rc == PASS_THROUGH and not asks(out), "src/ is M5's remit"
 
-    rc, out = scope_at("M5", "patterns/_instruction.yaml", 'version: "2026.10.1"\n')
-    assert rc == PASS_THROUGH and not asks(out), (
-        "M5 owns the instruction pack; refusing it refuses the milestone"
+    for pack in ("patterns/_instruction.yaml", "patterns/_manifest.yaml"):
+        rc, out = scope_at("M5", pack, 'version: "2026.10.1"\n')
+        assert rc == PASS_THROUGH and not asks(out), (
+            f"M5 owns {pack}; refusing it refuses the milestone"
+        )
+
+
+def test_m5_may_add_packs_but_not_edit_the_catalog_it_was_given() -> None:
+    """The boundary the brief states, which the guard can check and did not.
+
+    The rule was `*patterns/*) exit 0` for one round, justified in my own prose
+    as "the bound is the brief, not the guard, which cannot check that". The
+    owner's correction: the brief names two *filenames*, and a filename is
+    exactly what a guard checks. Measured before the fix — `_base.yaml` and
+    `python.yaml` were permitted with no question, so M5 could rewrite M1's
+    closed catalog while this same case refuses `structure/` and
+    `threat-models/` for being closed.
+
+    Weakening a seed pattern deletes candidates from every later review with
+    nothing reporting it. That is the P11 argument the case already makes about
+    the threat models, pointed at the tool's oldest input.
+    """
+    for seed in ("patterns/_base.yaml", "patterns/python.yaml"):
+        rc, _ = scope_at("M5", seed, "patterns: []\n")
+        assert rc == BLOCK, f"M5 may not edit {seed}, got rc={rc}"
+
+    # And the refusal says where the boundary is, since a reader who cannot tell
+    # a scoped refusal from a bug clicks through the next one. `scope_at` keeps
+    # stdout only, so this one goes through `run_hook` for the message.
+    with milestone_tree("M5") as tmp:
+        path = str(Path(tmp) / "patterns" / "_base.yaml")
+        rc, _, err = run_hook(
+            "scope-guard.sh", write_payload(path, "patterns: []\n"), project_dir=Path(tmp)
+        )
+    assert rc == BLOCK
+    assert "_instruction.yaml" in err and "_manifest.yaml" in err, (
+        f"the refusal does not name what M5 may write instead: {err!r}"
     )
 
 

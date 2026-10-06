@@ -350,14 +350,17 @@ case "$MILESTONE" in
   # scripts/ for the determinism comparison; and patterns/ — which every
   # milestone since M1 has refused by name.
   #
-  # **That widening is the one thing to read carefully here.** M2, M3, M3.5 and
-  # M4 each refused `patterns/`, because a milestone adding a *source* has no
-  # business editing the questions. M5 is the milestone the catalog packs were
-  # deferred *to*, so refusing them here would refuse the work. What bounds it is
-  # the brief rather than this guard: BRIEF_M5.md §1 names the two new packs, and
-  # a change to `_base.yaml` or `python.yaml` is an M1 correction in its own
-  # commit. A guard cannot check that; the positive/negative fixture pair every
-  # pattern ships is what catches a rule altered while nobody was looking.
+  # **That widening is the one thing to read carefully here, and it is narrow.**
+  # M2, M3, M3.5 and M4 each refused `patterns/`, because a milestone adding a
+  # *source* has no business editing the questions. M5 is the milestone the
+  # catalog packs were deferred *to*, so refusing them here would refuse the
+  # work — but the permit is **the two filenames the brief names**, not the
+  # directory. The first draft permitted the directory and said the bound was
+  # the brief because "a guard cannot check that"; the owner's correction is
+  # that `BRIEF_M5.md` §1 names two *files*, and a filename is exactly what a
+  # guard checks. What a guard still cannot check is the *content* rule — that
+  # no existing question changes — and the positive/negative fixture pair every
+  # pattern ships is what catches that.
   #
   # **And `patterns/` is permitted on the assumption §6 Q2 resolves that way.**
   # Q2 is open: the PRD §7 tree puts both packs in `patterns/`, while M2 and M4
@@ -406,10 +409,37 @@ case "$MILESTONE" in
         } >&2
         exit 2
         ;;
-      # Permitted, and the only milestone since M1 for which that is true. See
-      # the comment above for what bounds it and for the open question it rests
-      # on.
-      *patterns/*) exit 0 ;;
+      # **The two packs by name, and nothing else in the catalog.**
+      #
+      # This was `*patterns/*) exit 0` for one round, on the stated grounds that
+      # "the bound is the brief, not the guard, which cannot check that". That
+      # was false, and the owner said so: the brief names two *filenames*, and a
+      # filename is precisely what a guard can check. Measured before the fix —
+      # `_base.yaml` and `python.yaml` were permitted with no question, so M5
+      # could rewrite M1's closed catalog, while this same case refuses
+      # `structure/` and `threat-models/` on the grounds that they are closed
+      # and a correction belongs in its own commit. `_base.yaml` is in that
+      # category. Weakening a pattern deletes candidates from every later review
+      # with nothing reporting it, which is the P11 argument this case already
+      # makes about the threat models, applied to the tool's oldest input.
+      #
+      # A new pack of either kind is a brief edit first: the name appears here,
+      # which is a `.claude/` write that asks, so the widening cannot happen by
+      # accident.
+      *patterns/_instruction.yaml|*patterns/_manifest.yaml) exit 0 ;;
+      *patterns/*)
+        {
+          echo "BLOCKED — M1's catalog is closed, and M5 adds packs rather than editing it."
+          echo "$path is in patterns/, and M5's remit there is exactly two files:"
+          echo "_instruction.yaml (FR-3.13) and _manifest.yaml (FR-3.14)."
+          echo
+          echo "A seed pattern that is genuinely wrong is an M1 correction in its own"
+          echo "commit. Weakening one deletes candidates from every later review with"
+          echo "nothing reporting it — the same reason this case refuses the threat"
+          echo "models (P11, BRIEF_M5.md §1)."
+        } >&2
+        exit 2
+        ;;
       *) exit 0 ;;
     esac
     ;;

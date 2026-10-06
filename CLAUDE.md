@@ -139,8 +139,13 @@ patterns this tool ships.
 `BRIEF_M5.md`. **M0, M1, M2, M3, M3.5 and M4 are closed**, the last merged as PR #16, merge commit
 `ac571bc`; the marker moved after `BRIEF_M5.md` and M5's `scope-guard.sh` case existed and had a
 permit and a refusal asserted against them. M5 is where the catalog packs deferred since M1 land,
-so it is the first milestone in four for which `patterns/` is permitted — bounded by the brief
-naming the two new packs rather than by the guard, which cannot check that. Every box in the
+so it is the first milestone in four for which `patterns/` is permitted — and permitted by
+**filename**: `_instruction.yaml` and `_manifest.yaml` pass, every other file in the catalog is
+refused with M1's-catalog-is-closed as the reason. The first draft permitted the directory and
+argued that only the brief could bound it; a brief that names two files names something a guard
+checks, and leaving it at the directory let M5 rewrite the seed patterns with no question. What a
+guard still cannot check is the content rule — that no existing question changes — which is the
+fixture pair's job. Every box in the
 Definition of
 done of `BRIEF_M0.md`, `BRIEF_M1.md` and `BRIEF_M2.md` is ticked, with per-task receipts in
 `.claude/receipts.md` and the ledgers in `.claude/TASKS_M0.md`, `.claude/TASKS_M1.md` and
