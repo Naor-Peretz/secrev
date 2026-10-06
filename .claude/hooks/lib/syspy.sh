@@ -37,12 +37,33 @@
 # router on UserPromptSubmit, and exiting 2 there would break every prompt in the
 # session to report that a suggestion could not be made. H-1 is about quality
 # gates; a router is not one.
+# With `major minor`, a candidate must also report at least that version. That
+# costs one interpreter start per candidate, so the hooks ask for no floor and
+# pay nothing: they run on every tool call, and their modules are plain enough to
+# run under an old Python — CI proved it, with every hook working under macOS's
+# 3.9 at `/usr/bin/python3`. The harness *gate* asks for a floor, because
+# `tests/harness/attack.py` uses `sys.stdlib_module_names` (3.10) and because
+# Apple's interpreter sets a bytecode cache prefix that moves `__pycache__` out
+# of the tree, which the planted-`.pyc` assertion is specifically about. The gate
+# runs once; a process start there is free.
+#
+# Without the floor this would have been the worst kind of wrong: the status
+# mapping below turns an interpreter that cannot run a guard into a refusal, so
+# every Bash command on such a machine would be refused by a guard that never
+# ran. Correctness first, then the property.
 syspy_find() {
+    _min_major=${1:-0}
+    _min_minor=${2:-0}
     for _pass in unwritable any; do
         for _candidate in /usr/bin/python3 /bin/python3 $(command -v python3 2>/dev/null); do
             [ -x "$_candidate" ] || continue
             if [ "$_pass" = unwritable ] && [ -w "$_candidate" ]; then
                 continue
+            fi
+            if [ "$_min_major" != 0 ]; then
+                "$_candidate" -I -S -c \
+                    "import sys; sys.exit(0 if sys.version_info >= ($_min_major, $_min_minor) else 1)" \
+                    2>/dev/null || continue
             fi
             printf '%s' "$_candidate"
             return 0

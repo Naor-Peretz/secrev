@@ -61,8 +61,21 @@ SYSPY_LIB="$(dirname "$0")/hooks/lib/syspy.sh"
     exit 2
 }
 . "$SYSPY_LIB"
-resolve_syspy "harness gate"
-GUARD_PY=$SYSPY
+# With a floor, unlike the hooks: the driver uses `sys.stdlib_module_names`
+# (3.10), and macOS's `/usr/bin/python3` is 3.9 — unwritable, and unable to run
+# the assertions. CI found that by going red on exactly the two assertions that
+# depend on a newer interpreter, which is the right way round: an interpreter
+# that cannot run the check must not be chosen *for* the check, and the floor is
+# what keeps the security property from costing correctness.
+GUARD_PY=$(syspy_find 3 11) || {
+    echo "harness gate: no python3 ≥ 3.11 — cannot run the guard assertions (H-1)." >&2
+    exit 2
+}
+if [ -w "$GUARD_PY" ]; then
+    printf 'note: %s is writable by this user, so the guard assertions run under an\n' \
+        "$GUARD_PY" >&2
+    printf '      interpreter the reviewed code could have replaced.\n' >&2
+fi
 
 missing() {
     printf '\n\033[31m── %s: not installed — cannot check\033[0m\n' "$1" >&2
