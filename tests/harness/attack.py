@@ -1572,9 +1572,32 @@ set -u
 . {REPO}/.claude/hooks/lib/syspy.sh
 UD=$1
 mkdir -p "$UD"
+
+# Shape one: a symlink to a root-owned interpreter. `-w` follows it.
 ln -s /usr/bin/python3 "$UD/python3"
 if [ -w "$UD/python3" ]; then echo "link-w=writable"; else echo "link-w=unwritable"; fi
 if syspy_replaceable "$UD/python3"; then echo "link=replaceable"; else echo "link=safe"; fi
+
+# Shape two: not a link at all — a wrapper at mode 555 in a directory I own.
+# `-w` on the file says safe; the directory is what makes it replaceable. This is
+# the case the owner proposed, and it runs on every platform rather than only
+# where PATH wins, so there is no skip to go quiet.
+printf '#!/bin/sh\\nexit 0\\n' > "$UD/wrapper"
+chmod 555 "$UD/wrapper"
+if [ -w "$UD/wrapper" ]; then echo "wrap-w=writable"; else echo "wrap-w=unwritable"; fi
+if syspy_replaceable "$UD/wrapper"; then echo "wrap=replaceable"; else echo "wrap=safe"; fi
+
+# Shape three: the ownership question, as components. A directory I own at mode
+# 0555 answers "no" to `-w` and "yes" to `-O`, and its owner reaches it with one
+# chmod. Asserted as the two primitives because the composed case cannot be
+# isolated here: every path a test can create sits under an ancestor it can
+# write, so the walk answers "replaceable" before ownership is consulted.
+mkdir -p "$UD/owned"
+chmod 0555 "$UD/owned"
+if [ -w "$UD/owned" ]; then echo "owned-w=writable"; else echo "owned-w=unwritable"; fi
+if [ -O "$UD/owned" ]; then echo "owned-O=mine"; else echo "owned-O=not-mine"; fi
+chmod u+w "$UD/owned"
+
 if syspy_replaceable /usr/bin/python3; then echo "system=replaceable"; else echo "system=safe"; fi
 PATH="$UD:$PATH"
 export PATH
@@ -1586,19 +1609,31 @@ echo "chosen=$(syspy_find)"
     assert result.returncode == 0, result.stderr
     answers = dict(line.split("=", 1) for line in result.stdout.split() if "=" in line)
 
-    # The defect itself: the old test said "unwritable" about a replaceable path.
+    # The defect itself: the old question said "unwritable" about replaceable paths.
     assert answers["link-w"] == "unwritable", "the old question no longer behaves as measured"
+    assert answers["wrap-w"] == "unwritable", "the old question no longer behaves as measured"
     assert answers["link"] == "replaceable", (
         "a symlink in a directory this user owns is still classified as safe"
     )
+    assert answers["wrap"] == "replaceable", (
+        "a mode-555 file in a directory this user owns is still classified as safe"
+    )
+    # `-O` is the one that answers for a directory its owner has closed to itself.
+    assert answers["owned-w"] == "unwritable" and answers["owned-O"] == "mine", (
+        "a directory owned by this user at mode 0555 no longer behaves as measured, "
+        "so the reason `-O` sits beside `-w` has changed"
+    )
 
-    if os.geteuid() != 0:
-        # Skipped as root, where everything is replaceable and the distinction
-        # cannot exist — stated rather than asserted away.
-        assert answers["system"] == "safe", (
-            "/usr/bin/python3 is reported replaceable by a non-root user, so the "
-            "check has become one that can never be satisfied"
-        )
+    # Encoded rather than skipped: as root every path is replaceable and the
+    # distinction cannot exist, which is a fact about the machine and not a case
+    # to pass over in silence.
+    root = os.geteuid() == 0
+    assert (answers["system"] == "safe") is not root, (
+        f"/usr/bin/python3 reported {answers['system']} with euid={os.geteuid()}: as root "
+        "everything is replaceable; as anyone else a root-owned interpreter must be safe, "
+        "or the check has become one that can never be satisfied"
+    )
+    if not root:
         assert answers["chosen"] != f"{probe}/python3", (
             "the resolver took the replaceable link while an unreplaceable "
             "interpreter was available"

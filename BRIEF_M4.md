@@ -540,7 +540,32 @@ Still open, and each is named here so it is not mistaken for settled:
   chosen candidate always comes from PATH, where `/usr/local/bin` is user-owned under Homebrew and
   `~/.local/bin` is by construction. `syspy_replaceable` now tests the file, every ancestor
   directory, and the same for each hop of a symlink chain, with `readlink` and no `-f` so it works
-  on macOS, and with parameter expansion instead of `dirname` so a plain file costs no fork at all. Each candidate must also
+  on macOS, and with parameter expansion instead of `dirname` so a plain file costs no fork at all.
+
+  **The owner then found that the corrected test was still one step short, twice.** (a) Permission is
+  not the capability: a directory its owner has closed to itself at mode 0555 answers "no" to `-w`,
+  and that owner reaches it with one `chmod u+w` — measured, the file was replaced after exactly
+  that. `-O` now sits beside `-w` on the file and on every ancestor; it is a builtin in `dash` and in
+  BSD `test`, so the no-process property survives. (b) **Not fixed, and written beside the other
+  limits so the gap is not read as coverage:** the hop loop resolves a symlink that is the *final*
+  component, not one that is an *ancestor*. Walking `/opt/tool/bin/python3` where `/opt/tool` links
+  to `/srv/a/b` tests the link and never `/srv/a`, which the user might own — the same "`-w` answers
+  about the target" mechanism, one level out. Two reasons for leaving it: the configuration cannot be
+  *created* by the reviewed code, since planting it needs a symlink inside a directory that code
+  cannot write, so it must pre-exist; and a component-by-component canonicaliser in `sh` is code
+  whose bugs are silent in the dangerous direction, inside the one function every guard's integrity
+  rests on, and it could not be tested here — isolating the case needs a symlink in a root-owned
+  directory, which an unprivileged test cannot create. On the systems where it would apply the
+  targets are root-owned anyway: merged-`/usr` on Linux, `/private` on macOS.
+
+  The regression test takes the owner's suggested shape and improves on it. A mode-555 *wrapper* in a
+  directory the user owns distinguishes the old question from the new one — `-w` on the file says
+  safe, the directory makes it replaceable — and unlike the end-to-end case it runs on both CI legs
+  rather than only where PATH wins, so there is no skip to fall quiet. The root case is *encoded*
+  rather than skipped: as root everything is replaceable, which the assertion states instead of
+  passing over. What the behavioural test cannot reach is the resolver *taking* such a candidate,
+  because the fixed candidates win before PATH is consulted on any machine where one of them
+  qualifies; that call site is pinned statically and the pin was defeat-verified. Each candidate must also
   parse the checker, with a version floor, since a fixed path can be an older Python. Verified on
   both CI platforms: the stage ran and printed its count on ubuntu and on macOS with no fallback
   notice, so the interpreter chosen there was unreplaceable too.

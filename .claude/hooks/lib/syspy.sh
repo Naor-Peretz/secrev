@@ -77,22 +77,50 @@
 # Unknown is treated as replaceable: if `readlink` is absent or fails, or a chain
 # is absurdly long, the answer is "assume it can be replaced", which costs a note
 # and never a false claim.
+#
+# **One case this does not cover, chosen deliberately and written here so the gap
+# is not read as coverage.** The hop loop resolves a symlink that is the *final*
+# component. It does not resolve a symlink that is an *ancestor*: walking
+# `/opt/tool/bin/python3` tests `/opt/tool/bin`, `/opt/tool`, `/opt` and `/`, and
+# if `/opt/tool` is a link to `/srv/a/b` then every one of those tests follows the
+# link and answers about the target, never reaching `/srv/a` — which the user
+# might own. It is the same mechanism as the bug this function exists to fix
+# (`-w` answering about the target), one level out.
+#
+# Not fixed, for two reasons rather than one. The configuration cannot be *created*
+# by the code under review: planting it needs a symlink inside a directory the
+# reviewed code cannot write, so it has to pre-exist on the machine — unlike the
+# cases above, which a test creates in one command. And a component-by-component
+# canonicaliser in `sh` is the kind of code whose bugs are silent in the direction
+# that matters, in the one function every guard's integrity rests on, and it could
+# not be tested here: isolating the case needs a symlink in a root-owned directory,
+# which an unprivileged test cannot make. On the standard systems this would apply
+# to, the targets are root-owned anyway — merged-`/usr` on Linux, `/private` on
+# macOS.
 syspy_replaceable() {
     _path=$1
     _hops=0
     while :; do
-        if [ -w "$_path" ]; then
+        if [ -w "$_path" ] || [ -O "$_path" ]; then
             return 0
         fi
         # A directory you can write is a directory whose entries you can delete
         # and recreate — including one that is itself a directory on the way.
+        #
+        # **`-O` beside `-w`, and the owner's second correction.** Permission is
+        # not the capability: a directory the user owns at mode 0555 answers "no"
+        # to `-w`, and its owner reaches it with one `chmod u+w`. Measured — the
+        # file was replaced after exactly that. Ownership *is* write access to
+        # anyone who can run `chmod`, which is precisely what the reviewed code
+        # can do. `-O` is a builtin in dash and in BSD `test`, so this still
+        # costs no process.
         _walk=$_path
         while [ -n "$_walk" ] && [ "$_walk" != "/" ]; do
             _parent=${_walk%/*}
             if [ -z "$_parent" ]; then
                 _parent=/
             fi
-            if [ -w "$_parent" ]; then
+            if [ -w "$_parent" ] || [ -O "$_parent" ]; then
                 return 0
             fi
             _walk=$_parent

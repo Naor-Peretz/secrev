@@ -105,20 +105,23 @@ replaceable() {
     _path=$1
     _hops=0
     while :; do
-        if [ -w "$_path" ]; then
+        if [ -w "$_path" ] || [ -O "$_path" ]; then
             return 0
         fi
         # A directory you can write is a directory whose entries you can delete
         # and recreate — `[ -w ]` on the file alone said "safe" about a symlink
         # in a user-owned directory, which is replaceable with one `ln -sf`, and
-        # `-w` follows the link so it was answering about the target.
+        # `-w` follows the link so it was answering about the target. `-O` beside
+        # `-w` because the owner of a directory at mode 0555 reaches it with one
+        # `chmod u+w`: permission is not the capability. Both are builtins, so
+        # the whole check still costs no process for a plain file.
         _walk=$_path
         while [ -n "$_walk" ] && [ "$_walk" != "/" ]; do
             _parent=${_walk%/*}
             if [ -z "$_parent" ]; then
                 _parent=/
             fi
-            if [ -w "$_parent" ]; then
+            if [ -w "$_parent" ] || [ -O "$_parent" ]; then
                 return 0
             fi
             _walk=$_parent
