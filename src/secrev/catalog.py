@@ -65,7 +65,7 @@ import yaml
 
 # The ledger's vocabulary is shared with every other candidate source, so it is
 # defined once in `ledger.py` and validated against here rather than copied.
-from secrev.ledger import LAYERS, PRECISIONS
+from secrev.ledger import LAYERS, PRECISIONS, RESERVED_NAMESPACES
 
 # §4: a fixed subset, never arbitrary passthrough. `s` and `m` are absent
 # deliberately rather than by omission — either would let a line-oriented rule
@@ -186,11 +186,21 @@ def _pattern(raw: Any, index: int) -> Pattern:
     pattern_id = _require_str(entry["id"], "id", None)
     if not _ID_RE.match(pattern_id):
         _fail(f"`{pattern_id}` is not `namespace.name` — the hierarchy has to hold at 200 patterns")
-    if pattern_id.split(".", 1)[0] == "surface":
-        # The namespace belongs to the surface kinds (kinds.py). A pattern here
-        # would share a `rule_id` with surface records in the one ledger: two
+    namespace = pattern_id.split(".", 1)[0]
+    if namespace in RESERVED_NAMESPACES:
+        # The namespace belongs to another source's loader — `kinds.py` for
+        # `surface`, `structure_rules.py` for `structure`. A pattern here would
+        # share a `rule_id` with that source's records in the one ledger: two
         # different questions under one name.
-        _fail(f"`{pattern_id}` is in the `surface` namespace, which is reserved for surface kinds")
+        #
+        # Read from `ledger.RESERVED_NAMESPACES` rather than named here. This
+        # test spelled `surface` inline from M2 until M4, so when the structural
+        # source arrived its namespace was open and nothing said so — the
+        # closure had been written once and then had to be remembered.
+        _fail(
+            f"`{pattern_id}` is in the `{namespace}` namespace, which is reserved "
+            "for another source's rules"
+        )
 
     unknown = sorted(set(entry) - _KNOWN)
     if unknown:

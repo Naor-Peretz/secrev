@@ -93,6 +93,11 @@ One task per iteration. Do not start a second.
       able to disable another's control, neither defective alone.
       Note the set diverges — `.claude/` is protected against **Bash only**, so it belongs in
       `bash_guard.py` and not in `paths.sh`, which governs the Write/Edit hooks.
+      **Superseded in M4 (round 5), and the divergence was the defect.** "Stays visible" above
+      needed a mechanism and had none: leaving `.claude/` out of `paths.sh` meant no Write or Edit
+      to a guard was ever remarked on. `is_scoped_path` now names it and `scope-guard.sh` asks,
+      ahead of the milestone dispatch so a repair is never refused. The *decision* recorded here
+      stands; the note about where it belongs does not.
       *Files:* `.claude/hooks/bash_guard.py`, `tests/harness/attack.py`.
       *Accept:* `sed -i` on `bash-guard.sh` refuses; `cat` of it permits; a `Write` to it is
       untouched by this guard.
@@ -224,7 +229,24 @@ One task per iteration. Do not start a second.
 4. `plan-reviewer.md` §4 lists §2.1's constructs while citing it — checklist or restatement?
 5. The trigger "command references a protected path" is a denylist over path *spellings*
    (`$HOME/...`, globs, variables, string concatenation). Inherited from H-2, not invented here,
-   but it means the guard fails open on any spelling it does not recognise.
+   but it means the guard fails open on any spelling it does not recognise. *(This is the
+   question `bash_guard.py` calls "open question 8" — its number before the decided items
+   moved out of this list.)*
+
+   **No longer theoretical (M4 review, 2026-09-22).** Demonstrated with one character:
+   `echo x > src/secrev/evil.py` is refused, while `echo x > s?c/secrev/evil.py` and
+   `echo x > sr[c]/secrev/evil.py` both return `(0, '')`. `echo` is not auto-approved, so it
+   still reaches an approval dialog; it is not a bypass of the owner, but it is a bypass of the
+   guard. **And a working prototype of the inversion now exists in the code, for one verb.**
+   M4's `git add` check triggers on the *command* rather than on a path spelling: it finds
+   `git` wherever it sits in each command of the line, then holds its flags to an allowlist,
+   whether or not any protected path is named — which is what closed `git add -f .env`,
+   `--pathspec-from-file` and `env git add -f`. That is this question's "make the trigger what
+   the command *is*" applied to one command, with the costs visible: the check reads every
+   command in the line, and it had to be located rather than assumed in first position.
+   Generalising it is the same decision this entry has always asked for — it would refuse
+   `uv sync`, `pytest` and `git commit` beside nothing protected, and needs its own allowlist —
+   but it is now a decision about extending a mechanism that exists, not about inventing one.
 6. **Residual risk, recorded so it is not rediscovered.** A script under `scripts/` can write
    anywhere, so there is a chain: write a script, then run it. Not a bypass — the first link is
    guarded, and the execute category permits running an existing script, never creating one —

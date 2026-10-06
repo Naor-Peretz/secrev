@@ -28,7 +28,11 @@ python3 scripts/determinism_check.py         # NFR-3 alone
 ```
 
 Narrow before changing anything. A fix validated only by the full gate has not
-been validated — you cannot tell which of the five checks your change moved.
+been validated — you cannot tell which of its nine stages your change moved.
+(Nine, not five: format, lint, types, pytest, self-application, secrets,
+licences, determinism, dependency audit. The count here said five until M4,
+which is the shape of staleness that matters least and is still worth fixing,
+because a reader who counts is told the document is not maintained.)
 
 ## 3. Change one thing
 
@@ -89,8 +93,8 @@ exists to keep the third out: if the answer involves `sed -i`, `find`, `stat` or
 
 ## Self-application (STACK.md §2.1)
 
-There is one fix: remove the construct. `eval`, `exec`, `pickle`, `marshal`,
-`shell=True`, `yaml.load`, `Loader=`, a network client. A `# noqa` on a bandit
+There is one fix: remove the construct. `eval`, `exec`, `compile`, `pickle`,
+`marshal`, `shell=True`, `yaml.load`, `Loader=`, a network client. A `# noqa` on a bandit
 rule is not a fix — it converts a public claim about this codebase into a lie
 that the gate now certifies. If the construct seems genuinely necessary, that is
 a design problem to raise, not a suppression to add.

@@ -13,17 +13,20 @@ READER="$ROOT/.claude/hooks/lib/hook_input.py"
 
 # JSON is read by lib/hook_input.py, not jq (STACK.md §2). Every path that
 # cannot complete the check exits 2, never 0 (H-1).
-SYSPY=$(command -v python3 2>/dev/null) || {
-    echo "plan-review: no python3 — cannot check (STACK.md §8 H-1)." >&2
+SYSPY_LIB="$ROOT/.claude/hooks/lib/syspy.sh"
+[ -f "$SYSPY_LIB" ] || {
+    echo "plan-review: $SYSPY_LIB is missing — cannot check (H-1)." >&2
     exit 2
 }
+. "$SYSPY_LIB"
+resolve_syspy plan-review
 [ -f "$READER" ] || {
     echo "plan-review: $READER is missing — cannot check (H-1)." >&2
     exit 2
 }
 
 read_field() {
-    printf '%s' "$INPUT" | "$SYSPY" "$READER" "$1" || {
+    printf '%s' "$INPUT" | "$SYSPY" -I -S "$READER" "$1" || {
         echo "plan-review: unreadable hook payload — refusing (H-1)." >&2
         exit 2
     }
@@ -31,8 +34,20 @@ read_field() {
 tool=$(read_field tool_name)
 [ "$tool" = "ExitPlanMode" ] || exit 0
 
+GIT_SAFE="$ROOT/.claude/hooks/lib/git_safe.sh"
+[ -f "$GIT_SAFE" ] || {
+    echo "plan-review: $GIT_SAFE is missing — refusing to shell out to git (H-1)." >&2
+    exit 2
+}
+. "$GIT_SAFE"
+
 MILESTONE=$(cat "$ROOT/.claude/MILESTONE" 2>/dev/null || echo M1)
-BRANCH=$(git -C "$ROOT" branch --show-current 2>/dev/null || echo "?")
+# `git branch --show-current` was measured *not* firing `core.fsmonitor`, and
+# it goes through `git_ro` anyway: the rule is the call site, not the
+# subcommand. A rule that exempted the subcommands checked today would have to
+# be re-audited every time git grows a trigger, which is the denylist this
+# milestone keeps finding under a different name.
+BRANCH=$(git_ro -C "$ROOT" branch --show-current 2>/dev/null || echo "?")
 
 cat <<EOF
 <plan-review-workflow>

@@ -29,7 +29,10 @@ differs on someone else's machine. Read for it specifically:
 - Any CRLF reaching a hash. Normalise before hashing, report line numbers against
   the original.
 - Any candidate `id` derived from a counter rather than from
-  `(relative_path, line, rule_id, ordinal)`.
+  `(relative_path, rule_id, window_sha256, ordinal)` — and any `id` containing
+  `line`, which `derive()` rejects rather than ignores (FR-4.5). This line
+  prescribed the `line` form until M4, contradicting the bullet four above it
+  that forbids a line number in a hash input.
 - Any `datetime.now()`, `time.time()`, `random`, `uuid`, or `os.getcwd()` whose
   value reaches a deterministic output. `run.json` is the only exemption.
 - Any decode without `errors="replace"`, or any reliance on the locale.

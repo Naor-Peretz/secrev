@@ -18,10 +18,14 @@ READER="$ROOT/.claude/hooks/lib/hook_input.py"
 
 # JSON is read by lib/hook_input.py, not jq (STACK.md §2). Every path that
 # cannot complete the check exits 2, never 0 (H-1).
-SYSPY=$(command -v python3 2>/dev/null) || {
-    echo "scope-guard: no python3 — cannot check (STACK.md §8 H-1)." >&2
+SYSPY_LIB="$ROOT/.claude/hooks/lib/syspy.sh"
+[ -f "$SYSPY_LIB" ] || {
+    echo "scope-guard: $SYSPY_LIB is missing — cannot check (H-1)." >&2
     exit 2
 }
+. "$SYSPY_LIB"
+resolve_syspy scope-guard
+
 [ -f "$READER" ] || {
     echo "scope-guard: $READER is missing — cannot check (H-1)." >&2
     exit 2
@@ -35,7 +39,7 @@ PATHS="$ROOT/.claude/hooks/lib/paths.sh"
 . "$PATHS"
 
 read_field() {
-    printf '%s' "$INPUT" | "$SYSPY" "$READER" "$1" || {
+    printf '%s' "$INPUT" | "$SYSPY" -I -S "$READER" "$1" || {
         echo "scope-guard: unreadable hook payload — refusing (H-1)." >&2
         exit 2
     }
@@ -47,6 +51,46 @@ read_field() {
 # A guard that refuses everything is as useless as one that refuses nothing.
 path=$(read_field file_path)
 is_scoped_path "$path" || exit 0
+
+# The harness is answered HERE, ahead of the milestone dispatch, and never in a
+# per-milestone branch. Two reasons, and the first is the expensive one:
+#
+#   1. A branch written before a directory existed permits that directory by
+#      silence — the D-1 lesson M3 paid a failed assertion to learn, and the
+#      one every case below now guards against by naming each directory. Put
+#      `.claude/` into those branches and the next milestone's branch inherits
+#      the same hole. Answered before the dispatch, it cannot be forgotten by
+#      a branch that has not been written yet.
+#   2. A change to a guard is not milestone work. It is the same act under M0
+#      and under M12, so a rule that varies by milestone would be describing
+#      something that does not vary.
+#
+# It *asks*; it does not refuse. Repairing the harness from inside a session
+# has to stay possible — `bash-guard.sh` refuses `Bash` against `.claude/` and
+# points at Write/Edit for exactly that reason. What was missing is the second
+# half of that sentence: it stays *visible*. Until now the only look came at
+# commit, by which time the session had already been running with the changed
+# guard.
+#
+# This does not need the milestone, so it is placed before the marker is read:
+# an unreadable marker is not "no rules for this state" here (H-6), because
+# the rule is the same for every state.
+case "$path" in
+  .claude/*|*/.claude/*)
+    harness_reason="A write to the harness itself: ${path}
+
+This is the layer that writes the project — guards, hooks, agent definitions,
+the milestone marker. A change here changes what every later tool call in this
+session is allowed to do, and it takes effect immediately, not at commit.
+
+Nothing is refused: repairing a guard from inside a session is deliberate
+(STACK.md §8, and bash-guard.sh points here for it). This is the look. Read the
+diff as a change to the rules, not to the code: does it narrow what a guard
+refuses, remove a check, or widen an allowlist?"
+    printf '%s' "$harness_reason" | "$SYSPY" -I -S "$ROOT/.claude/hooks/lib/hook_ask.py"
+    exit 0
+    ;;
+esac
 
 # H-6: a guard with no rules for the current state refuses. This was
 # `|| echo M1` followed by `|| exit 0` — two H-1 breaches in two lines. Unable
@@ -62,7 +106,12 @@ MILESTONE=$(printf '%s' "$MILESTONE" | tr -d ' \t\n\r')
 refuse_no_rules() {
     {
       echo "BLOCKED — milestone ${MILESTONE:-<empty>} has no rules permitting this write, and it"
-      echo "touches ${path##*/}, which is inside the scoped tree (src/, patterns/, surfaces/, scripts/)."
+      # The list is the one a reader can act on: the directories that can
+      # actually reach this message. `.claude/` is scoped too and never
+      # arrives here — it is answered before the milestone is read, because a
+      # repair must not depend on the marker being recognised.
+      echo "touches ${path##*/}, which is inside the scoped tree (src/, patterns/, surfaces/,"
+      echo "structure/, scripts/, threat-models/)."
       echo
       echo "STACK.md §8 H-6: a guard with no rules for the current state refuses. Not knowing"
       echo "what is permitted is not the same as concluding that everything is."
@@ -216,6 +265,73 @@ case "$MILESTONE" in
     esac
     ;;
 
+  # M4 is the structural source (BRIEF_M4.md): the third and last peer candidate
+  # source. Its remit is src/ for structure.py, the Parser interface, the CLI
+  # subcommand and recon's coverage-gap line; scripts/ for determinism_check.py,
+  # which must compare the structure block as it already compares the other two;
+  # structure/ for the rule data; and tests/golden/ for the new goldens.
+  #
+  # patterns/ is refused, and that is a narrowing from M3.5 rather than an
+  # omission. M3.5 was permitted patterns/ for exactly one rewrite; BRIEF_M4.md
+  # §1 says no pattern is added and no surface kind changes. A structural rule
+  # that wants a pattern is a finding about the catalog, recorded.
+  #
+  # **structure/ is permitted on the assumption Q1 resolves that way, and the
+  # refusal below says so.** BRIEF_M4.md §6 Q1 is open: the PRD's §7 tree puts
+  # the rule file at patterns/_structure.yaml, while M2 set the opposite
+  # precedent by giving surface kinds a directory of their own. If the owner
+  # resolves Q1 toward the PRD tree, this case changes with it — a guard that
+  # silently permitted both would answer a question the owner has not.
+  #
+  # Every scoped directory is answered by name, which is the D-1 lesson M3 paid
+  # a failed assertion to learn.
+  M4)
+    case "$path" in
+      *surfaces/*)
+        {
+          echo "BLOCKED — M4 adds a candidate source, not a reachability class."
+          echo "$path is in surfaces/, and a kind decides which entry points enter"
+          echo "the ledger at all (P11, NFR-6). New kinds are M8."
+          echo
+          echo "src/secrev/surfaces.py is not in remit either: the sources are peers"
+          echo "and M4 has no business inside another one (D-11)."
+        } >&2
+        exit 2
+        ;;
+      *patterns/*)
+        {
+          echo "BLOCKED — M4 adds no patterns. BRIEF_M4.md §1."
+          echo "$path is in patterns/. A structural rule that wants a pattern that"
+          echo "does not exist is a finding about the catalog, recorded in the"
+          echo "ledger — not a pack edited inside the milestone that would benefit."
+          echo
+          echo "Q1 is answered: the rule file is structure/_structure.yaml, not"
+          echo "patterns/_structure.yaml, so this branch stays right. It said to"
+          echo "change it only when the owner answered — they did, the other way."
+        } >&2
+        exit 2
+        ;;
+      # Answered by name, not by falling through to the permit below. A branch
+      # written before a directory exists permits that directory by silence,
+      # which is the D-1 lesson M3 paid a failed assertion for — and structure/
+      # is precisely a directory that did not exist when this case was written.
+      *structure/*) exit 0 ;;
+      *threat-models/*)
+        {
+          echo "BLOCKED — the threat models are M3's, and closed."
+          echo "$path is in threat-models/, whose overlays decide which questions"
+          echo "every later review of an archetype asks (BRIEF_M3.md §1)."
+          echo
+          echo "M4 writes the analysis that answers some of those questions. Editing"
+          echo "the questions to suit the analysis is P11 in the small, which is the"
+          echo "reason BRIEF_M3.md deferred this milestone in the first place."
+        } >&2
+        exit 2
+        ;;
+      *) exit 0 ;;
+    esac
+    ;;
+
   # M0 is harness repair (BRIEF_M0.md). Its own §2 edits scripts/check.sh, so
   # scripts/ is inside its remit; src/ and patterns/ are the tool and its
   # catalog, which M0 has no business touching. H-6 asks a guard to know what
@@ -260,13 +376,24 @@ printf '%s' "$body" | grep -qE '\bmultiline\b|re\.MULTILINE|re\.DOTALL' \
 # includes hardening that very file, is the shape that teaches people to click
 # through a guard — the same reason M2 does not fire the surfaces heuristic on
 # the milestone that owns surfaces.
-case "$path" in
-  scripts/*|*/scripts/*) ;;
-  *)
-    printf '%s' "$body" | grep -qE '^import ast|^from ast |ast\.parse' \
-      && note "uses the AST — that is structure.py, M4. The ledger format has to settle first."
-    ;;
-esac
+# Skipped under M4, where the AST is the milestone's entire subject — the same
+# reason M2 does not fire the surfaces heuristic on the milestone that owns
+# surfaces. A guard that objects to the work it exists to permit teaches people
+# to click through it, and that costs every other check in this file its
+# credibility.
+#
+# The objection stays correct for M1, M2 and M3, so it is scoped rather than
+# removed. Its own message names M4 as the answer; firing it under M4 would be
+# the guard contradicting itself.
+if [ "$MILESTONE" != "M4" ]; then
+  case "$path" in
+    scripts/*|*/scripts/*) ;;
+    *)
+      printf '%s' "$body" | grep -qE '^import ast|^from ast |ast\.parse' \
+        && note "uses the AST — that is structure.py, M4. The ledger format has to settle first."
+      ;;
+  esac
+fi
 
 # Skipped under M2, where this is the milestone's entire subject. A guard that
 # objects to the work it exists to permit teaches people to click through it,
@@ -287,5 +414,5 @@ Building it now is not merely early — the brief says each of these gets design
 prerequisite lands. If it is genuinely needed, that is a conflict with the brief and should be
 raised (BRIEF_M1.md §8 states the rule), not resolved here."
 
-printf '%s' "$reason" | "$SYSPY" "$ROOT/.claude/hooks/lib/hook_ask.py"
+printf '%s' "$reason" | "$SYSPY" -I -S "$ROOT/.claude/hooks/lib/hook_ask.py"
 exit 0

@@ -19,10 +19,14 @@ INPUT=$(cat)
 ROOT="${CLAUDE_PROJECT_DIR:-.}"
 READER="$ROOT/.claude/hooks/lib/hook_input.py"
 
-PY=$(command -v python3 2>/dev/null) || {
-    echo "self-application-guard: no python3 — cannot check (STACK.md §8 H-1)." >&2
+SYSPY_LIB="$ROOT/.claude/hooks/lib/syspy.sh"
+[ -f "$SYSPY_LIB" ] || {
+    echo "self-application-guard: $SYSPY_LIB is missing — cannot check (H-1)." >&2
     exit 2
 }
+. "$SYSPY_LIB"
+resolve_syspy self-application-guard
+
 [ -f "$READER" ] || {
     echo "self-application-guard: $READER is missing — cannot check (H-1)." >&2
     exit 2
@@ -36,7 +40,7 @@ PATHS="$ROOT/.claude/hooks/lib/paths.sh"
 . "$PATHS"
 
 read_field() {
-    printf '%s' "$INPUT" | "$PY" "$READER" "$1" || {
+    printf '%s' "$INPUT" | "$SYSPY" -I -S "$READER" "$1" || {
         echo "self-application-guard: unreadable hook payload — refusing (H-1)." >&2
         exit 2
     }

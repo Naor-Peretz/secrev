@@ -66,6 +66,113 @@ else
 fi
 runpy() { "$PY" -m "$@"; }
 
+# The system interpreter, kept apart from $PY on purpose.
+#
+# `.venv/` is not a protected path, and the snapshot watched three name shapes
+# inside site-packages — not the interpreter itself. So a test that overwrote
+# `.venv/bin/python`, or `pyvenv.cfg`, which names the base interpreter,
+# replaced the program that is supposed to notice: the run in which it landed
+# finished green, and from the next run on the plant *was* the checker,
+# including the line that reports nothing changed. `-I -S` are no defence,
+# being flags to the interpreter that was replaced.
+#
+# The checker is stdlib-only, so it takes the system interpreter, as every hook
+# already does. pytest keeps the venv — it is the thing being run, not the
+# thing doing the checking. This does not make `.venv/bin/` safe to overwrite;
+# it makes the overwrite something an honest checker can report, which is the
+# other half, and `_interpreter_files` in the checker is that half.
+# **`command -v` is not enough, and that is the owner's follow-up finding.**
+# PATH is searched in order, and a developer PATH normally starts with
+# directories the user owns — here `~/.cargo/bin` and two others sit ahead of
+# `/usr/bin`. None holds a `python3` today; a test creating one owns every later
+# run, and redirecting HOME does not help, because PATH carries absolute paths.
+# So the candidates are tried as fixed absolute paths first, and the one chosen
+# must not be *replaceable* by the user whose tests are about to run — a
+# different and stronger question than "is the file writable", for the reason
+# `replaceable` below records.
+#
+# Replaceability rather than ownership: what matters is not who owns the file but
+# whether the code being checked can make the path run something else. Running
+# the suite as root makes every answer "replaceable", which is why the fallback
+# below states the fact instead of pretending.
+#
+# `replaceable` is a second copy of `.claude/hooks/lib/syspy.sh`'s function, and
+# the duplication is forced: an assertion holds that this gate never reads from
+# `.claude/`, since a contributor without the harness must still be able to run
+# it. `attack.py` pins the two copies equal, the same arrangement as
+# `PROTECTED_ROOTS` and `GIT_DISARMED`.
+replaceable() {
+    _path=$1
+    _hops=0
+    while :; do
+        if [ -w "$_path" ] || [ -O "$_path" ]; then
+            return 0
+        fi
+        # A directory you can write is a directory whose entries you can delete
+        # and recreate — `[ -w ]` on the file alone said "safe" about a symlink
+        # in a user-owned directory, which is replaceable with one `ln -sf`, and
+        # `-w` follows the link so it was answering about the target. `-O` beside
+        # `-w` because the owner of a directory at mode 0555 reaches it with one
+        # `chmod u+w`: permission is not the capability. Both are builtins, so
+        # the whole check still costs no process for a plain file.
+        _walk=$_path
+        while [ -n "$_walk" ] && [ "$_walk" != "/" ]; do
+            _parent=${_walk%/*}
+            if [ -z "$_parent" ]; then
+                _parent=/
+            fi
+            if [ -w "$_parent" ] || [ -O "$_parent" ]; then
+                return 0
+            fi
+            _walk=$_parent
+        done
+        if [ ! -L "$_path" ]; then
+            return 1
+        fi
+        _target=$(readlink "$_path" 2>/dev/null) || return 0
+        case "$_target" in
+          /*) _path=$_target ;;
+          *)  _path=${_path%/*}/$_target ;;
+        esac
+        _hops=$((_hops + 1))
+        if [ "$_hops" -gt 8 ]; then
+            return 0
+        fi
+    done
+}
+
+interpreter_ok() {
+    [ -x "$1" ] || return 1
+    # Can it actually run this checker? A fixed path may be an older Python —
+    # macOS ships 3.9 at /usr/bin — so the candidate parses the file it would
+    # run, with a floor under it. Parsing writes nothing, unlike py_compile,
+    # which would drop bytecode into a protected directory.
+    "$1" -I -S -c 'import ast, sys
+source = open(sys.argv[1], encoding="utf-8").read()
+sys.exit(0 if sys.version_info >= (3, 9) and ast.parse(source) else 1)' \
+        scripts/protected_snapshot.py >/dev/null 2>&1
+}
+
+SYSPY=
+for candidate in /usr/bin/python3 /bin/python3 $(command -v python3 2>/dev/null); do
+    if interpreter_ok "$candidate" && ! replaceable "$candidate"; then
+        SYSPY=$candidate
+        break
+    fi
+done
+if [ -z "$SYSPY" ]; then
+    # Nothing unreplaceable was found. Say so rather than implying the property:
+    # the stage still runs and still compares, it just cannot promise it was
+    # not replaced before it started.
+    for candidate in /usr/bin/python3 /bin/python3 $(command -v python3 2>/dev/null); do
+        if interpreter_ok "$candidate"; then SYSPY=$candidate; break; fi
+    done
+    [ -n "$SYSPY" ] || { echo "no python3 that can run the protected-path check" >&2; exit 2; }
+    printf 'note: %s can be replaced by this user, so the protected-path check runs\n' \
+        "$SYSPY" >&2
+    printf '      under an interpreter the test run could have replaced before it started.\n' >&2
+fi
+
 HAS_SRC=0
 [ -d src/secrev ] && HAS_SRC=1
 
@@ -88,11 +195,20 @@ missing() {
 # this one: 0 pass, 1 finding, 2 could not check. The last is fatal here rather
 # than a failure, because "the audit did not run" must not be recorded as "the
 # audit found nothing" — the same distinction H-1 draws, one level down.
-gate_script() {
+gate_script() { _gate_script "$PY" "$@"; }
+
+# The same, under the system interpreter. For a check whose own integrity is
+# the point: it must not run under an interpreter that the code it watches can
+# replace. See the SYSPY block above for what that bought before it was split.
+sys_gate_script() { _gate_script "$SYSPY" "$@"; }
+
+_gate_script() {
+    interpreter=$1
+    shift
     # `status=$?` after a bare `if` is not portable — the shell may have reset
     # it by then. Capture it in the `||` branch, where it is the command's own.
     status=0
-    "$PY" "$@" || status=$?
+    "$interpreter" "$@" || status=$?
     if [ "$status" = 2 ]; then
         exit 2
     fi
@@ -122,7 +238,26 @@ if [ "$FAST" = 1 ]; then
     skip "pytest" "--fast; pre-push and CI run it"
 elif [ -d tests ]; then
     "$PY" -m pytest --version >/dev/null 2>&1 || missing pytest
-    run "pytest" runpy pytest
+    # pytest runs as a child of protected_snapshot.py, which snapshots every
+    # protected path in its own memory before and after (owner decision,
+    # 2026-09-22). This gate is auto-approved and pytest is code execution, so
+    # a test is a write path no guard watches; a review showed one writing into
+    # threat-models/. The baseline was a $(mktemp) file until a second review
+    # showed a test could re-take it and turn the stage green over a change
+    # still in the tree — so it is never written anywhere.
+    # `-I -S` on the checker and neither on pytest: pytest needs the project
+    # and the venv's packages, and the checker must not be reachable from
+    # either. `-I` keeps a module planted in scripts/ from replacing the stdlib
+    # it compares with; `-S` keeps a `.pth` planted in the venv's
+    # site-packages from running inside it and forging the comparison. The
+    # checker is stdlib-only, so neither flag costs it anything.
+    #
+    # And `sys_gate_script`, not `gate_script`: the flags above are given to
+    # the interpreter, so they are worth nothing if the interpreter is the
+    # thing a test replaced. `.venv/bin/python` was writable by the suite and
+    # watched by nobody.
+    printf '\n\033[1m── pytest\033[0m\n'
+    sys_gate_script -I -S scripts/protected_snapshot.py run -- "$PY" -m pytest
 else
     skip "pytest" "no tests/ yet — nothing to run"
 fi

@@ -168,9 +168,12 @@ later milestones and must not be stubbed with placeholders.
   see §5 there for why, because the reasoning is what stops this being reverted.
 - `window_spec` — `lines-20` in M1, meaning ±20 lines with no tightening. It is on the record for
   the same reason `catalog_version` is: the id depends on `window_sha256`, `window_sha256` depends
-  on what the window covered, and M4 changes that when a parser lets it tighten to the enclosing
-  block (`STACK.md` §5). Recording it makes the M4 transition an invalidation the tool detects
-  (FR-4.6) rather than one that relies on someone remembering. This is an addition to the M1 field
+  on what the window covered, and that changes once a parser lets it tighten to the enclosing block
+  (`STACK.md` §5). Recording it makes that transition an invalidation the tool detects (FR-4.6)
+  rather than one that relies on someone remembering. **This said "M4" until M4 was scoped.** M4
+  builds the parser and gives `block-20` to the structural source, which is new and re-identifies
+  nothing; re-windowing *this* source moves every id already recorded and is a milestone of its
+  own. This is an addition to the M1 field
   set rather than a stub for a later milestone — nothing here is a placeholder, the value is real
   and is load-bearing today.
 - `match_excerpt` — the matched span with a small margin, truncated to 200 chars. Redact anything

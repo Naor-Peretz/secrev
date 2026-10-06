@@ -59,6 +59,45 @@ def test_sweep_succeeds(tmp_path: Path) -> None:
     assert run(["sweep", str(FIXTURES), "--workspace", str(tmp_path)]) == EXIT_OK
 
 
+def test_a_file_the_parser_cannot_read_is_exit_two_and_recorded(tmp_path: Path) -> None:
+    """Found in review: a valid 3 KB file ended `secrev structure` with exit 3.
+
+    Exit 2, not 3 — the tool worked and one file in the target could not be
+    reviewed, which is a fact about the input (`STACK.md` §3). Not 0 either: the
+    rest of the tree was reviewed, and reporting that as a clean run would be
+    H-1. And named in `run.json`, not only on stderr, because a gap that exists
+    only while someone watches the terminal is not in the artifact a later phase
+    reads.
+    """
+    target = tmp_path / "target"
+    target.mkdir()
+    deep = "def f(p):\n    x = " + "+".join(["p"] * 1500) + "\n    open(x)\n"
+    (target / "deep.py").write_text(deep, encoding="utf-8")
+    (target / "fine.py").write_text("x = 1\n", encoding="utf-8")
+    workspace = tmp_path / "ws"
+
+    assert run(["structure", str(target), "--workspace", str(workspace)]) == EXIT_USAGE
+
+    [run_json] = sorted(workspace.rglob("run.json"))
+    entry = json.loads(run_json.read_text(encoding="utf-8"))["structure"]
+    assert entry["unparsed"] == ["deep.py"]
+
+
+@pytest.mark.parametrize("command", ["recon", "sweep", "surfaces", "structure"])
+def test_a_manifest_that_cannot_be_parsed_is_exit_two_on_every_command(
+    tmp_path: Path, command: str
+) -> None:
+    """Owner decision, 2026-09-22. A `package.json` of `[]` ended every command
+    with exit 3 until M4's review; after the first fix it completed with exit 0,
+    which reported a clean review of a tree whose entry points were never read.
+    Every command, because `recon` runs inside each one's `_prepare` — the same
+    reason the crash reached all four."""
+    target = tmp_path / "target"
+    target.mkdir()
+    (target / "package.json").write_text("[]", encoding="utf-8")
+    assert run([command, str(target), "--workspace", str(tmp_path / "ws")]) == EXIT_USAGE
+
+
 def test_a_code_file_removed_from_review_is_not_exit_zero(tmp_path: Path) -> None:
     """The half of `_incomplete` that a second review found missing.
 
@@ -321,8 +360,8 @@ def test_each_block_is_its_sources_golden(tmp_path: Path) -> None:
     run(["surfaces", str(FIXTURES), "--workspace", str(tmp_path)])
     run(["sweep", str(FIXTURES), "--workspace", str(tmp_path)])
     text = ledger(tmp_path)
-    assert block(text, "pattern") == PATTERN_GOLDEN.read_text(encoding="utf-8")
-    assert block(text, "surface") == SURFACE_GOLDEN.read_text(encoding="utf-8")
+    assert block(text, "pattern").encode("utf-8") == PATTERN_GOLDEN.read_bytes()
+    assert block(text, "surface").encode("utf-8") == SURFACE_GOLDEN.read_bytes()
     assert text == block(text, "pattern") + block(text, "surface")
 
 
@@ -342,7 +381,7 @@ def test_stdout_is_the_runs_own_block(tmp_path: Path, capsys: pytest.CaptureFixt
     run(["sweep", str(FIXTURES), "--workspace", str(tmp_path)])
     capsys.readouterr()
     run(["surfaces", str(FIXTURES), "--workspace", str(tmp_path)])
-    assert capsys.readouterr().out == SURFACE_GOLDEN.read_text(encoding="utf-8")
+    assert capsys.readouterr().out.encode("utf-8") == SURFACE_GOLDEN.read_bytes()
 
 
 def test_run_json_keeps_one_entry_per_command(tmp_path: Path) -> None:

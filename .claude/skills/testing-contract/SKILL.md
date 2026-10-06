@@ -13,17 +13,30 @@ would pass while the thing that actually matters goes unchecked.
 
 Every generation script gets one: a small fixture tree, a committed expected
 output, a byte comparison. That is how NFR-3 stops being aspirational
-(STACK.md §8).
+(STACK.md §9 — §8 is the harness).
+
+The sources return serialised text rather than writing files; the CLI writes.
+So the comparison is against what the source produced:
 
 ```python
-def test_sweep_golden(tmp_path):
-    run_sweep(FIXTURES, workspace=tmp_path)
-    assert (tmp_path / "hits.jsonl").read_bytes() == GOLDEN.read_bytes()
+def test_matches_the_golden_byte_for_byte(catalog: Catalog) -> None:
+    assert to_jsonl(sweep(FIXTURES, catalog)).encode("utf-8") == GOLDEN.read_bytes()
 ```
 
 `read_bytes`, not `read_text`, and not a parsed comparison. The requirement is
 byte-identity; a test that parses both sides and compares objects passes while
 key order, trailing newlines, and separator choices drift.
+
+**This paragraph was right and the suite did not follow it**, from M1 until the
+M4 skills pass found it. Every golden comparison used
+`GOLDEN.read_text(encoding="utf-8")`, including three tests named
+`..._byte_for_byte`. `read_text` opens in universal-newline mode: it translates
+CRLF to LF on the way in, so with no `.gitattributes` in the repository, a clone
+with `core.autocrlf` on compares against a golden it has just silently repaired
+and reports an identity that does not hold. All of them were green, because this
+checkout's goldens are LF. `test_the_old_text_comparison_would_have_passed_on_a_crlf_golden`
+in `tests/test_recon.py` is the control that measures it rather than asserting
+it, and it is worth reading before weakening any of these comparisons back.
 
 ## 2. At least one non-ASCII filename
 

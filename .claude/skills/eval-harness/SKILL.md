@@ -8,8 +8,22 @@ tools: Read, Write, Edit, Bash, Grep, Glob
 
 > **Project note (secrev).** There is no build step; `npm run build` has no
 > analogue. The equivalent gate is `sh scripts/check.sh`. The eval targets that
-> matter here are the ones §12.2 of the PRD names — recall against the corpus,
-> false-positive rate, and resolution completeness — not build success.
+> matter here are the ones §12.2 of the PRD actually names: recall against the
+> §12.1 corpus (≥ 70%), instruction-layer recall tracked separately (≥ 60%),
+> ledger completeness (100% of runs ending with zero `unresolved`),
+> unsupported-finding rate (≤ 5%), and negative-control cleanliness (zero
+> High/Medium findings on clean targets) — not build success.
+>
+> **This note said "false-positive rate" until the M4 skills pass.** §12.2 has
+> no such metric, and the omission is deliberate rather than an oversight:
+> `precision: low` is a first-class value in the catalog and `BRIEF_M1.md` §4
+> says not to tune toward precision at the cost of recall, because under P4
+> every candidate is resolved anyway — a false positive costs a paragraph and a
+> miss is a silent gap. An eval target this repository does not hold would have
+> pushed a session toward exactly the trade it forbids. The nearest real metrics
+> are unsupported-finding rate, which is about findings whose PoC fails to
+> reproduce, and negative-control cleanliness; neither is a precision gate on
+> candidates.
 
 
 A formal evaluation framework for Claude Code sessions, implementing eval-driven development (EDD) principles.

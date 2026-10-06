@@ -25,9 +25,17 @@ they are stated rather than left to be inferred:
 
   **The window is `lines-20`** — ±20 lines, no tightening to the enclosing
   block, because that needs a parser and `BRIEF_M1.md` §1 defers AST analysis
-  to M4. The spec travels on the record so the M4 change to `block-20` is an
+  to M4. The spec travels on the record so a later change to `block-20` is an
   invalidation FR-4.6 detects rather than one that depends on someone
   remembering `STACK.md` §5.
+
+  **That change is not M4's**, and this comment said it was until M4 was
+  scoped. M4 builds the parser and gives *structural* records `block-20`, which
+  re-identifies nothing because those records are new. Re-windowing the pattern
+  source moves every id already in `hits.jsonl` and expires every verification
+  against one, so it gets its own milestone rather than sharing one with a new
+  source — otherwise a moved id has two possible causes and no way to tell them
+  apart (`STACK.md` §5).
 
   **Ordering is total before ids are assigned.** Matches are sorted by
   `(line, rule_id, column)` within a file, and files arrive already sorted from

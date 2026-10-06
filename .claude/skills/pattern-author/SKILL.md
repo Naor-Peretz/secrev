@@ -61,7 +61,7 @@ maintenance time, not by run-time judgment.
 
 ## Every pattern ships two fixtures
 
-Positive and negative, both, always (STACK.md §8). A pattern with no negative
+Positive and negative, both, always (STACK.md §9 — §8 is the harness). A pattern with no negative
 fixture drifts into over-matching and nobody notices. The negative fixture is
 where the interesting design lives:
 

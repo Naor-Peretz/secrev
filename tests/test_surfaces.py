@@ -449,4 +449,5 @@ def test_an_entry_point_no_pattern_matches_is_still_a_candidate(
 
 
 def test_matches_the_golden_byte_for_byte(kinds: Kinds) -> None:
-    assert to_jsonl(surfaces(FIXTURES, kinds)) == GOLDEN.read_text(encoding="utf-8")
+    """`read_bytes`: see the note in `tests/test_recon.py`."""
+    assert to_jsonl(surfaces(FIXTURES, kinds)).encode("utf-8") == GOLDEN.read_bytes()

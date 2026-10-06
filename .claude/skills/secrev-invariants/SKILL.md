@@ -37,8 +37,12 @@ shown to remove a whole file from review.
 **Extension decides the exemption, not the classification.** A file that went
 unread for any reason counts as `unread_code`, and the run exits 2, *unless* its
 extension is a known binary asset. That polarity is the fourth review's
-correction: asking "does this look like code" was defeated three times, by a
-shebang script with no extension, by `SKILL.md`, and by `AGENT.md`.
+correction. "Does this look like code" was asked three ways — a code extension,
+then a shebang, then a set of known artifact names — and each was defeated by a
+file that looked like something else; the last round was walked past by
+`AGENT.md`, `prompt.txt` and `setup` with no extension at all
+(`.claude/TASKS_M3.5.md`). Naming what may be **skipped** puts the burden of
+enumeration on us, which is P3 applied to our own tooling.
 
 Symlinks are never followed; one that escapes the root is itself a candidate
 (P9).

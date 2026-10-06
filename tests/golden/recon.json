@@ -6,15 +6,15 @@
     "sha": null
   },
   "inventory": {
-    "files_total": 30,
+    "files_total": 38,
     "by_language": {
       "json": 2,
       "markdown": 2,
-      "python": 16,
+      "python": 24,
       "text": 8,
       "toml": 1
     },
-    "loc_total": 291,
+    "loc_total": 413,
     "binary": [
       "assets/blob.bin"
     ],
@@ -29,7 +29,8 @@
   },
   "entrypoints": {
     "declared": [],
-    "workflows": []
+    "workflows": [],
+    "unreadable": []
   },
   "security_process": {
     "security_md": false,
@@ -40,11 +41,15 @@
   "coverage_gaps": [
     "excluded from review and not read at all: node_modules/ — override the set with --exclude",
     "present but not read, classified binary (over 5% non-text bytes in the first 8 KiB): assets/blob.bin",
-    "structural analysis not implemented (M4); no coverage for: json, markdown, python, text, toml",
+    "structure: rules are read in Python only; no other code language present",
+    "structure: reasoning stops at one function body — a value reaching a sink through an intermediate call is not followed (FR-3.7, v2)",
+    "structure: a value bound outside the body it is used in is not followed, so a collection held in a module constant is not read as a literal one",
+    "structure: what counts as validating is a list of names, not a proof — a call that is named here suppresses a candidate whether or not it confines anything",
+    "structure: a file that fails to parse is not reviewed by this source at all; `secrev structure` names it and exits 2 rather than reporting no candidates",
     "surface: code entry points are read in Python only; no other code language present",
     "surface: HTTP routes are not enumerated (framework-specific; FR-1.3)",
     "surface: IPC handlers are not enumerated (framework-specific; FR-1.3)",
-    "surface: the argument parser beneath a declared CLI command is not enumerated (needs AST, M4)",
+    "surface: the argument parser beneath a declared CLI command is not enumerated — it needs an AST, which exists since M4, but reading it is the surface source's work and not the structural source's",
     "surface: a package with no `__all__` has no declared public surface to enumerate",
     "surface: an `__all__` built at runtime, and names more than 20 lines below its declaration, are not seen",
     "surface: a declaration split across lines is missed, and several on one line enter as one record (line-oriented, no AST in M2)",

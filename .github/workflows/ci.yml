@@ -302,6 +302,13 @@ jobs:
             if [ -f src/secrev/surfaces.py ]; then
               .venv/bin/python -m secrev surfaces tests/fixtures --workspace "$RUNNER_TEMP/ws"
             fi
+            # The third block (M4, BRIEF_M4.md C3). Same guard and same reason:
+            # a block this job does not produce is a block it hashes nothing
+            # for, while still printing "Linux and macOS agree" — which is the
+            # H-1 collapse this whole job exists to avoid, one source along.
+            if [ -f src/secrev/structure.py ]; then
+              .venv/bin/python -m secrev structure tests/fixtures --workspace "$RUNNER_TEMP/ws"
+            fi
             # shasum is present on both runners; sha256sum is GNU-only (STACK.md §4).
             find "$RUNNER_TEMP/ws" \( -name recon.json -o -name hits.jsonl \) -print \
               | sort \

@@ -33,7 +33,7 @@ invariant, a decision id — and that reference is the most useful thing in the
 message six months later.
 
 ```
-sweep: derive candidate ids from (path, line, rule_id, ordinal)
+sweep: derive candidate ids from (path, rule_id, window_sha256, ordinal)
 
 A traversal counter would renumber every hit when an unrelated file is
 added, which breaks the stable-id half of NFR-3. D-4.

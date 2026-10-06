@@ -13,17 +13,21 @@ READER="$ROOT/.claude/hooks/lib/hook_input.py"
 
 # JSON is read by lib/hook_input.py, not jq (STACK.md §2). Every path that
 # cannot complete the check exits 2, never 0 (H-1).
-SYSPY=$(command -v python3 2>/dev/null) || {
-    echo "async-check: no python3 — cannot check (STACK.md §8 H-1)." >&2
+SYSPY_LIB="$ROOT/.claude/hooks/lib/syspy.sh"
+[ -f "$SYSPY_LIB" ] || {
+    echo "async-check: $SYSPY_LIB is missing — cannot check (H-1)." >&2
     exit 2
 }
+. "$SYSPY_LIB"
+resolve_syspy async-check
+
 [ -f "$READER" ] || {
     echo "async-check: $READER is missing — cannot check (H-1)." >&2
     exit 2
 }
 
 read_field() {
-    printf '%s' "$INPUT" | "$SYSPY" "$READER" "$1" || {
+    printf '%s' "$INPUT" | "$SYSPY" -I -S "$READER" "$1" || {
         echo "async-check: unreadable hook payload — refusing (H-1)." >&2
         exit 2
     }
@@ -85,10 +89,30 @@ fi
             # Silence read as "nothing to report". `if` is where set -e stands
             # down.
             if
+                # pytest runs inside the protected-path snapshot, as it does in
+                # the gate. It ran bare until a review showed the gate's
+                # snapshot could be sidestepped — and this hook runs the same
+                # suite after *every* edit with no approval at all, so a test
+                # planting into .claude/hooks/ needed neither the gate nor a
+                # dialog to do it. `-I` on the checker, not on pytest: pytest
+                # needs the project on sys.path; the checker must not have a
+                # planted scripts/ module in place of the stdlib.
+                #
+                # **The checker runs under the system interpreter, not the
+                # venv's.** `.venv/` is not a protected path, so a test that
+                # overwrites `.venv/bin/python` — or `pyvenv.cfg`, which names
+                # the base interpreter — replaces the very program that is
+                # supposed to notice. The run in which that lands ends green,
+                # and from the next one on the plant *is* the checker, printing
+                # the line that says nothing changed. `-I -S` cannot help: they
+                # are flags to the interpreter that was replaced. The checker
+                # is stdlib-only and has no reason to want the venv; pytest,
+                # which does, stays a child under `$PY`.
                 case "$check" in
-                  ruff)    out=$("$PY" -m ruff check "$ROOT" 2>&1) ;;
-                  pytest)  out=$("$PY" -m pytest -x -q "$ROOT" 2>&1) ;;
-                  *)       out=$("$PY" "$ROOT/scripts/self_check.py" 2>&1) ;;
+                  ruff)    out=$("$PY" -I -m ruff check "$ROOT" 2>&1) ;;
+                  pytest)  out=$("$SYSPY" -I -S "$ROOT/scripts/protected_snapshot.py" run -- \
+                                     "$PY" -m pytest -x -q "$ROOT" 2>&1) ;;
+                  *)       out=$("$PY" -I "$ROOT/scripts/self_check.py" 2>&1) ;;
                 esac
             then
                 status=0
