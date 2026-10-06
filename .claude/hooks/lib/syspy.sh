@@ -12,11 +12,13 @@
 # and it decides it inside whatever interpreter this resolves to. Redirecting
 # HOME for the test run does not help, because PATH carries absolute paths.
 #
-# So: fixed absolute candidates first, and the one chosen must not be writable by
-# the user whose code is being reviewed. Writability rather than ownership,
-# because the question is not who owns the file but whether the reviewed code can
-# rewrite it — and running as root makes every answer "writable", which is why
-# the second pass exists rather than a refusal.
+# So: fixed absolute candidates first, and the one chosen must not be
+# *replaceable* by the user whose code is being reviewed — see
+# `syspy_replaceable`, which is a different and stronger question than "is the
+# file writable". Replaceability rather than ownership, because the question is
+# not who owns the file but whether the reviewed code can make the path run
+# something else — and running as root makes every answer "replaceable", which is
+# why the second pass exists rather than a refusal.
 #
 # **Silent when it falls back, deliberately, and this is the one place the gate
 # and the hooks differ.** `check.sh` prints the fact once per run. A hook runs on
@@ -51,13 +53,72 @@
 # mapping below turns an interpreter that cannot run a guard into a refusal, so
 # every Bash command on such a machine would be refused by a guard that never
 # ran. Correctness first, then the property.
+# Could the current user make this path run a different program? Status 0 means
+# yes — the candidate is rejected by the first pass.
+#
+# **`[ -w "$candidate" ]` was the wrong question, and it answered "safe" for a
+# path the user could replace in one command.** Two holes, both measured:
+# replacing a file needs write permission on its *directory*, not on the file —
+# delete the entry, create another — and `-w` follows symlinks, so on a link it
+# reports about the target and says nothing about the link. A `python3` symlink in
+# a user-owned directory pointing at a root-owned interpreter passed as
+# unwritable, was chosen in the first pass, and the gate printed no note: it
+# claimed the property while the path could be repointed with `ln -sf`. That is
+# not hypothetical on macOS, where Apple's 3.9 cannot meet the gate's floor so the
+# chosen candidate always comes from PATH — and `/usr/local/bin` is user-owned
+# under Homebrew, `~/.local/bin` by construction.
+#
+# So: the file, every ancestor directory of it, and the same for each hop of a
+# symlink chain. `readlink` without `-f`, because `-f` is GNU and this has to run
+# on macOS; ancestors are walked with parameter expansion rather than `dirname`,
+# so the whole check costs one fork per symlink hop and none at all for a plain
+# file. The hooks still pay nothing they did not pay before.
+#
+# Unknown is treated as replaceable: if `readlink` is absent or fails, or a chain
+# is absurdly long, the answer is "assume it can be replaced", which costs a note
+# and never a false claim.
+syspy_replaceable() {
+    _path=$1
+    _hops=0
+    while :; do
+        if [ -w "$_path" ]; then
+            return 0
+        fi
+        # A directory you can write is a directory whose entries you can delete
+        # and recreate — including one that is itself a directory on the way.
+        _walk=$_path
+        while [ -n "$_walk" ] && [ "$_walk" != "/" ]; do
+            _parent=${_walk%/*}
+            if [ -z "$_parent" ]; then
+                _parent=/
+            fi
+            if [ -w "$_parent" ]; then
+                return 0
+            fi
+            _walk=$_parent
+        done
+        if [ ! -L "$_path" ]; then
+            return 1
+        fi
+        _target=$(readlink "$_path" 2>/dev/null) || return 0
+        case "$_target" in
+          /*) _path=$_target ;;
+          *)  _path=${_path%/*}/$_target ;;
+        esac
+        _hops=$((_hops + 1))
+        if [ "$_hops" -gt 8 ]; then
+            return 0
+        fi
+    done
+}
+
 syspy_find() {
     _min_major=${1:-0}
     _min_minor=${2:-0}
-    for _pass in unwritable any; do
+    for _pass in unreplaceable any; do
         for _candidate in /usr/bin/python3 /bin/python3 $(command -v python3 2>/dev/null); do
             [ -x "$_candidate" ] || continue
-            if [ "$_pass" = unwritable ] && [ -w "$_candidate" ]; then
+            if [ "$_pass" = unreplaceable ] && syspy_replaceable "$_candidate"; then
                 continue
             fi
             if [ "$_min_major" != 0 ]; then

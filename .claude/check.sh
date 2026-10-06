@@ -44,8 +44,8 @@ run()  { printf '\n\033[1m── %s\033[0m\n' "$1"; shift; "$@" || fail=1; }
 # writable by the test suite and watched by nothing. A test overwriting it owned
 # the stage that prints "all N guard assertions hold". `$GUARD_PY` is now
 # resolved by `lib/syspy.sh`, the same resolution every hook uses: fixed absolute
-# candidates ahead of PATH, and the chosen one unwritable by the user whose code
-# is under review.
+# candidates ahead of PATH, and the chosen one not replaceable by the user whose
+# code is under review.
 if [ -x .venv/bin/python ]; then
     PY=.venv/bin/python
 elif have python3; then
@@ -62,7 +62,7 @@ SYSPY_LIB="$(dirname "$0")/hooks/lib/syspy.sh"
 }
 . "$SYSPY_LIB"
 # With a floor, unlike the hooks: the driver uses `sys.stdlib_module_names`
-# (3.10), and macOS's `/usr/bin/python3` is 3.9 — unwritable, and unable to run
+# (3.10), and macOS's `/usr/bin/python3` is 3.9 — unreplaceable, and unable to run
 # the assertions. CI found that by going red on exactly the two assertions that
 # depend on a newer interpreter, which is the right way round: an interpreter
 # that cannot run the check must not be chosen *for* the check, and the floor is
@@ -71,10 +71,13 @@ GUARD_PY=$(syspy_find 3 11) || {
     echo "harness gate: no python3 ≥ 3.11 — cannot run the guard assertions (H-1)." >&2
     exit 2
 }
-if [ -w "$GUARD_PY" ]; then
-    printf 'note: %s is writable by this user, so the guard assertions run under an\n' \
+# `syspy_replaceable`, not `[ -w ]`: a link in a directory this user owns is
+# replaceable without any write permission on the interpreter it points at, and
+# the note is the whole value of this line.
+if syspy_replaceable "$GUARD_PY"; then
+    printf 'note: %s can be replaced by this user, so the guard assertions run\n' \
         "$GUARD_PY" >&2
-    printf '      interpreter the reviewed code could have replaced.\n' >&2
+    printf '      under an interpreter the reviewed code could have replaced.\n' >&2
 fi
 
 missing() {

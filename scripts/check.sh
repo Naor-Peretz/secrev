@@ -87,12 +87,57 @@ runpy() { "$PY" -m "$@"; }
 # `/usr/bin`. None holds a `python3` today; a test creating one owns every later
 # run, and redirecting HOME does not help, because PATH carries absolute paths.
 # So the candidates are tried as fixed absolute paths first, and the one chosen
-# must not be writable by the user whose tests are about to run.
+# must not be *replaceable* by the user whose tests are about to run — a
+# different and stronger question than "is the file writable", for the reason
+# `replaceable` below records.
 #
-# `-w` rather than an owner comparison: what matters is not who owns the file
-# but whether the code being checked can rewrite it. Running the suite as root
-# makes every answer "writable", which is why the fallback below states the
-# fact instead of pretending.
+# Replaceability rather than ownership: what matters is not who owns the file but
+# whether the code being checked can make the path run something else. Running
+# the suite as root makes every answer "replaceable", which is why the fallback
+# below states the fact instead of pretending.
+#
+# `replaceable` is a second copy of `.claude/hooks/lib/syspy.sh`'s function, and
+# the duplication is forced: an assertion holds that this gate never reads from
+# `.claude/`, since a contributor without the harness must still be able to run
+# it. `attack.py` pins the two copies equal, the same arrangement as
+# `PROTECTED_ROOTS` and `GIT_DISARMED`.
+replaceable() {
+    _path=$1
+    _hops=0
+    while :; do
+        if [ -w "$_path" ]; then
+            return 0
+        fi
+        # A directory you can write is a directory whose entries you can delete
+        # and recreate — `[ -w ]` on the file alone said "safe" about a symlink
+        # in a user-owned directory, which is replaceable with one `ln -sf`, and
+        # `-w` follows the link so it was answering about the target.
+        _walk=$_path
+        while [ -n "$_walk" ] && [ "$_walk" != "/" ]; do
+            _parent=${_walk%/*}
+            if [ -z "$_parent" ]; then
+                _parent=/
+            fi
+            if [ -w "$_parent" ]; then
+                return 0
+            fi
+            _walk=$_parent
+        done
+        if [ ! -L "$_path" ]; then
+            return 1
+        fi
+        _target=$(readlink "$_path" 2>/dev/null) || return 0
+        case "$_target" in
+          /*) _path=$_target ;;
+          *)  _path=${_path%/*}/$_target ;;
+        esac
+        _hops=$((_hops + 1))
+        if [ "$_hops" -gt 8 ]; then
+            return 0
+        fi
+    done
+}
+
 interpreter_ok() {
     [ -x "$1" ] || return 1
     # Can it actually run this checker? A fixed path may be an older Python —
@@ -107,22 +152,22 @@ sys.exit(0 if sys.version_info >= (3, 9) and ast.parse(source) else 1)' \
 
 SYSPY=
 for candidate in /usr/bin/python3 /bin/python3 $(command -v python3 2>/dev/null); do
-    if interpreter_ok "$candidate" && [ ! -w "$candidate" ]; then
+    if interpreter_ok "$candidate" && ! replaceable "$candidate"; then
         SYSPY=$candidate
         break
     fi
 done
 if [ -z "$SYSPY" ]; then
-    # Nothing unwritable was found. Say so rather than implying the property:
+    # Nothing unreplaceable was found. Say so rather than implying the property:
     # the stage still runs and still compares, it just cannot promise it was
     # not replaced before it started.
     for candidate in /usr/bin/python3 /bin/python3 $(command -v python3 2>/dev/null); do
         if interpreter_ok "$candidate"; then SYSPY=$candidate; break; fi
     done
     [ -n "$SYSPY" ] || { echo "no python3 that can run the protected-path check" >&2; exit 2; }
-    printf 'note: %s is writable by this user, so the protected-path check runs under an\n' \
+    printf 'note: %s can be replaced by this user, so the protected-path check runs\n' \
         "$SYSPY" >&2
-    printf '      interpreter the test run could have replaced before it started.\n' >&2
+    printf '      under an interpreter the test run could have replaced before it started.\n' >&2
 fi
 
 HAS_SRC=0

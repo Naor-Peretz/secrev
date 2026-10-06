@@ -1533,6 +1533,117 @@ def test_no_hook_resolves_its_own_interpreter_through_path() -> None:
     assert not offenders, f"hooks resolving their own interpreter: {offenders}"
 
 
+def _sh(script: str) -> subprocess.CompletedProcess[str]:
+    """Run a shell snippet from a file, never `sh -c` (STACK.md §2.1)."""
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "probe.sh"
+        path.write_text(script, encoding="utf-8")
+        return subprocess.run(
+            [SH, str(path)], capture_output=True, text=True, check=False, cwd=str(REPO)
+        )
+
+
+def test_the_resolver_asks_whether_a_path_can_be_replaced_not_written() -> None:
+    """Owner's finding. `[ -w "$candidate" ]` answered the wrong question twice.
+
+    Replacing a file needs write permission on its *directory*, not on the file:
+    delete the entry, create another. And `-w` follows symlinks, so on a link it
+    reports about the target. A `python3` symlink in a user-owned directory
+    pointing at a root-owned interpreter therefore passed as unwritable, was
+    taken by the first pass, and the gate printed no note — claiming the property
+    about a path that `ln -sf` repoints. Measured, including the replacement.
+
+    Not hypothetical: on macOS Apple's 3.9 cannot meet the gate's floor, so the
+    chosen candidate always comes from PATH, and `/usr/local/bin` is user-owned
+    under Homebrew while `~/.local/bin` is by construction.
+
+    **What this asserts and what it cannot.** The classification is checked
+    directly, because that is where the defect was. The end-to-end case — the
+    resolver *taking* such a link — cannot be constructed on a machine where
+    `/usr/bin/python3` qualifies, since the fixed candidates are tried first and
+    one of them wins before PATH is consulted; a mutation back to `[ -w ]` was
+    measured still choosing the right interpreter here for that reason. The call
+    site is covered by `test_the_two_interpreter_resolutions_agree`, which fails
+    on that mutation, and the pair is recorded here so nobody reads the absence
+    of an end-to-end case as coverage.
+    """
+    script = f"""
+set -u
+. {REPO}/.claude/hooks/lib/syspy.sh
+UD=$1
+mkdir -p "$UD"
+ln -s /usr/bin/python3 "$UD/python3"
+if [ -w "$UD/python3" ]; then echo "link-w=writable"; else echo "link-w=unwritable"; fi
+if syspy_replaceable "$UD/python3"; then echo "link=replaceable"; else echo "link=safe"; fi
+if syspy_replaceable /usr/bin/python3; then echo "system=replaceable"; else echo "system=safe"; fi
+PATH="$UD:$PATH"
+export PATH
+echo "chosen=$(syspy_find)"
+"""
+    with tempfile.TemporaryDirectory() as tmp:
+        probe = Path(tmp) / "bin"
+        result = _sh(script.replace("$1", str(probe)))
+    assert result.returncode == 0, result.stderr
+    answers = dict(line.split("=", 1) for line in result.stdout.split() if "=" in line)
+
+    # The defect itself: the old test said "unwritable" about a replaceable path.
+    assert answers["link-w"] == "unwritable", "the old question no longer behaves as measured"
+    assert answers["link"] == "replaceable", (
+        "a symlink in a directory this user owns is still classified as safe"
+    )
+
+    if os.geteuid() != 0:
+        # Skipped as root, where everything is replaceable and the distinction
+        # cannot exist — stated rather than asserted away.
+        assert answers["system"] == "safe", (
+            "/usr/bin/python3 is reported replaceable by a non-root user, so the "
+            "check has become one that can never be satisfied"
+        )
+        assert answers["chosen"] != f"{probe}/python3", (
+            "the resolver took the replaceable link while an unreplaceable "
+            "interpreter was available"
+        )
+
+
+def test_both_gates_gate_their_note_on_replaceability() -> None:
+    """The note is the whole value of the fallback: it is how a reader learns the
+    property does not hold on this machine. Keyed on `[ -w ]` it would stay
+    silent for exactly the case the owner found."""
+    for path, function in (
+        (REPO / "scripts" / "check.sh", "replaceable"),
+        (HOOKS.parent / "check.sh", "syspy_replaceable"),
+    ):
+        code = _shell_code(path)
+        # The two files reach it differently — the product gate tries the
+        # unreplaceable candidates first and notes when none was found, the
+        # harness gate tests the one it chose — so what is pinned is that the
+        # decision runs through the function at all.
+        assert re.search(rf"{function} \"\$", code), (
+            f"{path.name} no longer decides its note with {function}"
+        )
+        assert not re.search(r'if \[ -w "\$(GUARD_PY|SYSPY|candidate)" \]', code), (
+            f"{path.name} is back to asking whether the file is writable"
+        )
+
+
+def test_the_two_replaceability_checks_agree() -> None:
+    """H-7, forced duplication. `scripts/check.sh` may not read from `.claude/` —
+    an assertion holds that boundary — so the function exists twice, and a
+    difference between them is a difference in what the two gates claim."""
+
+    def body(path: Path, name: str) -> str:
+        code = _shell_code(path)
+        match = re.search(rf"^{name}\(\) \{{\n(.*?)^\}}", code, re.DOTALL | re.MULTILINE)
+        assert match, f"{path.name} no longer defines {name}"
+        return re.sub(r"\s+", " ", match.group(1)).strip()
+
+    gate = body(REPO / "scripts" / "check.sh", "replaceable")
+    harness = body(HOOKS / "lib" / "syspy.sh", "syspy_replaceable")
+    assert gate == harness, (
+        f"the two replaceability checks have drifted:\n  gate:    {gate}\n  harness: {harness}"
+    )
+
+
 def test_the_two_interpreter_resolutions_agree() -> None:
     """H-7: the gate and the hooks answer the same question, so they answer it
     from the same list. Two copies exist because `scripts/check.sh` may not read
@@ -1554,10 +1665,11 @@ def test_the_two_interpreter_resolutions_agree() -> None:
     )
     assert "/usr/bin/python3" in gate, "neither tries a fixed absolute path before PATH's answer"
 
-    # And both require the chosen one to be unwritable by this user.
+    # And both require the chosen one to be unreplaceable by this user — not
+    # merely unwritable, which a symlink in a directory you own satisfies.
     library = _shell_code(HOOKS / "lib" / "syspy.sh")
-    assert re.search(r'\[ -w "\$_candidate" \]', library), (
-        "lib/syspy.sh no longer prefers an interpreter this user cannot write"
+    assert re.search(r'syspy_replaceable "\$_candidate"', library), (
+        "lib/syspy.sh no longer prefers an interpreter this user cannot replace"
     )
 
 
@@ -1614,13 +1726,15 @@ def test_the_protected_path_check_does_not_run_under_the_interpreter_it_watches(
     # starts with directories the user owns — a test creating `python3` in one
     # of them owns every later run, and HOME redirection does not touch it
     # because PATH carries absolute paths. So the candidates are fixed absolute
-    # paths, and the chosen one must be unwritable by the user whose tests run.
+    # paths, and the chosen one must not be replaceable by the user whose tests
+    # run — stronger than unwritable, which a link in your own directory passes.
     assert "/usr/bin/python3" in gate, (
         "check.sh no longer tries a fixed absolute interpreter before PATH's"
     )
-    assert re.search(r'\[ ! -w "\$candidate" \]', gate), (
-        "check.sh no longer requires its interpreter to be unwritable by this user — "
-        "a test that writes it owns the next run"
+    assert re.search(r'! replaceable "\$candidate"', gate), (
+        "check.sh no longer requires its interpreter to be unreplaceable by this user — "
+        "a test that replaces it owns the next run. It asked `[ ! -w ]` once, which is "
+        "a different and weaker question: a link in a directory you own passes it."
     )
 
 

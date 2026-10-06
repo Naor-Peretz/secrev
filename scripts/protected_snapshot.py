@@ -110,8 +110,10 @@ ahead of `/usr/bin` where this was measured — so a test creating
 `~/.cargo/bin/python3` would own every later run, and redirecting HOME does
 nothing about it, because PATH carries absolute paths. `check.sh` now takes its
 interpreter from fixed absolute paths and requires the one it picks to be
-unwritable by the user whose tests are about to run, saying so plainly when no
-such interpreter exists rather than implying the property. Here, every `python*`
+unreplaceable by the user whose tests are about to run — not merely unwritable,
+since a `python3` symlink in a directory that user owns is repointed with one
+command while `[ -w ]` calls it safe — saying so plainly when no such interpreter
+exists rather than implying the property. Here, every `python*`
 on PATH is watched — and since only existing files are keyed, one *appearing* is
 an added entry. That half also covers the hooks, which resolve their interpreter
 the same way and which `check.sh` cannot answer for.

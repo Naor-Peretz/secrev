@@ -527,12 +527,23 @@ Still open, and each is named here so it is not mistaken for settled:
   of `/usr/bin` where this was measured. None held a `python3`, so the lookup landed root-owned;
   a test creating one owns every later run, and redirecting HOME does nothing, because PATH carries
   absolute paths. `check.sh` now tries fixed absolute candidates before PATH's answer, requires the
-  one it picks to be unwritable by the user whose tests are about to run — writability, not
-  ownership, because the question is whether the code being checked can rewrite it — and prints the
-  fact when no such interpreter exists rather than implying the property. Each candidate must also
+  one it picks to be *unreplaceable* by the user whose tests are about to run — and prints the
+  fact when no such interpreter exists rather than implying the property.
+
+  **The first version of that test asked the wrong question, and the owner caught it.** It was
+  `[ -w "$candidate" ]`, which is weaker in two ways: replacing a file needs write permission on its
+  *directory*, not on the file — delete the entry and create another — and `-w` follows a symlink,
+  so on a link it reports about the target. A `python3` symlink in a user-owned directory pointing
+  at a root-owned interpreter therefore passed as safe, was taken by the first pass, and the gate
+  printed **no note** — claiming the property about a path that `ln -sf` repoints. Confirmed by
+  replacing one. It is not a corner case on macOS: Apple's 3.9 cannot meet the gate's floor, so the
+  chosen candidate always comes from PATH, where `/usr/local/bin` is user-owned under Homebrew and
+  `~/.local/bin` is by construction. `syspy_replaceable` now tests the file, every ancestor
+  directory, and the same for each hop of a symlink chain, with `readlink` and no `-f` so it works
+  on macOS, and with parameter expansion instead of `dirname` so a plain file costs no fork at all. Each candidate must also
   parse the checker, with a version floor, since a fixed path can be an older Python. Verified on
   both CI platforms: the stage ran and printed its count on ubuntu and on macOS with no fallback
-  notice, so the interpreter chosen there was unwritable too.
+  notice, so the interpreter chosen there was unreplaceable too.
 
   **Recorded as the owner's call, and then made by them: the hooks are converted too.** Every hook
   resolved its own interpreter the same way, so a plant earlier on PATH would have owned

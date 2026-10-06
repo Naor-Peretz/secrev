@@ -13,7 +13,7 @@ ROOT="${CLAUDE_PROJECT_DIR:-.}"
 # **It used to prefer `.venv/bin/python`, which is the worst of the choices.**
 # That file is writable by the test suite and was watched by nothing, so a test
 # overwriting it owned this hook on every prompt. The script is stdlib-only and
-# never needed the environment; it now takes the same unwritable interpreter
+# never needed the environment; it now takes the same unreplaceable interpreter
 # every other hook does. `-I -S` stay, for the reason they were added: without
 # `-S` a `.pth` planted in site-packages ran here on each prompt.
 SYSPY_LIB="$ROOT/.claude/hooks/lib/syspy.sh"
