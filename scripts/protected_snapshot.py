@@ -104,6 +104,23 @@ has no ordinary way to write — that makes the *comparison* honest. And
 the plant a finding in the run that lands it rather than a resident that only an
 honest checker declines to be.
 
+**`command -v python3` is itself a PATH lookup, which is the same vector one step
+out.** A developer PATH begins with directories the user owns — three of them sat
+ahead of `/usr/bin` where this was measured — so a test creating
+`~/.cargo/bin/python3` would own every later run, and redirecting HOME does
+nothing about it, because PATH carries absolute paths. `check.sh` now takes its
+interpreter from fixed absolute paths and requires the one it picks to be
+unwritable by the user whose tests are about to run, saying so plainly when no
+such interpreter exists rather than implying the property. Here, every `python*`
+on PATH is watched — and since only existing files are keyed, one *appearing* is
+an added entry. That half also covers the hooks, which resolve their interpreter
+the same way and which `check.sh` cannot answer for.
+
+**What it still cannot see on that vector:** a PATH directory it cannot list is
+skipped, so a plant there is invisible; a plant already in place before the first
+snapshot is the baseline rather than a change; and for the hooks this is
+detection, not prevention, since their own resolution is unchanged.
+
 **Python's startup files are watched too, outside the tree.** A `.pth` or a
 `sitecustomize.py` planted in the venv or the user site directory runs in every
 later interpreter started from there. The checker itself runs `-I -S`, so it
@@ -138,6 +155,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -415,6 +433,13 @@ def _git_files() -> list[Path]:
 # and hashing 23 MB twice costs a fraction of a second.
 _VENVS = (".venv", ".venv-audit")
 
+# The names a lookup for an interpreter can actually resolve: `python`,
+# `python3`, `python3.12`. A bare `python*` glob also matched `python-dotenv`
+# and four bpfcc tools — nothing a shebang or `command -v python3` will ever
+# pick, and tens of megabytes to hash for the privilege. Narrow because the
+# claim is narrow: this watches what could *be* the interpreter.
+_PYTHON_NAME = re.compile(r"^python(\d+(\.\d+)?)?$")
+
 
 def _interpreter_files() -> list[Path]:
     found: list[Path] = []
@@ -423,6 +448,44 @@ def _interpreter_files() -> list[Path]:
         config = ROOT / venv / "pyvenv.cfg"
         if config.exists() or config.is_symlink():
             found.append(config)
+
+    # **Every `python*` on PATH, and the owner's follow-up finding is why.**
+    # `command -v python3` searches PATH in order, and a developer PATH starts
+    # with directories the user owns: on the machine where this was measured,
+    # three writable ones sit ahead of `/usr/bin`. None holds a `python3`, so
+    # the gate resolves root-owned today — and a test creating one changes that
+    # for every later run. Redirecting HOME does not help: PATH carries
+    # absolute paths.
+    #
+    # Appearance is what this catches, and it needs no list of plant locations:
+    # only existing files are keyed, so a `python3` that was not there before is
+    # an *added* entry. That covers the hooks too, which resolve their
+    # interpreter the same way — the half of this vector that `check.sh`'s own
+    # resolution cannot answer for them.
+    #
+    # `sys.executable` first, because the program doing the comparison should be
+    # in what it compares.
+    running = Path(sys.executable)
+    for path in (running, running.resolve()):
+        if path.exists() and path not in found:
+            found.append(path)
+    for entry in os.environ.get("PATH", "").split(os.pathsep):
+        if not entry:
+            continue
+        directory = Path(entry)
+        try:
+            candidates = (
+                sorted(path for path in directory.glob("python*") if _PYTHON_NAME.match(path.name))
+                if directory.is_dir()
+                else []
+            )
+        except OSError:
+            # A PATH directory we cannot list. Recorded in the docstring rather
+            # than swallowed silently: a plant there would be invisible to this,
+            # and exiting 2 over somebody's unusual PATH would make the gate
+            # unrunnable for a case that is not the one being defended against.
+            continue
+        found.extend(path for path in candidates if path not in found)
     return found
 
 

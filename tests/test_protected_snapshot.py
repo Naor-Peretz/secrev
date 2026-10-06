@@ -298,6 +298,47 @@ def test_overwriting_the_interpreter_the_gate_runs_is_a_change(repo: Path) -> No
     assert "pyvenv.cfg" in result.stderr
 
 
+def test_a_python_planted_earlier_on_path_is_a_change(repo: Path) -> None:
+    """The same vector one step out, and the owner's follow-up finding.
+
+    `command -v python3` searches PATH in order, and a developer PATH begins
+    with directories the user owns — three sat ahead of `/usr/bin` on the
+    machine where this was measured. A test creating `python3` in one of them
+    owns every later run, and redirecting HOME does not help because PATH holds
+    absolute paths.
+
+    No list of plant locations is needed: only existing files are keyed, so a
+    `python3` that was not there before is an *added* entry. The planted
+    directory is on PATH when the baseline is taken and empty of interpreters,
+    which is the real shape — the attacker does not get to add a PATH entry,
+    only to write into one that is already there.
+    """
+    bin_dir = repo / "writable-bin"
+    bin_dir.mkdir()
+    environment = {**os.environ, "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}"}
+
+    code = f"open({str(bin_dir / 'python3')!r}, 'w').write('#!/bin/sh\\nexec /bin/echo plant\\n')\n"
+    result = subprocess.run(  # noqa: S603 - fixed argv, no shell
+        [
+            sys.executable,
+            str(repo / "scripts" / "protected_snapshot.py"),
+            "run",
+            "--",
+            sys.executable,
+            "-c",
+            code,
+        ],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        check=False,
+        env=environment,
+        timeout=60,
+    )
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert "python3" in result.stderr
+
+
 def test_a_fifo_outside_the_walk_does_not_hang_the_gate(repo: Path) -> None:
     """The same hang, by the route the walk does not control.
 

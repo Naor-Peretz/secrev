@@ -1467,7 +1467,11 @@ def _shell_code(path: Path) -> str:
         if opener:
             terminator = opener.group(1)
         kept.append(code)
-    return "\n".join(kept)
+    # Line continuations are joined, because a caller and its arguments split
+    # across two lines are one command. Without this, a scan for "what runs
+    # this script" read the backslash as the program — which is how it reported
+    # `'\\'` as an interpreter.
+    return re.sub(r"\\\n\s*", " ", "\n".join(kept))
 
 
 def test_the_protected_path_check_does_not_run_under_the_interpreter_it_watches() -> None:
@@ -1493,7 +1497,12 @@ def test_the_protected_path_check_does_not_run_under_the_interpreter_it_watches(
     system_callers = {"sys_gate_script", '"$SYSPY"', "$SYSPY", "python3"}
     for path in (REPO / "scripts" / "check.sh", HOOKS / "async-check.sh"):
         code = _shell_code(path)
-        calls = re.findall(r"(\S+)((?:\s+-[A-Za-z]+)*)\s+\S*protected_snapshot\.py", code)
+        # `run` is required: `check.sh` also hands the file to a candidate
+        # interpreter to be *parsed*, as its pre-flight that the interpreter can
+        # execute it at all, and that is not a check being performed.
+        calls = re.findall(
+            r"(\S+)((?:\s+-[A-Za-z]+)*)\s+\S*protected_snapshot\.py\"?\s+run\b", code
+        )
         assert calls, f"{path.name} no longer runs the protected-path check"
         for raw, _flags in calls:
             # One of these calls sits inside `out=$(…)`, so the captured token
@@ -1512,8 +1521,19 @@ def test_the_protected_path_check_does_not_run_under_the_interpreter_it_watches(
     assert re.search(r"sys_gate_script\(\)\s*\{\s*_gate_script\s+\"\$SYSPY\"", gate), (
         "sys_gate_script no longer runs its argument under $SYSPY"
     )
-    assert re.search(r"SYSPY=\$\(command -v python3\)", gate), (
-        "$SYSPY is no longer the system python3"
+
+    # **And it is not a bare PATH lookup**, which is the same vector one step
+    # out: `command -v python3` searches PATH in order, and a developer PATH
+    # starts with directories the user owns — a test creating `python3` in one
+    # of them owns every later run, and HOME redirection does not touch it
+    # because PATH carries absolute paths. So the candidates are fixed absolute
+    # paths, and the chosen one must be unwritable by the user whose tests run.
+    assert "/usr/bin/python3" in gate, (
+        "check.sh no longer tries a fixed absolute interpreter before PATH's"
+    )
+    assert re.search(r'\[ ! -w "\$candidate" \]', gate), (
+        "check.sh no longer requires its interpreter to be unwritable by this user — "
+        "a test that writes it owns the next run"
     )
 
 

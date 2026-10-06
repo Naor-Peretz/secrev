@@ -81,16 +81,48 @@ runpy() { "$PY" -m "$@"; }
 # thing doing the checking. This does not make `.venv/bin/` safe to overwrite;
 # it makes the overwrite something an honest checker can report, which is the
 # other half, and `_interpreter_files` in the checker is that half.
-if have python3; then
-    SYSPY=$(command -v python3)
-elif [ -x .venv/bin/python ]; then
-    # Better than nothing and stated as such: with no system python3 the
-    # checker shares an interpreter with the tests it watches.
-    SYSPY=.venv/bin/python
-    printf 'no system python3: the protected-path check runs under the venv it watches\n' >&2
-else
-    echo "no python3 available" >&2
-    exit 2
+# **`command -v` is not enough, and that is the owner's follow-up finding.**
+# PATH is searched in order, and a developer PATH normally starts with
+# directories the user owns — here `~/.cargo/bin` and two others sit ahead of
+# `/usr/bin`. None holds a `python3` today; a test creating one owns every later
+# run, and redirecting HOME does not help, because PATH carries absolute paths.
+# So the candidates are tried as fixed absolute paths first, and the one chosen
+# must not be writable by the user whose tests are about to run.
+#
+# `-w` rather than an owner comparison: what matters is not who owns the file
+# but whether the code being checked can rewrite it. Running the suite as root
+# makes every answer "writable", which is why the fallback below states the
+# fact instead of pretending.
+interpreter_ok() {
+    [ -x "$1" ] || return 1
+    # Can it actually run this checker? A fixed path may be an older Python —
+    # macOS ships 3.9 at /usr/bin — so the candidate parses the file it would
+    # run, with a floor under it. Parsing writes nothing, unlike py_compile,
+    # which would drop bytecode into a protected directory.
+    "$1" -I -S -c 'import ast, sys
+source = open(sys.argv[1], encoding="utf-8").read()
+sys.exit(0 if sys.version_info >= (3, 9) and ast.parse(source) else 1)' \
+        scripts/protected_snapshot.py >/dev/null 2>&1
+}
+
+SYSPY=
+for candidate in /usr/bin/python3 /bin/python3 $(command -v python3 2>/dev/null); do
+    if interpreter_ok "$candidate" && [ ! -w "$candidate" ]; then
+        SYSPY=$candidate
+        break
+    fi
+done
+if [ -z "$SYSPY" ]; then
+    # Nothing unwritable was found. Say so rather than implying the property:
+    # the stage still runs and still compares, it just cannot promise it was
+    # not replaced before it started.
+    for candidate in /usr/bin/python3 /bin/python3 $(command -v python3 2>/dev/null); do
+        if interpreter_ok "$candidate"; then SYSPY=$candidate; break; fi
+    done
+    [ -n "$SYSPY" ] || { echo "no python3 that can run the protected-path check" >&2; exit 2; }
+    printf 'note: %s is writable by this user, so the protected-path check runs under an\n' \
+        "$SYSPY" >&2
+    printf '      interpreter the test run could have replaced before it started.\n' >&2
 fi
 
 HAS_SRC=0
