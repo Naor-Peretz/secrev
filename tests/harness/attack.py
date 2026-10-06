@@ -1287,12 +1287,14 @@ def test_documentation_architect_still_points_at_stack_md() -> None:
 # ------------------------------------------------------------ current milestone
 
 
-def test_milestone_marker_is_m4() -> None:
-    """M3.5 is closed and merged as PR #15, so the marker moves to `M4`.
+def test_milestone_marker_is_m5() -> None:
+    """M4 is closed and merged as PR #16, so the marker moves to `M5`.
 
     **Moved last, and that order is the whole content of this assertion.**
-    `BRIEF_M4.md` and the M4 case in `scope-guard.sh` landed first, with three
-    assertions above exercising that case, and only then this file. Moving the
+    `BRIEF_M5.md` and the M5 case in `scope-guard.sh` landed first, with two
+    assertions above exercising that case — one permit, one refusal, because a
+    case that only refuses can pass by refusing everything — and only then this
+    file. The same order M4 used, for the same reason. Moving the
     marker first write-locks the scoped tree against a milestone nobody has
     scoped — `scope-guard.sh` ends in `refuse_no_rules`, so every write to
     `src/` would be refused until the brief existed (H-6). That is not a
@@ -1315,12 +1317,12 @@ def test_milestone_marker_is_m4() -> None:
     Both orders have now been tried. The M2 move was made before
     `scope-guard.sh` had M2 rules, and H-6 correctly refused every write to the
     scoped tree until `BRIEF_M2.md` existed — the guard saying the project
-    claimed a milestone nobody had scoped. M3, M3.5 and this one were made the
-    other way round: brief and rules first, marker last. Either order is
+    claimed a milestone nobody had scoped. M3, M3.5, M4 and this one were made
+    the other way round: brief and rules first, marker last. Either order is
     survivable; only one is survivable without a window in which nothing can be
     written.
     """
-    assert (REPO / ".claude" / "MILESTONE").read_text(encoding="utf-8").strip() == "M4"
+    assert (REPO / ".claude" / "MILESTONE").read_text(encoding="utf-8").strip() == "M5"
 
 
 def _unticked(brief: str) -> list[str]:
@@ -2108,6 +2110,39 @@ def test_m4_does_not_object_to_the_ast_it_owns() -> None:
     assert rc == PASS_THROUGH and not asks(out), (
         f"M4 must not object to the AST that is its entire subject: {out}"
     )
+
+
+def test_m5_permits_the_closure_and_the_two_packs_it_owns() -> None:
+    """M5 is the milestone the catalog packs were deferred to.
+
+    Every milestone since M1 refused `patterns/` by name, because a milestone
+    adding a *source* has no business editing the questions. M5 is where
+    `_instruction.yaml` and `_manifest.yaml` were sent, so refusing them here
+    would refuse the work. What bounds the widening is `BRIEF_M5.md` §1 naming
+    the two packs, not this guard — and the positive/negative fixture pair every
+    pattern ships is what catches a rule altered quietly.
+    """
+    rc, out = scope_at("M5", "src/secrev/closure.py", "def closure(root):\n    return []\n")
+    assert rc == PASS_THROUGH and not asks(out), "src/ is M5's remit"
+
+    rc, out = scope_at("M5", "patterns/_instruction.yaml", 'version: "2026.10.1"\n')
+    assert rc == PASS_THROUGH and not asks(out), (
+        "M5 owns the instruction pack; refusing it refuses the milestone"
+    )
+
+
+def test_m5_refuses_the_layers_it_does_not_own() -> None:
+    """The other half: a milestone that can write anything has no scope. Each
+    directory is answered by name rather than by falling through, which is the
+    D-1 lesson M3 paid a failed assertion to learn — and these three are exactly
+    the directories whose data decides what later reviews ask."""
+    for relative in (
+        "surfaces/_surfaces.yaml",
+        "structure/_structure.yaml",
+        "threat-models/_agentic-core.md",
+    ):
+        rc, _ = scope_at("M5", relative, "x: 1\n")
+        assert rc == BLOCK, f"{relative} is outside M5's remit, got rc={rc}"
 
 
 def test_scope_guard_refuses_on_unknown_milestone() -> None:

@@ -343,6 +343,77 @@ case "$MILESTONE" in
     esac
     ;;
 
+  # M5 is the closure and the two layers that make the review agentic
+  # (BRIEF_M5.md): `closure.py` for the reachable artifact set (FR-1.2), and
+  # `_instruction.yaml` plus `_manifest.yaml` for FR-3.13 and FR-3.14. Its remit
+  # is src/ for the closure walker, recon's gap lines and the CLI subcommand;
+  # scripts/ for the determinism comparison; and patterns/ — which every
+  # milestone since M1 has refused by name.
+  #
+  # **That widening is the one thing to read carefully here.** M2, M3, M3.5 and
+  # M4 each refused `patterns/`, because a milestone adding a *source* has no
+  # business editing the questions. M5 is the milestone the catalog packs were
+  # deferred *to*, so refusing them here would refuse the work. What bounds it is
+  # the brief rather than this guard: BRIEF_M5.md §1 names the two new packs, and
+  # a change to `_base.yaml` or `python.yaml` is an M1 correction in its own
+  # commit. A guard cannot check that; the positive/negative fixture pair every
+  # pattern ships is what catches a rule altered while nobody was looking.
+  #
+  # **And `patterns/` is permitted on the assumption §6 Q2 resolves that way.**
+  # Q2 is open: the PRD §7 tree puts both packs in `patterns/`, while M2 and M4
+  # set the opposite precedent by giving data with different semantics a
+  # directory of its own — and FR-3.15 gives these packs different semantics, in
+  # that they may never auto-classify. If the owner resolves Q2 toward separate
+  # directories, this case changes with it, and those directories join H-4 in the
+  # change that creates them. Permitting both silently would answer a question
+  # the owner has not.
+  #
+  # Every scoped directory is answered by name, including `.claude/`, which is
+  # answered before this dispatch is reached.
+  M5)
+    case "$path" in
+      *surfaces/*)
+        {
+          echo "BLOCKED — M5 maps the closure; it adds no reachability classes."
+          echo "$path is in surfaces/, and a kind decides which entry points enter"
+          echo "the ledger at all (P11, NFR-6). New kinds are M8."
+          echo
+          echo "A closure member that no surface kind reaches is a coverage gap to"
+          echo "record (FR-3.8), not a kind to add here."
+        } >&2
+        exit 2
+        ;;
+      *structure/*)
+        {
+          echo "BLOCKED — the structural rules are M4's, and closed."
+          echo "$path is in structure/, whose parameters decide which calls count"
+          echo "as sinks (STACK.md §8 H-4)."
+          echo
+          echo "If the closure reveals a structural rule that is wrong or missing,"
+          echo "that is an M4 correction in its own commit — or a recorded coverage"
+          echo "gap, which is what BRIEF_M3.md did for the patterns M3 wanted."
+        } >&2
+        exit 2
+        ;;
+      *threat-models/*)
+        {
+          echo "BLOCKED — the threat models are M3's, and closed."
+          echo "$path is in threat-models/, whose overlays decide which questions"
+          echo "every later review of an archetype asks (BRIEF_M3.md §1)."
+          echo
+          echo "M5 writes the packs that answer some of those questions. Editing the"
+          echo "questions to suit the answers is P11 in the small."
+        } >&2
+        exit 2
+        ;;
+      # Permitted, and the only milestone since M1 for which that is true. See
+      # the comment above for what bounds it and for the open question it rests
+      # on.
+      *patterns/*) exit 0 ;;
+      *) exit 0 ;;
+    esac
+    ;;
+
   # M0 is harness repair (BRIEF_M0.md). Its own §2 edits scripts/check.sh, so
   # scripts/ is inside its remit; src/ and patterns/ are the tool and its
   # catalog, which M0 has no business touching. H-6 asks a guard to know what
