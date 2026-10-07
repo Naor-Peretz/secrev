@@ -134,10 +134,17 @@ prevent, and M4's F2 found three documents asserting mechanisms that had been re
       `cli.SOURCES`, precisely so a new source is covered by adding it in one place — so removing
       the entry must turn that stage red, and adding it *ahead* of the emitter would turn it red for
       a block nothing produces. The owner caught that order in review of this brief's first draft.
-- [ ] **A5 — A pattern's file and its `layer` cannot disagree** (§6 Q2). Evidence: a pattern with
+- [ ] **A5 — `closure.py` verifies what it read.** It recomputes `inventory.content_sha256` over the
+      bytes it read and compares against `entry.sha256`; a mismatch is an unresolvable closure
+      member in `hits.jsonl` with that as its reason, never silence. Evidence: a test that swaps a
+      file's content between the inventory read and the closure read, which must produce the record
+      — and the control, that an unchanged tree produces none. This is the TOCTOU window closed for
+      the consumer M5 adds; the four existing consumers keep it, recorded in `.claude/TASKS_M5.md`
+      with the retrofit's shape argued.
+- [ ] **A6 — A pattern's file and its `layer` cannot disagree** (§6 Q2). Evidence: a pattern with
       `layer: [instruction]` in `_manifest.yaml` is exit 2 naming the offending id, and the reverse
       too; plus the permit, since a rule that only refuses passes by refusing everything.
-- [ ] **A6 — `is_prose` is one function and both consumers use it** (§6 Q3, Q4). Evidence: the
+- [ ] **A7 — `is_prose` is one function and both consumers use it** (§6 Q3, Q4). Evidence: the
       instruction pack's applicability and `closure.json`'s prose inventory are derived from the
       same call, and `.mdc` is covered — a pattern restricted to `languages: [markdown]` would have
       skipped Cursor's rules files in silence, because `language_of` does not map that suffix.
@@ -326,10 +333,22 @@ working when it closed. A closed brief is CLAUDE.md's "obligation that lives onl
 message" with a longer shelf life. Six carried items are there, each with what changed since M4
 wrote it down.
 
-The one that touches this milestone directly: **`closure.py` is the fifth consumer to re-read every
-file after `inventory` already read it**, which widens the TOCTOU window M4 recorded when it added
-the fourth. Whether M5 records it or closes it is open with the owner, because closing it edits four
-files §2 does not list.
+The one that touches this milestone directly, now **decided** (2026-10-07, delegated): `closure.py`
+is the fifth consumer to re-read a file `inventory` has already read, and the *decisions* travel on
+the entry while the bytes do not — so a file replaced between the two reads is swept as content the
+inventory never classified, and `window_sha256` would identify bytes the reviewer never saw.
+
+**M5 records the class for the four existing consumers and closes it for the one M5 adds.** The
+in-memory-tree architecture is declined for the reason M4 declined it: `--max-file-bytes` bounds one
+file and nothing bounds the total, so it is a memory design rather than a patch. What `closure.py`
+does instead costs one hash: it recomputes `inventory.content_sha256` over the bytes it just read
+and compares against `entry.sha256`, which already exists. A mismatch is an unresolvable closure
+member — the same mechanism Q1 settled — so the ledger refuses to let it pass in silence.
+
+Retrofitting the other four is a ledger task with the shape already argued and a worked example to
+copy. It is not in this milestone because the owner set M5's narrow rule hours before the question
+was asked, and "it is cheap and we are here anyway" is precisely the reasoning that cost M4
+eighteen of its twenty-two commits.
 
 The five findings M4's freeze deferred are **closed** (`BRIEF_M4.md` §6, (i)–(v)) and are not
 inherited.
