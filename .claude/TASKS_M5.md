@@ -155,6 +155,46 @@ owner; each is noted because a later reader would otherwise have to re-derive it
       because those are the three conventions that actually exist. A signal that
       is always on is H-1's habit in a new place.
 
+## Raised during implementation and not fixed here
+
+- [ ] **Three overlay sections now say a pack "does not exist; M5" and both
+      packs exist.** `threat-models/skill.md` §5, `threat-models/mcp-server.md`
+      §5 and `_agentic-core.md`'s CORE-05 evidence line each record the
+      instruction and manifest packs as missing, with the sentence that the
+      ledger's silence there "is coverage that does not exist yet rather than
+      coverage that passed". That is now false in both directions: the packs
+      ship, and the ledger does carry instruction-layer and manifest-layer
+      records.
+
+      **It is not fixed because M5 may not touch `threat-models/`** —
+      `scope-guard.sh` refuses the directory by name under this milestone, and
+      the refusal's own reason is that editing the questions to suit the answers
+      is P11 in the small. The owner's scope rule for this run names "you'd need
+      to touch a closed milestone's files" as a stop condition, so this is
+      recorded rather than done.
+
+      The stale lines are the *false* category of CLAUDE.md's three, and the
+      file's own rule says a stale gap line "is how a reader learns to stop
+      believing gap lines". What narrows the damage in the meantime:
+      `recon.json` now carries `_CATALOG_LAYER_GAPS`, which states the limits
+      the packs actually have, in the machine artifact a later phase reads
+      rather than only in prose. The exact edits, so whoever makes them does
+      not have to re-derive them: in each overlay's §5, the pack line changes
+      from "does not exist; M5" to naming the pack and the classes it covers,
+      and each evidence line that says "read" because no pattern existed gains
+      the pattern ids that now do.
+
+- [ ] **`recon.py` had no `coverage_gaps` line about the catalog's own layers,
+      and that asymmetry was the finding.** Every source states its limits
+      there — `_SURFACE_GAPS`, `_STRUCTURE_GAPS`, `_CLOSURE_GAPS` — while the
+      catalog's missing instruction and manifest layers were recorded only in
+      the overlays, in prose, and never in the artifact. Closed in M5 with
+      `_CATALOG_LAYER_GAPS` (three lines: the comments-and-docstrings gap Q3
+      pre-decided, FR-3.15's permanent cost, and the grant-versus-purpose
+      comparison no line-oriented rule can make). Listed here because the
+      *class* is worth remembering: a gap recorded only where a human happens to
+      look is half a gap.
+
 ### Harness findings raised during M5
 
 - [ ] **Nothing asserts that the current milestone has a ledger, or that a named one exists.**

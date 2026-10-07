@@ -80,6 +80,7 @@ from secrev.inventory import (
     NOT_CODE_LANGUAGES,
     FileEntry,
     content_sha256,
+    is_prose,
     language_of,
     normalise_path,
     split_lines,
@@ -351,6 +352,23 @@ class Unresolved:
     referenced_from: tuple[str, ...]
 
 
+@dataclass(frozen=True, order=True)
+class ProseMember:
+    """A closure member whose content reaches an agent's context (§6 Q4, A7).
+
+    `lines` is `None` for a member that was not read — binary, unreadable, not a
+    regular file, or past the size bound. Not `0`: a count of zero says the file
+    is empty, and this says nobody looked.
+
+    **No "substantial" threshold.** M7 needs this inventory to decide what
+    substantial means, and choosing the number here would be this milestone
+    deciding a later one's rule (§6 Q4). What M5 ships is the count.
+    """
+
+    path: str
+    lines: int | None
+
+
 @dataclass(frozen=True)
 class Closure:
     """What `closure.json` holds, plus the block this source contributes.
@@ -365,6 +383,7 @@ class Closure:
     roots_given: bool
     members: tuple[Member, ...]
     unresolved: tuple[Unresolved, ...]
+    prose: tuple[ProseMember, ...]
     hits: list[Hit]
     coverage_gaps: tuple[str, ...]
 
@@ -715,10 +734,26 @@ def _roots(
     length.
     """
     if entries is None:
-        return (
-            tuple(path for path, entry in sorted(inventory.items()) if _is_readable_text(entry)),
-            False,
-        )
+        # **Every inventoried path, including the ones that will not be read.**
+        #
+        # This filtered to readable text for one commit, and the filter dropped
+        # those files out of `closure.json` altogether: not a root, referenced
+        # by nothing, so absent from `members` — while `_CLOSURE_GAPS` already
+        # said "a member that is binary, unreadable, not a regular file, or past
+        # the size bound is in the closure and is not read". The gap line
+        # described the behaviour this function was supposed to have, and the
+        # code contradicted it, silently, for exactly the files a target would
+        # choose to make unreadable.
+        #
+        # Found by a test written for `lines: null` in the prose inventory,
+        # which could not be reached: an oversized `.md` file was not in the
+        # closure at all. In a tool whose thesis is that nothing is passed over
+        # in silence, an inventoried file missing from the artifact is the
+        # defect, not the line count.
+        #
+        # `_traverse` still refuses to *read* them, so nothing is followed out
+        # of a binary; they arrive as members with no referring lines.
+        return tuple(sorted(inventory)), False
     given = {normalise_path(name) for name in entries}
     # A usage error rather than a finding, and the difference is who made the
     # mistake. An entry the *target* does not contain is a hole in the artifact
@@ -1005,11 +1040,30 @@ def closure(
             for (reference, rule_id, reason, load), found in graph.failures.items()
         )
     )
+    # The prose inventory (§6 Q4), from the *same* `is_prose` the instruction
+    # pack's applicability comes from. Two definitions would mean the inventory
+    # lists files the pack never ran on, or the reverse — and nothing would
+    # report the discrepancy (A7).
+    prose = tuple(
+        ProseMember(
+            path=member.path,
+            # `None` when the file was not read, which is what `lines_by_path`
+            # missing it means. Never 0, which would say it is empty.
+            lines=(
+                len(graph.lines_by_path[member.path])
+                if member.path in graph.lines_by_path
+                else None
+            ),
+        )
+        for member in members
+        if is_prose(member.path)
+    )
     return Closure(
         roots=roots,
         roots_given=roots_given,
         members=members,
         unresolved=unresolved,
+        prose=prose,
         hits=_hits(unresolved, graph.changed, graph.lines_by_path),
         coverage_gaps=(*_derived_gaps(members), *_CLOSURE_GAPS),
     )
@@ -1050,6 +1104,10 @@ def to_json(result: Closure) -> str:
             }
             for item in result.unresolved
         ],
+        # §6 Q4. After `unresolved` and before the gaps, because it is a
+        # statement about what *is* in the closure rather than about what is
+        # missing from it.
+        "prose": [{"path": item.path, "lines": item.lines} for item in result.prose],
         "coverage_gaps": list(result.coverage_gaps),
     }
     return json.dumps(document, indent=2, ensure_ascii=False, sort_keys=False) + "\n"

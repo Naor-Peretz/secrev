@@ -583,6 +583,41 @@ _SURFACE_GAPS = (
 # present; the individual members are named in `closure.json`, by the source
 # that knows them. A brief loses to `STACK.md` on mechanism, and in this case
 # both are satisfied.
+# What the *catalog's* instruction and manifest layers cannot reach, one line
+# each (M5, `BRIEF_M5.md` A7 and §6 Q3).
+#
+# **This block had no counterpart before M5, and the asymmetry was the finding.**
+# Every source states its own limits here — `_SURFACE_GAPS`, `_STRUCTURE_GAPS`,
+# `_CLOSURE_GAPS` — while the catalog's missing instruction and manifest layers
+# were recorded only in the threat-model overlays, in prose, and never in the
+# machine artifact a later phase reads. A gap that exists only where a human
+# happens to look is half a gap.
+_CATALOG_LAYER_GAPS = (
+    # §6 Q3's pre-decided gap, and the line says what makes it deliberate
+    # rather than forgotten — which is the whole requirement A7 puts on it.
+    "instruction: comments and docstrings in code are not examined by the "
+    "instruction pack, which applies to markdown, text, JSON, YAML and TOML. "
+    "Deliberate rather than forgotten: in FastMCP a tool's docstring *is* the "
+    "description sent to the model, and it already falls inside the "
+    "`surface.mcp_tool` window, so it reaches the manual read rather than "
+    "vanishing (FR-3.15 requires that read anyway)",
+    # FR-3.15, in the artifact rather than only in the PRD. A reader counting
+    # instruction-layer records has to know what the count is worth.
+    "instruction: these patterns are weaker signals than code patterns — "
+    "paraphrase defeats a regex over prose — so they raise questions and never "
+    "auto-classify, and where the instruction layer is substantial the triage "
+    "phase must read the whole prose closure rather than only these windows "
+    "(FR-3.15). This is a permanent cost of P8, not a temporary gap",
+    # The half of FR-3.14 that is a comparison, which no line-oriented rule can
+    # make. Named because the manifest pack looks like it answers FR-1.4 and
+    # does not.
+    "manifest: whether a grant exceeds the artifact's stated purpose is a "
+    "comparison, and no line-oriented rule holds both sides of one — the "
+    "capability manifest FR-1.4 requires is implemented by no milestone and "
+    "PRD §13 assigns it to no row (raised in `.claude/TASKS_M3.md`). These "
+    "patterns narrow that gap and do not close it",
+)
+
 _CLOSURE_GAPS = (
     "closure: a reference is read line by line and recognised by its file suffix "
     "or by a Markdown link target, so a path built from variables, split across "
@@ -691,6 +726,7 @@ def _coverage_gaps(
         f"closure: a member in a code language no rule set reads is in the closure "
         f"and nothing examines its contents; {unparsed_languages}",
         *_CLOSURE_GAPS,
+        *_CATALOG_LAYER_GAPS,
         f"structure: rules are read in Python only; {unparsed_languages}",
         *_STRUCTURE_GAPS,
         f"surface: code entry points are read in Python only; {others}",

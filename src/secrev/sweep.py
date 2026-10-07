@@ -55,7 +55,14 @@ from pathlib import Path
 
 from secrev.catalog import Catalog, Pattern
 from secrev.ids import Match, assign
-from secrev.inventory import FileEntry, glob_to_regex, language_of, split_lines, walk
+from secrev.inventory import (
+    FileEntry,
+    glob_to_regex,
+    is_prose,
+    language_of,
+    split_lines,
+    walk,
+)
 from secrev.ledger import WINDOW_SPEC, Hit, excerpt, window
 
 
@@ -66,10 +73,26 @@ def applies(pattern: Pattern, relative_path: str) -> bool:
     list is a false-positive reducer, not a prerequisite — which is why an
     unrecognised extension does not silently drop every language-scoped rule
     into "does not apply" without that being the honest answer.
+
+    **An instruction-layer pattern runs only where prose reaches an agent's
+    context**, and that is decided by `inventory.is_prose` rather than by a
+    `languages` list in the YAML (M5, §6 Q3). The list was the obvious spelling
+    and is the wrong one: `.mdc` — Cursor's rules files, prose an agent reads as
+    instruction — is absent from `LANGUAGE_BY_SUFFIX`, so `languages:
+    [markdown]` would have skipped every one of them in silence. One function,
+    so the next format is one correction rather than one per pack.
+
+    The manifest layer is deliberately *not* narrowed here. Its patterns match
+    structured configuration, which can arrive with any extension a client
+    chooses, and narrowing it would be the `languages: [markdown]` mistake in a
+    second place. `paths_exclude` is the per-pattern instrument if one is ever
+    needed.
     """
     for glob in pattern.paths_exclude:
         if glob_to_regex(glob).match(relative_path):
             return False
+    if pattern.layer == ("instruction",) and not is_prose(relative_path):
+        return False
     if not pattern.languages:
         return True
     return language_of(relative_path) in pattern.languages

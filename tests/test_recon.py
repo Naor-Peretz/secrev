@@ -718,7 +718,7 @@ def test_every_coverage_gap_names_the_source_it_belongs_to() -> None:
     unprefixed = [
         gap
         for gap in gaps
-        if not gap.startswith(("surface:", "structure:", "closure:"))
+        if not gap.startswith(("surface:", "structure:", "closure:", "instruction:", "manifest:"))
         and not gap.startswith(("excluded from review", "present but not read"))
     ]
     assert not unprefixed, f"coverage gaps naming no source: {unprefixed}"

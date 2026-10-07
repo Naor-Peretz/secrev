@@ -4,10 +4,12 @@
     "given": false,
     "paths": [
       "README.md",
+      "assets/blob.bin",
       "cli/pyproject.toml",
       "closure/entry.md",
       "closure/helpers/cyclé.md",
       "closure/helpers/direct.md",
+      "closure/helpers/payload.bin",
       "closure/helpers/progressive.md",
       "closure/helpers/run.sh",
       "crlf_module.py",
@@ -954,6 +956,172 @@
         "README.md:17",
         "README.md:21"
       ]
+    }
+  ],
+  "prose": [
+    {
+      "path": "README.md",
+      "lines": 61
+    },
+    {
+      "path": "cli/pyproject.toml",
+      "lines": 12
+    },
+    {
+      "path": "closure/entry.md",
+      "lines": 34
+    },
+    {
+      "path": "closure/helpers/cyclé.md",
+      "lines": 14
+    },
+    {
+      "path": "closure/helpers/direct.md",
+      "lines": 8
+    },
+    {
+      "path": "closure/helpers/progressive.md",
+      "lines": 10
+    },
+    {
+      "path": "mcp/.mcp.json",
+      "lines": 13
+    },
+    {
+      "path": "plugin/hooks/hooks.json",
+      "lines": 13
+    },
+    {
+      "path": "rules/fs.agent_config_write/negative.txt",
+      "lines": 7
+    },
+    {
+      "path": "rules/fs.agent_config_write/positive.txt",
+      "lines": 13
+    },
+    {
+      "path": "rules/instruction.approval_bypass/negative.md",
+      "lines": 11
+    },
+    {
+      "path": "rules/instruction.approval_bypass/positive.md",
+      "lines": 11
+    },
+    {
+      "path": "rules/instruction.authority_claim/negative.md",
+      "lines": 10
+    },
+    {
+      "path": "rules/instruction.authority_claim/positive.md",
+      "lines": 10
+    },
+    {
+      "path": "rules/instruction.conceal_action/negative.md",
+      "lines": 9
+    },
+    {
+      "path": "rules/instruction.conceal_action/positive.md",
+      "lines": 9
+    },
+    {
+      "path": "rules/instruction.exfiltrate/negative.md",
+      "lines": 10
+    },
+    {
+      "path": "rules/instruction.exfiltrate/positive.md",
+      "lines": 11
+    },
+    {
+      "path": "rules/instruction.install_component/negative.md",
+      "lines": 9
+    },
+    {
+      "path": "rules/instruction.install_component/positive.md",
+      "lines": 9
+    },
+    {
+      "path": "rules/instruction.override_prior/negative.md",
+      "lines": 10
+    },
+    {
+      "path": "rules/instruction.override_prior/positive.md",
+      "lines": 9
+    },
+    {
+      "path": "rules/instruction.write_outside/negative.md",
+      "lines": 9
+    },
+    {
+      "path": "rules/instruction.write_outside/positive.md",
+      "lines": 9
+    },
+    {
+      "path": "rules/log.sensitive/negative.txt",
+      "lines": 4
+    },
+    {
+      "path": "rules/log.sensitive/positive.txt",
+      "lines": 3
+    },
+    {
+      "path": "rules/manifest.broad_activation/negative.yaml",
+      "lines": 5
+    },
+    {
+      "path": "rules/manifest.broad_activation/positive.yaml",
+      "lines": 5
+    },
+    {
+      "path": "rules/manifest.filesystem_scope/negative.yaml",
+      "lines": 11
+    },
+    {
+      "path": "rules/manifest.filesystem_scope/positive.yaml",
+      "lines": 7
+    },
+    {
+      "path": "rules/manifest.hook_rewrite_event/negative.json",
+      "lines": 8
+    },
+    {
+      "path": "rules/manifest.hook_rewrite_event/positive.json",
+      "lines": 9
+    },
+    {
+      "path": "rules/manifest.network_permission/negative.json",
+      "lines": 7
+    },
+    {
+      "path": "rules/manifest.network_permission/positive.json",
+      "lines": 7
+    },
+    {
+      "path": "rules/manifest.wildcard_grant/negative.json",
+      "lines": 10
+    },
+    {
+      "path": "rules/manifest.wildcard_grant/positive.json",
+      "lines": 10
+    },
+    {
+      "path": "rules/net.bind_all/negative.txt",
+      "lines": 7
+    },
+    {
+      "path": "rules/net.bind_all/positive.txt",
+      "lines": 4
+    },
+    {
+      "path": "rules/net.fetch_exec/negative.txt",
+      "lines": 6
+    },
+    {
+      "path": "rules/net.fetch_exec/positive.txt",
+      "lines": 3
+    },
+    {
+      "path": "skills/quiet/SKILL.md",
+      "lines": 13
     }
   ],
   "coverage_gaps": [
