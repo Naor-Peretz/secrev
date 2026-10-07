@@ -71,6 +71,7 @@ from __future__ import annotations
 
 import json
 import re
+import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -320,6 +321,20 @@ GAP_LIST_LIMIT = 5
 
 
 @dataclass(frozen=True, order=True)
+class Root:
+    """One entry point, and why it is one.
+
+    The reason is in the artifact rather than implied by the list, because the
+    two ways a root arrives — the caller named it, or the target declares it —
+    answer different questions, and a reviewer who cannot tell them apart cannot
+    tell a review of the artifact from a review of one path through it.
+    """
+
+    path: str
+    reason: str
+
+
+@dataclass(frozen=True, order=True)
 class Member:
     """One file in the closure.
 
@@ -379,10 +394,20 @@ class Closure:
     record.
     """
 
-    roots: tuple[str, ...]
+    roots: tuple[Root, ...]
     roots_given: bool
     members: tuple[Member, ...]
     unresolved: tuple[Unresolved, ...]
+
+    # Inventoried files no root reaches. **Not members** — the closure is what
+    # the entry points pull in, and a file outside it is outside it — but not
+    # silent either, which is the half that matters: a file present in the tree
+    # and reachable from no declared entry point is loaded by a mechanism this
+    # tool did not see, or is not loaded at all, and a reviewer needs to know
+    # which. It is the first place to hide something from a closure-based
+    # review, so it gets its own list rather than an absence.
+    unreachable: tuple[str, ...]
+
     prose: tuple[ProseMember, ...]
     hits: list[Hit]
     coverage_gaps: tuple[str, ...]
@@ -496,6 +521,10 @@ def _references_on_line(from_path: str, number: int, line: str) -> list[_Referen
             _Reference(from_path=from_path, line=number, raw=match.group(0), load=LOAD_FETCH)
         )
 
+    # A Markdown target first, then bare tokens. A target carrying a suffix is
+    # found by both and de-duplicated by the caller's mapping, which is keyed on
+    # the reference text — two sightings of one reference on one line are one
+    # reference, where D-6's "two hits stay two hits" is about two *questions*.
     # A Markdown target first, then bare tokens. A target carrying a suffix is
     # found by both and de-duplicated by the caller's mapping, which is keyed on
     # the reference text — two sightings of one reference on one line are one
@@ -660,6 +689,32 @@ def _record_text(record: _Record, lines: list[str]) -> tuple[str, str]:
     return record.reference, record.reference
 
 
+def _unreachable_gap(unreachable: tuple[str, ...]) -> list[str]:
+    """FR-3.8 for the files outside the closure.
+
+    A closure computed from declared entry points is the right answer to
+    FR-1.2's question and leaves a second one open: what about the rest of the
+    tree? Answering it with silence is the failure this project exists to
+    notice, so the count and the first few paths are stated and the full list is
+    in `unreachable`.
+
+    The line does not call them dead. A file no entry point reaches is either
+    loaded by a mechanism this tool did not see, or not loaded at all, and
+    deciding which is reading rather than matching.
+    """
+    if not unreachable:
+        return []
+    shown = ", ".join(unreachable[:GAP_LIST_LIMIT])
+    if len(unreachable) > GAP_LIST_LIMIT:
+        shown += f", and {len(unreachable) - GAP_LIST_LIMIT} more — the full list is unreachable[]"
+    return [
+        f"closure: {len(unreachable)} inventoried file(s) are reached by no declared "
+        f"entry point and are therefore outside the closure: {shown}. Each is either "
+        "loaded by a mechanism this tool did not see or not loaded at all; which one "
+        "is a question for the reader (P9)"
+    ]
+
+
 def _hits(
     unresolved: tuple[Unresolved, ...],
     changed: list[tuple[FileEntry, str]],
@@ -723,37 +778,170 @@ def _hits(
     return hits
 
 
+# Filenames a client loads because of what they are called, with the reason it
+# loads them. **This is the closure's notion of a declared entry point, and it
+# is deliberately a short list of things an agent host actually reads**, not a
+# guess at what might be important.
+#
+# `recon._entrypoints` is not reused and `recon` is not imported. It answers a
+# different question — declared metadata, and it says in its own docstring that
+# "walking imports to find what is reachable" is not its work — and it is a peer
+# (P11). What is shared with it is the *source of truth*: both read the two
+# manifests by name, and both take the paths from the walk rather than from
+# `glob`, which follows a symlinked directory.
+_ROOT_BASENAMES = {
+    # The archetype this tool is named for. A skill's whole behaviour is its
+    # prose, and the host loads it on activation without being told to.
+    "SKILL.md": "a skill, loaded by its host on activation",
+    # An MCP client configuration: the host starts what this names before any
+    # tool is called.
+    ".mcp.json": "an MCP client configuration, read at client start",
+    "mcp.json": "an MCP client configuration, read at client start",
+    # A plugin manifest, and the hook bindings a plugin ships.
+    "plugin.json": "a plugin manifest, read when the plugin is installed",
+    "hooks.json": "hook bindings, read by the client that loads them",
+    # A client's own configuration, which is where hooks are actually bound.
+    "settings.json": "client configuration, read at session start",
+    # Instruction files an agent host loads automatically. **Included after
+    # measuring both ways**, and the reason is P8 rather than convenience: these
+    # reach the context window on every request, which is the strongest form of
+    # "the host loads this without being told to" in the list. Leaving them out
+    # would make the closure of an agent-instruction repository empty.
+    "CLAUDE.md": "an agent instruction file, loaded into context automatically",
+    "AGENTS.md": "an agent instruction file, loaded into context automatically",
+    "AGENT.md": "an agent instruction file, loaded into context automatically",
+}
+
+_MANIFESTS = ("package.json", "pyproject.toml")
+
+
+def _module_candidates(target: str) -> list[str]:
+    """Paths a `[project.scripts]` target could live at.
+
+    `secrev = "secrev.cli:main"` names a module, not a file. Both layouts the
+    packaging ecosystem uses are tried — `src/` and flat — and whichever one the
+    inventory holds is the root. Neither is guessed at: a candidate that is not
+    in the inventory is simply not a root, and the entry point then shows up as
+    `recon.json`'s business rather than as a closure member.
+    """
+    module = target.split(":", 1)[0].strip().strip("'\"")
+    if not module:
+        return []
+    relative = module.replace(".", "/")
+    return [
+        f"src/{relative}.py",
+        f"{relative}.py",
+        f"src/{relative}/__init__.py",
+        f"{relative}/__init__.py",
+    ]
+
+
+def _manifest_roots(root: Path, path: str, inventory: dict[str, FileEntry]) -> list[Root]:
+    """Entry points a manifest declares, resolved to files in the inventory.
+
+    A manifest that cannot be parsed contributes no roots and is not an error
+    here: `recon` already reports an unparsable manifest and `cli._incomplete`
+    already makes the run exit 2 for it, so raising again would report one fact
+    twice and from the source least able to explain it.
+    """
+    base = path.rsplit("/", 1)[0] + "/" if "/" in path else ""
+    try:
+        raw = (root / inventory[path].os_path).read_bytes().decode("utf-8", errors="replace")
+        document = json.loads(raw) if path.endswith(".json") else tomllib.loads(raw)
+    except (OSError, ValueError, tomllib.TOMLDecodeError):
+        return []
+    if not isinstance(document, dict):
+        return []
+
+    found: list[Root] = []
+    if path.endswith("package.json"):
+        binaries = document.get("bin")
+        targets = (
+            list(binaries.values())
+            if isinstance(binaries, dict)
+            else [binaries]
+            if isinstance(binaries, str)
+            else []
+        )
+        for item in targets:
+            if not isinstance(item, str):
+                continue
+            resolved = _lexical_join(path, item)
+            if resolved is not None and resolved in inventory:
+                found.append(Root(path=resolved, reason=f"a `bin` entry in {path}"))
+        return found
+
+    project = document.get("project")
+    scripts = project.get("scripts") if isinstance(project, dict) else None
+    if not isinstance(scripts, dict):
+        return []
+    for item in scripts.values():
+        if not isinstance(item, str):
+            continue
+        for candidate in _module_candidates(item):
+            joined = f"{base}{candidate}"
+            if joined in inventory:
+                found.append(Root(path=joined, reason=f"a `[project.scripts]` entry in {path}"))
+                break
+    return found
+
+
+def _detect_roots(inventory: dict[str, FileEntry], root: Path) -> tuple[Root, ...]:
+    """Every entry point the target declares, sorted, each with its reason.
+
+    Sorted and de-duplicated on the path, so two manifests naming one file give
+    one root. The reason kept is the first in sorted order, which makes the
+    artifact a pure function of the tree rather than of the walk (NFR-3).
+    """
+    reasons: dict[str, str] = {}
+    for path in sorted(inventory):
+        basename = path.rsplit("/", 1)[-1]
+        reason = _ROOT_BASENAMES.get(basename)
+        if reason is not None:
+            reasons.setdefault(path, reason)
+        if basename in _MANIFESTS:
+            for item in _manifest_roots(root, path, inventory):
+                reasons.setdefault(item.path, item.reason)
+    return tuple(Root(path=path, reason=reasons[path]) for path in sorted(reasons))
+
+
 def _roots(
-    inventory: dict[str, FileEntry], entries: list[str] | None
-) -> tuple[tuple[str, ...], bool]:
+    inventory: dict[str, FileEntry], root: Path, entries: list[str] | None
+) -> tuple[tuple[Root, ...], bool]:
     """The roots, and whether the caller named them.
 
-    `None` means every inventoried file whose bytes may be read. The two answer
-    different questions and the artifact records which was asked, which is why
-    the boolean travels with the list rather than being inferred from its
-    length.
+    `None` means **the entry points the target declares**, found by
+    `_detect_roots`. It does not mean every file: FR-1.2 defines the closure as
+    "the entry file plus every file it references", and a run whose roots are
+    the whole inventory has computed the tree rather than a closure.
+
+    *That was this function for two commits, and the owner measured what it
+    cost.* `secrev closure .` over this repository produced 1,171 records, 1,036
+    of them `closure.missing_reference` — because with every readable file a
+    root, every filename mentioned anywhere in any document became a reference
+    to resolve. The defect is not the precision of the resolution; it is that
+    nothing was a closure. A reviewer reading 1,036 lines to find the four that
+    matter reads none of them, and that is H-1's habit arriving as volume.
+
+    An intermediate version filtered to readable text, which was worse in a
+    different way and is recorded in `.claude/TASKS_M5.md`: an unreferenced
+    oversized file then appeared nowhere in the artifact at all. That property
+    is kept here by `Closure.unreachable` rather than by making everything a
+    root — a file no entry point reaches is a *statement*, and the honest place
+    for it is its own list.
     """
     if entries is None:
-        # **Every inventoried path, including the ones that will not be read.**
-        #
-        # This filtered to readable text for one commit, and the filter dropped
-        # those files out of `closure.json` altogether: not a root, referenced
-        # by nothing, so absent from `members` — while `_CLOSURE_GAPS` already
-        # said "a member that is binary, unreadable, not a regular file, or past
-        # the size bound is in the closure and is not read". The gap line
-        # described the behaviour this function was supposed to have, and the
-        # code contradicted it, silently, for exactly the files a target would
-        # choose to make unreadable.
-        #
-        # Found by a test written for `lines: null` in the prose inventory,
-        # which could not be reached: an oversized `.md` file was not in the
-        # closure at all. In a tool whose thesis is that nothing is passed over
-        # in silence, an inventoried file missing from the artifact is the
-        # defect, not the line count.
-        #
-        # `_traverse` still refuses to *read* them, so nothing is followed out
-        # of a binary; they arrive as members with no referring lines.
-        return tuple(sorted(inventory)), False
+        detected = _detect_roots(inventory, root)
+        if not detected:
+            raise ValueError(
+                "no entry point found in the target, so there is nothing to compute a "
+                "closure from. The entry points this looks for are "
+                f"{', '.join(sorted(_ROOT_BASENAMES))}, a `bin` in package.json, and "
+                "`[project.scripts]` in pyproject.toml. Name one with --entry; "
+                "reviewing every file as its own entry point would compute the tree "
+                "rather than the closure (FR-1.2)"
+            )
+        return detected, False
     given = {normalise_path(name) for name in entries}
     # A usage error rather than a finding, and the difference is who made the
     # mistake. An entry the *target* does not contain is a hole in the artifact
@@ -772,7 +960,7 @@ def _roots(
         raise ValueError(
             f"--entry must name a path inside the target; these do not: {', '.join(outside)}"
         )
-    return tuple(sorted(given)), True
+    return tuple(Root(path=name, reason="named with --entry") for name in sorted(given)), True
 
 
 @dataclass
@@ -992,27 +1180,28 @@ def closure(
 ) -> Closure:
     """The reachable artifact set under `root`, in a deterministic order.
 
-    `entries` names the roots. `None` means every inventoried file whose bytes
-    may be read, and `closure.json` says which of the two it was — because the
-    two answer different questions. Given roots answer "what does this entry
-    pull in", which is FR-1.2's question and the one a reviewer asks once they
-    know the artifact's entry file. The default answers "what does this tree
-    pull in that is not in it", which is the question that can be asked of an
-    arbitrary target with no entry file declared anywhere, and which never
-    under-reports: every file is a root, so nothing is missed because the entry
-    was guessed wrongly.
+    `entries` names the roots. `None` means **the entry points the target
+    declares** — `_detect_roots` — and a target declaring none is exit 2 asking
+    for `--entry`, because the alternative is to treat every file as its own
+    entry point, which computes the tree rather than the closure (FR-1.2: "the
+    entry file plus every file it references").
+
+    `closure.json` records which of the two it was, and each root's reason, so a
+    reviewer can tell a review of the artifact from a review of one path through
+    it.
 
     A given root that is not in the inventory is itself an unresolved member. A
     root that exists and cannot be read is a member whose references were not
-    followed, and the coverage gap says so.
+    followed, and the coverage gap says so. An inventoried file no root reaches
+    is in `unreachable` — not a member, and not silent.
 
     `excluded` and `max_bytes` are threaded to `inventory.walk` (M3.5 A2). A
     consumer of the walk must skip exactly what the others skip, or an override
     would change scope for one and not the others.
     """
     inventory = {entry.path: entry for entry in walk(root, excluded, max_bytes)}
-    roots, roots_given = _roots(inventory, entries)
-    graph = _traverse(root, roots, inventory)
+    roots, roots_given = _roots(inventory, root, entries)
+    graph = _traverse(root, tuple(item.path for item in roots), inventory)
 
     members = tuple(
         sorted(
@@ -1058,14 +1247,17 @@ def closure(
         for member in members
         if is_prose(member.path)
     )
+    reached = {member.path for member in members}
+    unreachable = tuple(path for path in sorted(inventory) if path not in reached)
     return Closure(
         roots=roots,
         roots_given=roots_given,
         members=members,
         unresolved=unresolved,
+        unreachable=unreachable,
         prose=prose,
         hits=_hits(unresolved, graph.changed, graph.lines_by_path),
-        coverage_gaps=(*_derived_gaps(members), *_CLOSURE_GAPS),
+        coverage_gaps=(*_derived_gaps(members), *_unreachable_gap(unreachable), *_CLOSURE_GAPS),
     )
 
 
@@ -1081,7 +1273,10 @@ def to_json(result: Closure) -> str:
         "closure_version": CLOSURE_RULES_VERSION,
         "roots": {
             "given": result.roots_given,
-            "paths": list(result.roots),
+            # Each root with its reason. A bare list would leave a reviewer
+            # unable to tell "the caller asked about this path" from "the target
+            # declares this entry point", which are different reviews.
+            "paths": [{"path": item.path, "reason": item.reason} for item in result.roots],
         },
         "members": [
             {
@@ -1108,6 +1303,9 @@ def to_json(result: Closure) -> str:
         # statement about what *is* in the closure rather than about what is
         # missing from it.
         "prose": [{"path": item.path, "lines": item.lines} for item in result.prose],
+        # Between the closure and its gaps, because that is what it is: the
+        # complement of the closure inside the inventory.
+        "unreachable": list(result.unreachable),
         "coverage_gaps": list(result.coverage_gaps),
     }
     return json.dumps(document, indent=2, ensure_ascii=False, sort_keys=False) + "\n"

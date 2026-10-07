@@ -264,6 +264,42 @@ expected-failure markers, so it lands in the same commit as the module.
 
 ### What M5 added to that shape
 
+- **The closure's roots are the entry points the target declares**, and a target
+  declaring none is exit 2 asking for `--entry`. `SKILL.md`, `.mcp.json`,
+  `plugin.json`, `hooks.json`, `settings.json`, a `bin` in `package.json`, a
+  `[project.scripts]` target in `pyproject.toml` resolved through both packaging
+  layouts, and the agent instruction files `CLAUDE.md` / `AGENTS.md` /
+  `AGENT.md`. Each root carries its reason into `closure.json`, because "the
+  caller asked about this path" and "the target declares this entry point" are
+  different reviews.
+  **This was "every readable file" for two commits and the owner caught it:**
+  that computes the tree, not the closure, and FR-1.2 is explicit — "the entry
+  file plus every file it references". With every file a root, every filename
+  mentioned in any document becomes a reference to resolve, which measured 1,171
+  records over this repository. `recon._entrypoints` is deliberately not reused
+  and `recon` is not imported: it answers a different question (declared
+  metadata, and its own docstring says resolving references is not its work) and
+  it is a peer (P11).
+- **`Closure.unreachable` is the complement**: inventoried files no root
+  reaches, with a gap line naming how many. Not members — the closure is what the
+  entry points pull in — and not silent either, which is the half that matters.
+  The first place to hide something from a closure-based review is outside the
+  closure, and the line does not call those files dead: each is either loaded by
+  a mechanism this tool did not see or not loaded at all, and deciding which is
+  reading rather than matching.
+  An intermediate version made every *inventoried* file a root to keep that
+  property, which is how an unreferenced oversized file came to be absent from
+  the artifact entirely while a gap line claimed it was present.
+- **Correct roots did not make the number small, and that is recorded rather
+  than smoothed over** (`.claude/TASKS_M5.md`). Over this repository it is 1,024
+  records from 16 roots. The remaining amplifier is transitive expansion through
+  prose citation — the chain `TASKS_M1.md → TASKS_M2.md → BRIEF_M5.md →
+  tests/test_closure.py`, four hops, every one a document citing another by name
+  and not one of them a load. Following only references that *look* like loads
+  was implemented, measured at a 9% reduction while halving the designed
+  fixture's demonstrated member kinds, and reverted. Telling "read `X`" from
+  "see the discussion in `X`" is reading the sentence, which is FR-3.15's
+  territory and not a regex's, and the decision has FR-4.3 consequences in M7.
 - **`is_prose(path)` is one function and two consumers use it** (§6 Q3, Q4): `sweep.applies`
   decides where the instruction pack runs, and `closure.json`'s prose inventory lists the members
   it ran on. A test asserts the two sets are equal, computed independently — if they came apart,

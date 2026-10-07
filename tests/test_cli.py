@@ -975,6 +975,27 @@ def test_an_entry_outside_the_target_is_exit_two(
     assert "inside the target" in capsys.readouterr().err
 
 
+def test_a_target_declaring_no_entry_point_is_exit_two(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The owner's correction, at the exit-code level.
+
+    `closure.py` treated every readable file as its own entry point when none
+    was given, which computes the tree rather than the closure (FR-1.2). A
+    target with no recognisable entry point is now exit 2 asking for `--entry`,
+    and the message names what it looked for so a caller can see why their
+    artifact was not recognised.
+    """
+    target = tmp_path / "target"
+    target.mkdir()
+    (target / "notes.md").write_text("nothing declares anything here\n", encoding="utf-8")
+    code = run(["closure", str(target), "--workspace", str(tmp_path / "ws")])
+    assert code == EXIT_USAGE
+    err = capsys.readouterr().err
+    assert "no entry point found" in err
+    assert "SKILL.md" in err
+
+
 def test_closure_internal_error_is_three_not_one(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

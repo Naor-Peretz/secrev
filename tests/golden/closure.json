@@ -3,105 +3,32 @@
   "roots": {
     "given": false,
     "paths": [
-      "README.md",
-      "assets/blob.bin",
-      "cli/pyproject.toml",
-      "closure/entry.md",
-      "closure/helpers/cyclé.md",
-      "closure/helpers/direct.md",
-      "closure/helpers/payload.bin",
-      "closure/helpers/progressive.md",
-      "closure/helpers/run.sh",
-      "crlf_module.py",
-      "exports/__init__.py",
-      "mcp/.mcp.json",
-      "mcp/lowlevel.py",
-      "mcp/server.py",
-      "naïve-café.py",
-      "pkg/deep/nested.py",
-      "plugin/hooks/hooks.json",
-      "rules/deser.unsafe/negative.py",
-      "rules/deser.unsafe/positive.py",
-      "rules/exec.dynamic/negative.py",
-      "rules/exec.dynamic/positive.py",
-      "rules/exec.shell_true/negative.py",
-      "rules/exec.shell_true/positive.py",
-      "rules/fs.agent_config_write/negative.txt",
-      "rules/fs.agent_config_write/positive.txt",
-      "rules/instruction.approval_bypass/negative.md",
-      "rules/instruction.approval_bypass/positive.md",
-      "rules/instruction.authority_claim/negative.md",
-      "rules/instruction.authority_claim/positive.md",
-      "rules/instruction.conceal_action/negative.md",
-      "rules/instruction.conceal_action/positive.md",
-      "rules/instruction.exfiltrate/negative.md",
-      "rules/instruction.exfiltrate/positive.md",
-      "rules/instruction.install_component/negative.md",
-      "rules/instruction.install_component/positive.md",
-      "rules/instruction.override_prior/negative.md",
-      "rules/instruction.override_prior/positive.md",
-      "rules/instruction.write_outside/negative.md",
-      "rules/instruction.write_outside/positive.md",
-      "rules/log.sensitive/negative.txt",
-      "rules/log.sensitive/positive.txt",
-      "rules/manifest.broad_activation/negative.yaml",
-      "rules/manifest.broad_activation/positive.yaml",
-      "rules/manifest.filesystem_scope/negative.yaml",
-      "rules/manifest.filesystem_scope/positive.yaml",
-      "rules/manifest.hook_rewrite_event/negative.json",
-      "rules/manifest.hook_rewrite_event/positive.json",
-      "rules/manifest.network_permission/negative.json",
-      "rules/manifest.network_permission/positive.json",
-      "rules/manifest.wildcard_grant/negative.json",
-      "rules/manifest.wildcard_grant/positive.json",
-      "rules/net.bind_all/negative.txt",
-      "rules/net.bind_all/positive.txt",
-      "rules/net.fetch_exec/negative.txt",
-      "rules/net.fetch_exec/positive.txt",
-      "rules/path.traversal/negative.py",
-      "rules/path.traversal/positive.py",
-      "rules/tls.verify_off/negative.py",
-      "rules/tls.verify_off/positive.py",
-      "skills/quiet/SKILL.md",
-      "structural/structure.built_value_into_sink/negative.py",
-      "structural/structure.built_value_into_sink/positive.py",
-      "structural/structure.denylist_decision/negative.py",
-      "structural/structure.denylist_decision/positive.py",
-      "structural/structure.permission_after_creation/negative.py",
-      "structural/structure.permission_after_creation/positive.py",
-      "structural/structure.unvalidated_path_reach/negative.py",
-      "structural/structure.unvalidated_path_reach/positive.py"
+      {
+        "path": "closure/SKILL.md",
+        "reason": "a skill, loaded by its host on activation"
+      },
+      {
+        "path": "mcp/.mcp.json",
+        "reason": "an MCP client configuration, read at client start"
+      },
+      {
+        "path": "plugin/hooks/hooks.json",
+        "reason": "hook bindings, read by the client that loads them"
+      },
+      {
+        "path": "skills/quiet/SKILL.md",
+        "reason": "a skill, loaded by its host on activation"
+      }
     ]
   },
   "members": [
     {
-      "path": "README.md",
+      "path": "closure/SKILL.md",
       "kind": "data",
       "load": "direct",
-      "size": 4831,
-      "sha256": "a20656555586ecf1e1bf8d480574f85ae2e28eae45fdd30b0767f2e971544c16",
+      "size": 618,
+      "sha256": "fcabe7676adb61127c67f96cf942f032ccad397336b463a1c0df32614904ba0f",
       "referenced_from": []
-    },
-    {
-      "path": "assets/blob.bin",
-      "kind": "binary",
-      "load": "direct",
-      "size": 47,
-      "sha256": "c9238330016a335ff31d8dff0d7a44ed93287cc52f23a0760da1a914d8773bdf",
-      "referenced_from": [
-        "README.md:15"
-      ]
-    },
-    {
-      "path": "cli/pyproject.toml",
-      "kind": "data",
-      "load": "direct",
-      "size": 254,
-      "sha256": "d85ca3ec93c85c3780dcca6816b0f08042390b2083693d06b9311333f1bde0e9",
-      "referenced_from": [
-        "README.md:22",
-        "README.md:53"
-      ]
     },
     {
       "path": "closure/entry.md",
@@ -110,6 +37,7 @@
       "size": 1590,
       "sha256": "3efa9573b4d718fe0a91bc5e29f1f0461860e476b79a5e18e32974da9065f08a",
       "referenced_from": [
+        "closure/SKILL.md:12",
         "closure/helpers/cyclé.md:10"
       ]
     },
@@ -167,26 +95,6 @@
       ]
     },
     {
-      "path": "crlf_module.py",
-      "kind": "source",
-      "load": "direct",
-      "size": 113,
-      "sha256": "c8d051a99b93454e4ff4130115b36381772cbb9c36bec908a5b4e87573606365",
-      "referenced_from": [
-        "README.md:13"
-      ]
-    },
-    {
-      "path": "exports/__init__.py",
-      "kind": "source",
-      "load": "direct",
-      "size": 186,
-      "sha256": "eaf19f6799a2118390567f7611860add523e1cd6f4f0bcb0bee1eece197e3561",
-      "referenced_from": [
-        "README.md:23"
-      ]
-    },
-    {
       "path": "mcp/.mcp.json",
       "kind": "data",
       "load": "direct",
@@ -195,389 +103,11 @@
       "referenced_from": []
     },
     {
-      "path": "mcp/lowlevel.py",
-      "kind": "source",
-      "load": "direct",
-      "size": 568,
-      "sha256": "c223add82a0eaee6d85d320ffd197a6cf6afb115600c8f1756c6fb814302fbb5",
-      "referenced_from": [
-        "README.md:19"
-      ]
-    },
-    {
-      "path": "mcp/server.py",
-      "kind": "source",
-      "load": "direct",
-      "size": 313,
-      "sha256": "ec0096970192e56884d123c2847bcd7abb3a3ba3b467ab0efccc1d2e44f2008b",
-      "referenced_from": [
-        "README.md:18"
-      ]
-    },
-    {
-      "path": "naïve-café.py",
-      "kind": "source",
-      "load": "direct",
-      "size": 941,
-      "sha256": "75c7a4ca47693da8e54a365c4925c904dc6aa5af49677f0b98ef3ba53cff567c",
-      "referenced_from": [
-        "README.md:12"
-      ]
-    },
-    {
-      "path": "pkg/deep/nested.py",
-      "kind": "source",
-      "load": "direct",
-      "size": 297,
-      "sha256": "4d2ab7530a4e63aaf29f5c189eacf0d72bc68b3a0381a6e236356485cac8e7d3",
-      "referenced_from": [
-        "README.md:14"
-      ]
-    },
-    {
       "path": "plugin/hooks/hooks.json",
       "kind": "data",
       "load": "direct",
       "size": 253,
       "sha256": "93b895ff988fea58afedc65ac1c55d78a7c986fe98ecad2a32ddea66218341cb",
-      "referenced_from": [
-        "README.md:21"
-      ]
-    },
-    {
-      "path": "rules/deser.unsafe/negative.py",
-      "kind": "source",
-      "load": "direct",
-      "size": 216,
-      "sha256": "441d474574fdd4583866f5b6c21425bc81cdb3d270accdf1409dd44b3fafcf73",
-      "referenced_from": []
-    },
-    {
-      "path": "rules/deser.unsafe/positive.py",
-      "kind": "source",
-      "load": "direct",
-      "size": 81,
-      "sha256": "348761de0407389f37f08ec18783b1a1d1f0ac488ffa1be9e8fea1a148112e5a",
-      "referenced_from": []
-    },
-    {
-      "path": "rules/exec.dynamic/negative.py",
-      "kind": "source",
-      "load": "direct",
-      "size": 195,
-      "sha256": "6a3972992452a896c81b8203f37c9b216996973aeedd98bcbf0fbedaf1becc30",
-      "referenced_from": []
-    },
-    {
-      "path": "rules/exec.dynamic/positive.py",
-      "kind": "source",
-      "load": "direct",
-      "size": 70,
-      "sha256": "926eceafc3c416e3b1f4d609111e04a7a892fffbbb3fb7c9a1cb250035feb978",
-      "referenced_from": []
-    },
-    {
-      "path": "rules/exec.shell_true/negative.py",
-      "kind": "source",
-      "load": "direct",
-      "size": 218,
-      "sha256": "7cd6f366871a90143b3b4e370a882f0f2df56bcd8aaa598607359c4260f0b474",
-      "referenced_from": []
-    },
-    {
-      "path": "rules/exec.shell_true/positive.py",
-      "kind": "source",
-      "load": "direct",
-      "size": 106,
-      "sha256": "5c9f2ce690b7071733e341696231c1b744e69ab766a676b12180738e416a461b",
-      "referenced_from": []
-    },
-    {
-      "path": "rules/fs.agent_config_write/negative.txt",
-      "kind": "data",
-      "load": "direct",
-      "size": 295,
-      "sha256": "c7db16876f71d765eae16dcdd3d37160b0e888f956b7818ff1d864ac9fb86a4d",
-      "referenced_from": []
-    },
-    {
-      "path": "rules/fs.agent_config_write/positive.txt",
-      "kind": "data",
-      "load": "direct",
-      "size": 758,
-      "sha256": "59605a9794a4255ee3824cbc158f2688a5ac432c1a28843fe1c364b79259c9de",
-      "referenced_from": []
-    },
-    {
-      "path": "rules/instruction.approval_bypass/negative.md",
-      "kind": "data",
-      "load": "direct",
-      "size": 388,
-      "sha256": "055e7131e28dbd11b387ac4fbfc0098a55b2ea4a6b3bca60b8f93a07d7413ac7",
-      "referenced_from": []
-    },
-    {
-      "path": "rules/instruction.approval_bypass/positive.md",
-      "kind": "data",
-      "load": "direct",
-      "size": 313,
-      "sha256": "60f7aed422c4ccc7fd8e3044e1cb5c506c29fa1b23d934cb371ee28b64305cec",
-      "referenced_from": []
-    },
-    {
-      "path": "rules/instruction.authority_claim/negative.md",
-      "kind": "data",
-      "load": "direct",
-      "size": 427,
-      "sha256": "00efe3ff79273ce801f15c8cf642fdd7ef4e43f3a3e135adebedfe6e93f68aa4",
-      "referenced_from": []
-    },
-    {
-      "path": "rules/instruction.authority_claim/positive.md",
-      "kind": "data",
-      "load": "direct",
-      "size": 323,
-      "sha256": "209a91b1b9acef9ce9433b080fe0ff716982abd793994a88696b9357f49edd38",
-      "referenced_from": []
-    },
-    {
-      "path": "rules/instruction.conceal_action/negative.md",
-      "kind": "data",
-      "load": "direct",
-      "size": 362,
-      "sha256": "2152a2168dba17debe20ec9f3d0919d0aa29e306b28de548e2e4672d3f8f96be",
-      "referenced_from": []
-    },
-    {
-      "path": "rules/instruction.conceal_action/positive.md",
-      "kind": "data",
-      "load": "direct",
-      "size": 253,
-      "sha256": "cb8b17b03a2aaaa0631d78bafa0b969993e52509f86f4a8d8d725e29af291870",
-      "referenced_from": []
-    },
-    {
-      "path": "rules/instruction.exfiltrate/negative.md",
-      "kind": "data",
-      "load": "direct",
-      "size": 401,
-      "sha256": "e6440ffc44b69760af3b36ec384bb3a48cac2983938007b158c6d0d3c8bfabeb",
-      "referenced_from": []
-    },
-    {
-      "path": "rules/instruction.exfiltrate/positive.md",
-      "kind": "data",
-      "load": "direct",
-      "size": 323,
-      "sha256": "4d65f8f24fdea192168596eb0453f889c41952b13201e1e5dc9c8f04278e831c",
-      "referenced_from": []
-    },
-    {
-      "path": "rules/instruction.install_component/negative.md",
-      "kind": "data",
-      "load": "direct",
-      "size": 375,
-      "sha256": "df448b913e9144932797a79cc16ffd7045617ab2b2adebd1d31582abb49e8bd2",
-      "referenced_from": []
-    },
-    {
-      "path": "rules/instruction.install_component/positive.md",
-      "kind": "data",
-      "load": "direct",
-      "size": 263,
-      "sha256": "9bdfc5a79cc58a9443664d5f51efa9225f3246f962e274e6da1490962d393d1e",
-      "referenced_from": []
-    },
-    {
-      "path": "rules/instruction.override_prior/negative.md",
-      "kind": "data",
-      "load": "direct",
-      "size": 457,
-      "sha256": "a8014892d8827a04cefec660158c5f9a51575743711087da02c48c40b8006236",
-      "referenced_from": []
-    },
-    {
-      "path": "rules/instruction.override_prior/positive.md",
-      "kind": "data",
-      "load": "direct",
-      "size": 270,
-      "sha256": "e40e1cc4785623a1bf77d5edf0ac1507661cc75652d39d279c8cfc0fdd4b9257",
-      "referenced_from": []
-    },
-    {
-      "path": "rules/instruction.write_outside/negative.md",
-      "kind": "data",
-      "load": "direct",
-      "size": 375,
-      "sha256": "bc87abc09596295af180983d5c5ec1e45952e556cb03a32520f9c1c9d3df74d2",
-      "referenced_from": []
-    },
-    {
-      "path": "rules/instruction.write_outside/positive.md",
-      "kind": "data",
-      "load": "direct",
-      "size": 290,
-      "sha256": "ac4a35c8c2deaadb9bc4c7e7793b45379065932212aa03b3b856acfa00c378c1",
-      "referenced_from": []
-    },
-    {
-      "path": "rules/log.sensitive/negative.txt",
-      "kind": "data",
-      "load": "direct",
-      "size": 197,
-      "sha256": "9da26cbc19355d376d1bafc967faead30de393898739ccb39fc4b5710242b0f0",
-      "referenced_from": []
-    },
-    {
-      "path": "rules/log.sensitive/positive.txt",
-      "kind": "data",
-      "load": "direct",
-      "size": 98,
-      "sha256": "d2cfaa249d7662a6b463fc17bbd6ca93ffa5d5cc72d0938568c8d148b542859b",
-      "referenced_from": []
-    },
-    {
-      "path": "rules/manifest.broad_activation/negative.yaml",
-      "kind": "data",
-      "load": "direct",
-      "size": 232,
-      "sha256": "73e21de01c4a0385ba5028499e40d5e2a698adf0b6fffa3011d13b2d82a096a1",
-      "referenced_from": []
-    },
-    {
-      "path": "rules/manifest.broad_activation/positive.yaml",
-      "kind": "data",
-      "load": "direct",
-      "size": 224,
-      "sha256": "5006c690b6c6f9b20d9732fe40a5d20f1fe7c144135ca26be9e7953a6517895a",
-      "referenced_from": []
-    },
-    {
-      "path": "rules/manifest.filesystem_scope/negative.yaml",
-      "kind": "data",
-      "load": "direct",
-      "size": 327,
-      "sha256": "5a0f7430ea631b30dc60698d6d926744f7caf17aea9086d8c9fcd97b408e1613",
-      "referenced_from": []
-    },
-    {
-      "path": "rules/manifest.filesystem_scope/positive.yaml",
-      "kind": "data",
-      "load": "direct",
-      "size": 233,
-      "sha256": "dbfd1b52184f743143a7ebd248529a69361ec4743354592ea9d96e756d435f25",
-      "referenced_from": []
-    },
-    {
-      "path": "rules/manifest.hook_rewrite_event/negative.json",
-      "kind": "data",
-      "load": "direct",
-      "size": 277,
-      "sha256": "9bfda0561384e36e30869518499a879b8b46e7ea2660287fc68c529481d9a42b",
-      "referenced_from": []
-    },
-    {
-      "path": "rules/manifest.hook_rewrite_event/positive.json",
-      "kind": "data",
-      "load": "direct",
-      "size": 253,
-      "sha256": "ebd681fb7656c415403e0205770ab9a46a155e364d363ba59f1c8b95acf7fbea",
-      "referenced_from": []
-    },
-    {
-      "path": "rules/manifest.network_permission/negative.json",
-      "kind": "data",
-      "load": "direct",
-      "size": 159,
-      "sha256": "f3c4ee3fc2d4470cf94e8d5d9296ac0cc6683f9156aff292b38d7ba53993e195",
-      "referenced_from": []
-    },
-    {
-      "path": "rules/manifest.network_permission/positive.json",
-      "kind": "data",
-      "load": "direct",
-      "size": 113,
-      "sha256": "ea7f53ed75c9ec7e9e2868d773f5fa5c7d9b35848defc8743b83b1da0713aafe",
-      "referenced_from": []
-    },
-    {
-      "path": "rules/manifest.wildcard_grant/negative.json",
-      "kind": "data",
-      "load": "direct",
-      "size": 472,
-      "sha256": "5c427473a675f46d773b3f33a647e302271841cd1b55b0c22868413ff5a29bbe",
-      "referenced_from": []
-    },
-    {
-      "path": "rules/manifest.wildcard_grant/positive.json",
-      "kind": "data",
-      "load": "direct",
-      "size": 166,
-      "sha256": "db4ebdcec6baaaa30fc1c009c3f39ca267ab2bfbd3d8c36fb94c0f788dad4b04",
-      "referenced_from": []
-    },
-    {
-      "path": "rules/net.bind_all/negative.txt",
-      "kind": "data",
-      "load": "direct",
-      "size": 348,
-      "sha256": "88e8bb0c362f97eaf218f2908ba87df2d12a7a7b8b7a8d242383a9f8ac392804",
-      "referenced_from": []
-    },
-    {
-      "path": "rules/net.bind_all/positive.txt",
-      "kind": "data",
-      "load": "direct",
-      "size": 147,
-      "sha256": "ffb075a251af87b71841a9ffbff875ddbaf459027a33c229a8c3a5ca3b3588a1",
-      "referenced_from": []
-    },
-    {
-      "path": "rules/net.fetch_exec/negative.txt",
-      "kind": "data",
-      "load": "direct",
-      "size": 285,
-      "sha256": "a06dfafed727e68958b9e0b70a0da5883db77ed1d3824afeed7f49cceb28dbbe",
-      "referenced_from": []
-    },
-    {
-      "path": "rules/net.fetch_exec/positive.txt",
-      "kind": "data",
-      "load": "direct",
-      "size": 133,
-      "sha256": "72ccd27abb5dd0ac079ed5b2da39f95d507a9ca16cd49a30b5a7c9b4d4bd51eb",
-      "referenced_from": []
-    },
-    {
-      "path": "rules/path.traversal/negative.py",
-      "kind": "source",
-      "load": "direct",
-      "size": 374,
-      "sha256": "21a308eb71a64eeb2b99b1d8cb569b5f0c7aee29f562b413440b60f5a6febfa7",
-      "referenced_from": []
-    },
-    {
-      "path": "rules/path.traversal/positive.py",
-      "kind": "source",
-      "load": "direct",
-      "size": 179,
-      "sha256": "09dc735d6579a34e16ecd0824c0d4fb3dc82bc71694a907c44ac30eae37a7f18",
-      "referenced_from": []
-    },
-    {
-      "path": "rules/tls.verify_off/negative.py",
-      "kind": "source",
-      "load": "direct",
-      "size": 146,
-      "sha256": "5898e548facc06ae03904230d3206911e3e777ec4463ff5606a9993faba9ddad",
-      "referenced_from": []
-    },
-    {
-      "path": "rules/tls.verify_off/positive.py",
-      "kind": "source",
-      "load": "direct",
-      "size": 111,
-      "sha256": "b01bd4c424b5d90c66b28a1e8f71c62d3d2171c3f7d9b8c356755f9bd0269569",
       "referenced_from": []
     },
     {
@@ -586,72 +116,6 @@
       "load": "direct",
       "size": 456,
       "sha256": "d6ca6d0312891e0b26e2ef80102864bfcd4c740e6d7e3f3712bd068fb9ba584b",
-      "referenced_from": [
-        "README.md:17"
-      ]
-    },
-    {
-      "path": "structural/structure.built_value_into_sink/negative.py",
-      "kind": "source",
-      "load": "direct",
-      "size": 460,
-      "sha256": "a553886e317152e1fe4d71fbae3671d972e721392e8365f48d276ba6ec5c10c8",
-      "referenced_from": []
-    },
-    {
-      "path": "structural/structure.built_value_into_sink/positive.py",
-      "kind": "source",
-      "load": "direct",
-      "size": 291,
-      "sha256": "638970df625ac4fe250b307f9838beb0c1eac90e04868c633870b0e732f94439",
-      "referenced_from": []
-    },
-    {
-      "path": "structural/structure.denylist_decision/negative.py",
-      "kind": "source",
-      "load": "direct",
-      "size": 777,
-      "sha256": "a8b3d58038b975ec4a53b7c1de4969c34b58b5d76ae22bbf2c26f053b7945df6",
-      "referenced_from": []
-    },
-    {
-      "path": "structural/structure.denylist_decision/positive.py",
-      "kind": "source",
-      "load": "direct",
-      "size": 629,
-      "sha256": "d15897ef41c6d01717647917861e0953cacf5deac181e3e0ef36310cb850d1e6",
-      "referenced_from": []
-    },
-    {
-      "path": "structural/structure.permission_after_creation/negative.py",
-      "kind": "source",
-      "load": "direct",
-      "size": 680,
-      "sha256": "2d1b4fd1e9e0bd609614702d3972518aff300d345a66c08effd43dcf4b58972c",
-      "referenced_from": []
-    },
-    {
-      "path": "structural/structure.permission_after_creation/positive.py",
-      "kind": "source",
-      "load": "direct",
-      "size": 474,
-      "sha256": "dab02c70450e4e912ec4d5426c763e0c2152872a887660abf337749d9e0572b2",
-      "referenced_from": []
-    },
-    {
-      "path": "structural/structure.unvalidated_path_reach/negative.py",
-      "kind": "source",
-      "load": "direct",
-      "size": 828,
-      "sha256": "7eea6fb301bacf193c18d6c2c980b8adae147acdc8c3bbe09b683f7f16af2f55",
-      "referenced_from": []
-    },
-    {
-      "path": "structural/structure.unvalidated_path_reach/positive.py",
-      "kind": "source",
-      "load": "direct",
-      "size": 363,
-      "sha256": "af043dabef9574044dd11258cb95ed13e8dee90915472e6f9a4eb0e1bde57740",
       "referenced_from": []
     }
   ],
@@ -663,51 +127,6 @@
       "reason": "resolves outside the target root and was not read (P9)",
       "referenced_from": [
         "closure/entry.md:29"
-      ]
-    },
-    {
-      "reference": "./audit.sh",
-      "load": "direct",
-      "rule_id": "closure.missing_reference",
-      "reason": "no file at that path in the target",
-      "referenced_from": [
-        "rules/manifest.hook_rewrite_event/positive.json:4"
-      ]
-    },
-    {
-      "reference": "./cleanup.sh",
-      "load": "direct",
-      "rule_id": "closure.missing_reference",
-      "reason": "no file at that path in the target",
-      "referenced_from": [
-        "rules/manifest.hook_rewrite_event/negative.json:5"
-      ]
-    },
-    {
-      "reference": "./filter.py",
-      "load": "direct",
-      "rule_id": "closure.missing_reference",
-      "reason": "no file at that path in the target",
-      "referenced_from": [
-        "rules/manifest.hook_rewrite_event/positive.json:7"
-      ]
-    },
-    {
-      "reference": "./gate.sh",
-      "load": "direct",
-      "rule_id": "closure.missing_reference",
-      "reason": "no file at that path in the target",
-      "referenced_from": [
-        "rules/manifest.hook_rewrite_event/positive.json:3"
-      ]
-    },
-    {
-      "reference": "./greet.sh",
-      "load": "direct",
-      "rule_id": "closure.missing_reference",
-      "reason": "no file at that path in the target",
-      "referenced_from": [
-        "rules/manifest.hook_rewrite_event/negative.json:3"
       ]
     },
     {
@@ -729,91 +148,12 @@
       ]
     },
     {
-      "reference": "./inject.sh",
-      "load": "direct",
-      "rule_id": "closure.missing_reference",
-      "reason": "no file at that path in the target",
-      "referenced_from": [
-        "rules/manifest.hook_rewrite_event/positive.json:5"
-      ]
-    },
-    {
-      "reference": "./report.sh",
-      "load": "direct",
-      "rule_id": "closure.missing_reference",
-      "reason": "no file at that path in the target",
-      "referenced_from": [
-        "rules/manifest.hook_rewrite_event/negative.json:4"
-      ]
-    },
-    {
-      "reference": "./rewrite.py",
-      "load": "direct",
-      "rule_id": "closure.missing_reference",
-      "reason": "no file at that path in the target",
-      "referenced_from": [
-        "rules/manifest.hook_rewrite_event/positive.json:6"
-      ]
-    },
-    {
-      "reference": ".claude/settings.json",
-      "load": "direct",
-      "rule_id": "closure.missing_reference",
-      "reason": "no file at that path in the target",
-      "referenced_from": [
-        "rules/instruction.write_outside/positive.md:5"
-      ]
-    },
-    {
-      "reference": "STACK.md",
-      "load": "direct",
-      "rule_id": "closure.missing_reference",
-      "reason": "no file at that path in the target",
-      "referenced_from": [
-        "README.md:26",
-        "README.md:48",
-        "README.md:8",
-        "crlf_module.py:1",
-        "naïve-café.py:16",
-        "naïve-café.py:3",
-        "naïve-café.py:6",
-        "rules/fs.agent_config_write/positive.txt:12"
-      ]
-    },
-    {
-      "reference": "claude.md",
-      "load": "direct",
-      "rule_id": "closure.missing_reference",
-      "reason": "no file at that path in the target",
-      "referenced_from": [
-        "rules/fs.agent_config_write/negative.txt:5"
-      ]
-    },
-    {
-      "reference": "docs/cursor-support.md",
-      "load": "direct",
-      "rule_id": "closure.missing_reference",
-      "reason": "no file at that path in the target",
-      "referenced_from": [
-        "rules/fs.agent_config_write/negative.txt:7"
-      ]
-    },
-    {
       "reference": "helpers/absent.md",
       "load": "direct",
       "rule_id": "closure.missing_reference",
       "reason": "no file at that path in the target",
       "referenced_from": [
         "closure/entry.md:32"
-      ]
-    },
-    {
-      "reference": "https://collect.example.invalid/v1/events",
-      "load": "fetch",
-      "rule_id": "closure.remote_resource",
-      "reason": "names a https resource; nothing here fetches it (STACK.md §2.1 forbids runtime network calls)",
-      "referenced_from": [
-        "rules/instruction.exfiltrate/positive.md:3"
       ]
     },
     {
@@ -826,34 +166,6 @@
       ]
     },
     {
-      "reference": "https://example.invalid/install.sh",
-      "load": "fetch",
-      "rule_id": "closure.remote_resource",
-      "reason": "names a https resource; nothing here fetches it (STACK.md §2.1 forbids runtime network calls)",
-      "referenced_from": [
-        "rules/net.fetch_exec/negative.txt:4",
-        "rules/net.fetch_exec/positive.txt:1"
-      ]
-    },
-    {
-      "reference": "https://example.invalid/notes",
-      "load": "fetch",
-      "rule_id": "closure.remote_resource",
-      "reason": "names a https resource; nothing here fetches it (STACK.md §2.1 forbids runtime network calls)",
-      "referenced_from": [
-        "cli/pyproject.toml:5"
-      ]
-    },
-    {
-      "reference": "https://example.invalid/setup",
-      "load": "fetch",
-      "rule_id": "closure.remote_resource",
-      "reason": "names a https resource; nothing here fetches it (STACK.md §2.1 forbids runtime network calls)",
-      "referenced_from": [
-        "rules/net.fetch_exec/positive.txt:2"
-      ]
-    },
-    {
       "reference": "https://mcp.example.invalid/search",
       "load": "fetch",
       "rule_id": "closure.remote_resource",
@@ -861,111 +173,12 @@
       "referenced_from": [
         "mcp/.mcp.json:10"
       ]
-    },
-    {
-      "reference": "https://metrics.example.invalid/ingest",
-      "load": "fetch",
-      "rule_id": "closure.remote_resource",
-      "reason": "names a https resource; nothing here fetches it (STACK.md §2.1 forbids runtime network calls)",
-      "referenced_from": [
-        "rules/instruction.exfiltrate/positive.md:10"
-      ]
-    },
-    {
-      "reference": "https://spec.example.invalid/format",
-      "load": "fetch",
-      "rule_id": "closure.remote_resource",
-      "reason": "names a https resource; nothing here fetches it (STACK.md §2.1 forbids runtime network calls)",
-      "referenced_from": [
-        "rules/instruction.exfiltrate/negative.md:4",
-        "rules/manifest.network_permission/negative.json:5"
-      ]
-    },
-    {
-      "reference": "https://x.invalid/p",
-      "load": "fetch",
-      "rule_id": "closure.remote_resource",
-      "reason": "names a https resource; nothing here fetches it (STACK.md §2.1 forbids runtime network calls)",
-      "referenced_from": [
-        "rules/fs.agent_config_write/positive.txt:8"
-      ]
-    },
-    {
-      "reference": "installer.sh",
-      "load": "direct",
-      "rule_id": "closure.missing_reference",
-      "reason": "no file at that path in the target",
-      "referenced_from": [
-        "rules/net.fetch_exec/negative.txt:4",
-        "rules/net.fetch_exec/negative.txt:6"
-      ]
-    },
-    {
-      "reference": "recon.py",
-      "load": "direct",
-      "rule_id": "closure.missing_reference",
-      "reason": "no file at that path in the target",
-      "referenced_from": [
-        "README.md:22"
-      ]
-    },
-    {
-      "reference": "server.js",
-      "load": "direct",
-      "rule_id": "closure.missing_reference",
-      "reason": "no file at that path in the target",
-      "referenced_from": [
-        "rules/net.bind_all/positive.txt:4"
-      ]
-    },
-    {
-      "reference": "settings.json",
-      "load": "direct",
-      "rule_id": "closure.missing_reference",
-      "reason": "no file at that path in the target",
-      "referenced_from": [
-        "rules/fs.agent_config_write/negative.txt:3",
-        "rules/fs.agent_config_write/positive.txt:13",
-        "rules/fs.agent_config_write/positive.txt:4"
-      ]
-    },
-    {
-      "reference": "tests/test_determinism.py",
-      "load": "direct",
-      "rule_id": "closure.missing_reference",
-      "reason": "no file at that path in the target",
-      "referenced_from": [
-        "README.md:61"
-      ]
-    },
-    {
-      "reference": "tests/test_patterns.py",
-      "load": "direct",
-      "rule_id": "closure.missing_reference",
-      "reason": "no file at that path in the target",
-      "referenced_from": [
-        "README.md:36"
-      ]
-    },
-    {
-      "reference": "tests/test_surfaces.py",
-      "load": "direct",
-      "rule_id": "closure.missing_reference",
-      "reason": "no file at that path in the target",
-      "referenced_from": [
-        "README.md:17",
-        "README.md:21"
-      ]
     }
   ],
   "prose": [
     {
-      "path": "README.md",
-      "lines": 61
-    },
-    {
-      "path": "cli/pyproject.toml",
-      "lines": 12
+      "path": "closure/SKILL.md",
+      "lines": 15
     },
     {
       "path": "closure/entry.md",
@@ -992,140 +205,74 @@
       "lines": 13
     },
     {
-      "path": "rules/fs.agent_config_write/negative.txt",
-      "lines": 7
-    },
-    {
-      "path": "rules/fs.agent_config_write/positive.txt",
-      "lines": 13
-    },
-    {
-      "path": "rules/instruction.approval_bypass/negative.md",
-      "lines": 11
-    },
-    {
-      "path": "rules/instruction.approval_bypass/positive.md",
-      "lines": 11
-    },
-    {
-      "path": "rules/instruction.authority_claim/negative.md",
-      "lines": 10
-    },
-    {
-      "path": "rules/instruction.authority_claim/positive.md",
-      "lines": 10
-    },
-    {
-      "path": "rules/instruction.conceal_action/negative.md",
-      "lines": 9
-    },
-    {
-      "path": "rules/instruction.conceal_action/positive.md",
-      "lines": 9
-    },
-    {
-      "path": "rules/instruction.exfiltrate/negative.md",
-      "lines": 10
-    },
-    {
-      "path": "rules/instruction.exfiltrate/positive.md",
-      "lines": 11
-    },
-    {
-      "path": "rules/instruction.install_component/negative.md",
-      "lines": 9
-    },
-    {
-      "path": "rules/instruction.install_component/positive.md",
-      "lines": 9
-    },
-    {
-      "path": "rules/instruction.override_prior/negative.md",
-      "lines": 10
-    },
-    {
-      "path": "rules/instruction.override_prior/positive.md",
-      "lines": 9
-    },
-    {
-      "path": "rules/instruction.write_outside/negative.md",
-      "lines": 9
-    },
-    {
-      "path": "rules/instruction.write_outside/positive.md",
-      "lines": 9
-    },
-    {
-      "path": "rules/log.sensitive/negative.txt",
-      "lines": 4
-    },
-    {
-      "path": "rules/log.sensitive/positive.txt",
-      "lines": 3
-    },
-    {
-      "path": "rules/manifest.broad_activation/negative.yaml",
-      "lines": 5
-    },
-    {
-      "path": "rules/manifest.broad_activation/positive.yaml",
-      "lines": 5
-    },
-    {
-      "path": "rules/manifest.filesystem_scope/negative.yaml",
-      "lines": 11
-    },
-    {
-      "path": "rules/manifest.filesystem_scope/positive.yaml",
-      "lines": 7
-    },
-    {
-      "path": "rules/manifest.hook_rewrite_event/negative.json",
-      "lines": 8
-    },
-    {
-      "path": "rules/manifest.hook_rewrite_event/positive.json",
-      "lines": 9
-    },
-    {
-      "path": "rules/manifest.network_permission/negative.json",
-      "lines": 7
-    },
-    {
-      "path": "rules/manifest.network_permission/positive.json",
-      "lines": 7
-    },
-    {
-      "path": "rules/manifest.wildcard_grant/negative.json",
-      "lines": 11
-    },
-    {
-      "path": "rules/manifest.wildcard_grant/positive.json",
-      "lines": 10
-    },
-    {
-      "path": "rules/net.bind_all/negative.txt",
-      "lines": 7
-    },
-    {
-      "path": "rules/net.bind_all/positive.txt",
-      "lines": 4
-    },
-    {
-      "path": "rules/net.fetch_exec/negative.txt",
-      "lines": 6
-    },
-    {
-      "path": "rules/net.fetch_exec/positive.txt",
-      "lines": 3
-    },
-    {
       "path": "skills/quiet/SKILL.md",
       "lines": 13
     }
   ],
+  "unreachable": [
+    "README.md",
+    "assets/blob.bin",
+    "cli/pyproject.toml",
+    "crlf_module.py",
+    "exports/__init__.py",
+    "mcp/lowlevel.py",
+    "mcp/server.py",
+    "naïve-café.py",
+    "pkg/deep/nested.py",
+    "rules/deser.unsafe/negative.py",
+    "rules/deser.unsafe/positive.py",
+    "rules/exec.dynamic/negative.py",
+    "rules/exec.dynamic/positive.py",
+    "rules/exec.shell_true/negative.py",
+    "rules/exec.shell_true/positive.py",
+    "rules/fs.agent_config_write/negative.txt",
+    "rules/fs.agent_config_write/positive.txt",
+    "rules/instruction.approval_bypass/negative.md",
+    "rules/instruction.approval_bypass/positive.md",
+    "rules/instruction.authority_claim/negative.md",
+    "rules/instruction.authority_claim/positive.md",
+    "rules/instruction.conceal_action/negative.md",
+    "rules/instruction.conceal_action/positive.md",
+    "rules/instruction.exfiltrate/negative.md",
+    "rules/instruction.exfiltrate/positive.md",
+    "rules/instruction.install_component/negative.md",
+    "rules/instruction.install_component/positive.md",
+    "rules/instruction.override_prior/negative.md",
+    "rules/instruction.override_prior/positive.md",
+    "rules/instruction.write_outside/negative.md",
+    "rules/instruction.write_outside/positive.md",
+    "rules/log.sensitive/negative.txt",
+    "rules/log.sensitive/positive.txt",
+    "rules/manifest.broad_activation/negative.yaml",
+    "rules/manifest.broad_activation/positive.yaml",
+    "rules/manifest.filesystem_scope/negative.yaml",
+    "rules/manifest.filesystem_scope/positive.yaml",
+    "rules/manifest.hook_rewrite_event/negative.json",
+    "rules/manifest.hook_rewrite_event/positive.json",
+    "rules/manifest.network_permission/negative.json",
+    "rules/manifest.network_permission/positive.json",
+    "rules/manifest.wildcard_grant/negative.json",
+    "rules/manifest.wildcard_grant/positive.json",
+    "rules/net.bind_all/negative.txt",
+    "rules/net.bind_all/positive.txt",
+    "rules/net.fetch_exec/negative.txt",
+    "rules/net.fetch_exec/positive.txt",
+    "rules/path.traversal/negative.py",
+    "rules/path.traversal/positive.py",
+    "rules/tls.verify_off/negative.py",
+    "rules/tls.verify_off/positive.py",
+    "structural/structure.built_value_into_sink/negative.py",
+    "structural/structure.built_value_into_sink/positive.py",
+    "structural/structure.denylist_decision/negative.py",
+    "structural/structure.denylist_decision/positive.py",
+    "structural/structure.permission_after_creation/negative.py",
+    "structural/structure.permission_after_creation/positive.py",
+    "structural/structure.unvalidated_path_reach/negative.py",
+    "structural/structure.unvalidated_path_reach/positive.py"
+  ],
   "coverage_gaps": [
     "closure: members in a code language no rule set reads — structural rules are Python only, and the catalog's code patterns declare their own languages: closure/helpers/run.sh",
+    "closure: 59 inventoried file(s) are reached by no declared entry point and are therefore outside the closure: README.md, assets/blob.bin, cli/pyproject.toml, crlf_module.py, exports/__init__.py, and 54 more — the full list is unreachable[]. Each is either loaded by a mechanism this tool did not see or not loaded at all; which one is a question for the reader (P9)",
     "closure: references are read line by line, so a path built from variables, concatenated, or split across lines is not seen",
     "closure: a reference is recognised by its file suffix or by a Markdown link target, so a directory, an extensionless script, or a bare module name named in prose is not followed",
     "closure: whether a member is loaded conditionally is read from words on the referring line, which paraphrase defeats — the label never removes a member from the closure, so a wrong label costs a row and not a file",

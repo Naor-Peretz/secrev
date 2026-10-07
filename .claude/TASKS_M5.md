@@ -135,25 +135,101 @@ owner; each is noted because a later reader would otherwise have to re-derive it
 
 ## Consequences for later milestones, found by running the tool
 
-- [ ] **`secrev closure .` over this repository produces 1,153 ledger records,
-      and FR-4.3 refuses to render a report while any hit is unresolved.** That
-      is an M7 problem, stated now because M7 will meet it on its first run and
-      the arithmetic should not be a surprise. The distribution:
-      `closure.missing_reference` 1,022, `closure.ambiguous_reference` 76,
-      `closure.remote_resource` 50, `closure.escaping_reference` 5. The bulk is
-      documentation naming example files — `run.json`, `install.sh`,
-      `package.json`, `src/secrev/x.py` — which is honest low precision under
-      P4, where a false positive costs a paragraph and a miss is a silent gap.
-      **The question M7 has to answer is whether P4's "every candidate is
-      resolved" admits resolving a *class* in one paragraph.** It is not a
-      question M5 may answer, because the answer is a triage rule.
-      The first measurement was 3,692, every one a document citing another by
-      name — `STACK.md` alone 415 times, because a mention inside `src/secrev/`
-      resolved to `src/secrev/STACK.md`. That was fixed in M5 rather than
-      deferred: a reference is now resolved relative to the referring file, then
-      relative to the target root, then by filename when it names no directory,
-      because those are the three conventions that actually exist. A signal that
-      is always on is H-1's habit in a new place.
+- [ ] **The record count over this repository, and its history, superseded by
+      the roots entry above.** Three measurements, each after a different fix,
+      kept because the sequence is the finding: **3,692** with references
+      resolved only relative to the referring file (`STACK.md` alone 415 times,
+      because a mention inside `src/secrev/` resolved to
+      `src/secrev/STACK.md`); **1,171** once resolution tried all three
+      conventions that exist; **1,024** once the roots became the entry points
+      the target declares. Each fix was right and none of them made the number
+      small, which is what the roots entry above is about.
+
+      The question that remains for M7 either way: FR-4.3 refuses to render a
+      report while any hit is unresolved, so **does P4's "every candidate is
+      resolved" admit resolving a *class* in one paragraph?** The bulk of these
+      are documentation naming example files, which is honest low precision
+      under P4 — a false positive costs a paragraph and a miss is a silent gap —
+      but a thousand paragraphs is not a review. Not M5's to answer: the answer
+      is a triage rule.
+
+## The roots were wrong, and what fixing them did and did not fix
+
+**Owner correction, 2026-10-07, and the measurement is the record.** `_roots`
+treated every readable file as its own entry point when `--entry` was absent.
+That computes the *tree*, not the closure: FR-1.2 defines the closure as "the
+entry file plus every file it references", and with every file a root every
+filename mentioned in any document becomes a reference to resolve. The owner
+measured 1,171 records over this repository, 1,036 of them
+`closure.missing_reference`.
+
+An intermediate version of mine filtered to readable text and was worse in a
+different way: an unreferenced oversized file then appeared nowhere in
+`closure.json` at all, while the gap line beside it claimed such a member "is in
+the closure and is not read". That property is now kept by `Closure.unreachable`
+— the complement of the closure inside the inventory, with a gap line naming its
+size — which is the honest place for it. A file no entry point reaches is a
+*statement*, not a member, and it is the first place to hide something from a
+closure-based review.
+
+**What the roots are now:** the entry points the target declares. `SKILL.md`,
+`.mcp.json`, `plugin.json`, `hooks.json`, `settings.json`, a `bin` in
+`package.json`, a `[project.scripts]` target in `pyproject.toml` resolved
+through both packaging layouts — and the agent instruction files `CLAUDE.md`,
+`AGENTS.md` and `AGENT.md`, which are the owner's list plus one addition of
+mine, recorded here with its reason: those reach the context window on every
+request, which is the strongest form of "the host loads this without being told
+to" in the list, and leaving them out would make the closure of an
+agent-instruction repository empty. A target declaring none is **exit 2 asking
+for `--entry`**. Each root carries its reason into `closure.json`, because "the
+caller asked about this path" and "the target declares this entry point" are
+different reviews.
+
+The fixture tree is what the owner asked for: **4 roots, 10 members, 6
+unresolved**, every one of the six actionable — two scripts a hook configuration
+names and the tree does not contain, a remote MCP endpoint, a remote rule set, a
+path above the root, one missing helper. A `SKILL.md` was added to the designed
+closure fixture so the whole-tree golden reaches that subtree the way a client
+would, rather than only through an explicit `--entry`.
+
+- [ ] **Over this repository it is 1,024 records, not a small number, and the
+      roots were not the whole cause.** This is the part to put in front of the
+      owner rather than paper over. With correct roots: 16 roots, 139 members,
+      393 unresolved, 1,024 ledger records, 94 unreachable. The roots fix moved
+      `missing_reference` from 1,036 to 902 — a seventh, not an order of
+      magnitude.
+
+      **The remaining amplifier is transitive expansion through prose
+      citation**, and the chain is exact: `TASKS_M1.md` → `TASKS_M2.md` →
+      `BRIEF_M5.md` → `tests/test_closure.py`. Four hops, every one a document
+      citing another by name, not one of them a load — and the test file's own
+      docstrings then contribute 111 records naming example paths. The closure
+      swallowed the test suite through the ledgers.
+
+      **One narrowing was implemented and measured and then reverted**, and the
+      reason it was reverted matters more than the idea: follow a reference only
+      when something about how it is *written* says "read this" — Markdown link
+      syntax, an `@include`, or a referring file that is not prose. Measured:
+      the repository went 1,024 → 934 records, a 9% reduction, while the
+      designed fixture's closure went from 10 members to 5, because a skill
+      saying "read `helpers/progressive.md`" is a bare token in prose. So it
+      cost A1 half its demonstrated member kinds and bought almost nothing. The
+      predicate was also wrong where it mattered most: `is_prose` counts JSON,
+      YAML and TOML as prose, so the manifests whose paths genuinely *are* loads
+      were the ones it stopped following.
+
+      The honest statement of the problem: distinguishing "read `X`" from "see
+      the discussion in `X`" is reading the sentence, which is FR-3.15's
+      territory and not a regex's. The options I can see, none of them M5's to
+      choose: a depth bound (arbitrary, and this project refuses thresholds
+      measured against its own fixtures); an imperative-detection rule in the
+      instruction pack feeding the closure (couples two sources, P11); or
+      accepting that a repository whose agent-facing prose cites everything has
+      a closure that reaches everything, and that FR-3.15's "Phase 4 must
+      include a full read of the prose closure" is the PRD already saying so.
+
+      Whichever it is, it changes what `verify_ledger` has to swallow in M7, so
+      it is a decision with FR-4.3 consequences rather than a tuning knob.
 
 ## F1 — the tool run on itself, and what reading the result changed
 
@@ -195,11 +271,13 @@ only thing that could have shown it.** Both are corrected:
    defeat-verified by putting `deny` back and watching it go red.
 
 - [ ] **The one real finding about this checkout, for the owner rather than for
-      the tool.** `instruction.write_outside` fires 38 times on
-      `.claude/settings.local.json`, which grants this session `Write` and
-      `Edit` on `~/.claude/**` — including `~/.claude/.credentials.json` — and on
-      `~/.bashrc`, `~/.zshrc`, `~/.profile`, `~/.cursor/**`, `~/.codex/**`,
-      `~/.gemini/**` and `~/.agents/**`.
+      the tool. The owner has said they will narrow it themselves; it is
+      recorded here and the file is not edited.** `instruction.write_outside`
+      fires 38 times on `.claude/settings.local.json`, which grants this session
+      `Write` and `Edit` on `~/.claude/**` — including
+      `~/.claude/.credentials.json` — and on `~/.bashrc`, `~/.zshrc`,
+      `~/.profile`, `~/.cursor/**`, `~/.codex/**`, `~/.gemini/**` and
+      `~/.agents/**`.
 
       That is exactly FR-3.13 class 5 and `fs.agent_config_write` asking their
       question, and the answer is "yes, deliberately, by the owner" — which is a
@@ -226,32 +304,61 @@ a low-precision prose rule is supposed to cost.
 
 ## Raised during implementation and not fixed here
 
-- [ ] **Three overlay sections now say a pack "does not exist; M5" and both
-      packs exist.** `threat-models/skill.md` §5, `threat-models/mcp-server.md`
-      §5 and `_agentic-core.md`'s CORE-05 evidence line each record the
-      instruction and manifest packs as missing, with the sentence that the
-      ledger's silence there "is coverage that does not exist yet rather than
-      coverage that passed". That is now false in both directions: the packs
-      ship, and the ledger does carry instruction-layer and manifest-layer
-      records.
+- [ ] **Eight lines in two closed milestones' files are now false, and M5 may
+      not write either directory.** Found by F2's sweep — `git grep` from the
+      root with no pathspec, candidates derived from `git log -p main..HEAD`
+      rather than recalled. Sorted into CLAUDE.md's three categories, these are
+      all in the first: they state the superseded rule.
 
-      **It is not fixed because M5 may not touch `threat-models/`** —
-      `scope-guard.sh` refuses the directory by name under this milestone, and
-      the refusal's own reason is that editing the questions to suit the answers
-      is P11 in the small. The owner's scope rule for this run names "you'd need
-      to touch a closed milestone's files" as a stop condition, so this is
-      recorded rather than done.
+      In `threat-models/`, seven lines say the packs do not exist:
+      `skill.md:126` and `:186` and `:191`, `mcp-server.md:131` and `:191` and
+      `:196`, `_agentic-core.md:85`. Each carries some form of "no pattern
+      covers the instruction layer" or "does not exist; M5", with the sentence
+      that the ledger's silence there "is coverage that does not exist yet
+      rather than coverage that passed". Now false in both directions: the packs
+      ship, and the ledger carries 373 records from them against this repository
+      alone.
 
-      The stale lines are the *false* category of CLAUDE.md's three, and the
-      file's own rule says a stale gap line "is how a reader learns to stop
-      believing gap lines". What narrows the damage in the meantime:
-      `recon.json` now carries `_CATALOG_LAYER_GAPS`, which states the limits
-      the packs actually have, in the machine artifact a later phase reads
-      rather than only in prose. The exact edits, so whoever makes them does
-      not have to re-derive them: in each overlay's §5, the pack line changes
-      from "does not exist; M5" to naming the pack and the classes it covers,
-      and each evidence line that says "read" because no pattern existed gains
-      the pattern ids that now do.
+      Two more in the same files, `skill.md:177` and `mcp-server.md:180`, say
+      "every pack in a run declares the same `version`", which the Q6 decision
+      removed. And one in `patterns/python.yaml:19` says "one run has one
+      catalog_version — so the version belongs to the whole catalog", which is
+      the superseded rule stated in a *product-code comment*, the second of
+      CLAUDE.md's three priorities by who reads it.
+
+      **None of it is fixed, because M5 may write neither directory.**
+      `scope-guard.sh` refuses `threat-models/` by name, and its reason is that
+      editing the questions to suit the answers is P11 in the small; it refuses
+      every file in `patterns/` but the two M5 owns, because M1's catalog is
+      closed. Both refusals are right. The owner's scope rule for this run names
+      "you'd need to touch a closed milestone's files" as a stop condition, so
+      this is recorded rather than done — and the guard would have refused it
+      anyway, which is the control working rather than an obstacle.
+
+      What narrows the damage in the meantime: `recon.json` now carries
+      `_CATALOG_LAYER_GAPS`, which states the limits the packs actually have, in
+      the machine artifact a later phase reads rather than only in prose. So a
+      reader who trusts the artifact is not misled; only one who trusts the
+      overlays is.
+
+      The exact edits, so whoever makes them does not re-derive them. In each
+      overlay's §5 the pack line changes from "does not exist; M5" to naming the
+      pack, its version and the classes it covers. Each evidence line that says
+      "read" *because no pattern existed* gains the ids that now cover it —
+      SKILL-04 and SKILL-05 get `instruction.approval_bypass`,
+      `instruction.authority_claim` and `instruction.override_prior`; MCP-05 to
+      MCP-07 the same three plus `manifest.broad_activation`; CORE-05
+      `instruction.*` as a set; SKILL-08 and CORE-11
+      `manifest.wildcard_grant`, `manifest.filesystem_scope` and
+      `manifest.network_permission`; CORE-18 `manifest.hook_rewrite_event`.
+      The "same `version`" sentences become "each pack declares its own
+      `version`, and a record carries its pack's". And `python.yaml`'s comment
+      loses its last two clauses.
+
+      **What must not be written into them:** that the packs close those
+      questions. Every one of those evidence lines also says the answer comes
+      from *reading*, and FR-3.15 keeps it that way permanently — the ids are an
+      addition to the evidence, not a replacement for it.
 
 - [ ] **`recon.py` had no `coverage_gaps` line about the catalog's own layers,
       and that asymmetry was the finding.** Every source states its limits

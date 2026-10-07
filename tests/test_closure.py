@@ -208,7 +208,8 @@ def test_a_root_reached_by_nothing_is_distinguishable(from_entry: Closure) -> No
     assert member(from_entry, "entry.md").referenced_from != ()
     alone = closure(TREE, ["helpers/progressive.md"])
     assert member(alone, "helpers/progressive.md").referenced_from == ()
-    assert alone.roots == ("helpers/progressive.md",)
+    assert [item.path for item in alone.roots] == ["helpers/progressive.md"]
+    assert alone.roots[0].reason == "named with --entry"
     assert alone.roots_given is True
 
 
@@ -584,11 +585,21 @@ def test_a_prose_member_that_was_not_read_has_no_line_count(tmp_path: Path) -> N
     an untested branch in an artifact field is a value a reader will one day
     read as "empty".
     """
-    tree = tmp_path / "tree"
-    tree.mkdir()
-    (tree / "big.md").write_text("x" * 4096 + "\n", encoding="utf-8")
-    result = closure(tree, max_bytes=100)
-    assert [(item.path, item.lines) for item in result.prose] == [("big.md", None)]
+    tree = _tree(
+        tmp_path,
+        {
+            # A declared entry point small enough to be read, naming a member
+            # too large to be. Both halves matter: the member has to be *in* the
+            # closure for the field to exist at all.
+            "SKILL.md": "the detail is in big.md\n",
+            "big.md": "x" * 4096 + "\n",
+        },
+    )
+    result = closure(tree, max_bytes=1024)
+    assert [(item.path, item.lines) for item in result.prose] == [
+        ("SKILL.md", 1),
+        ("big.md", None),
+    ]
 
 
 def test_the_prose_inventory_sets_no_threshold(whole_tree: Closure) -> None:
@@ -752,34 +763,43 @@ def test_a_named_entry_that_is_absent_is_a_finding_not_an_error() -> None:
     assert [hit.rule_id for hit in result.hits] == [RULE_MISSING]
 
 
-def test_default_roots_are_every_inventoried_file_and_say_so(whole_tree: Closure) -> None:
-    """With no `--entry`, the question changes and the artifact records which
-    one was asked. Given roots answer "what does this entry pull in"; the
-    default answers "what does this tree pull in that is not in it", which can
-    be asked of a target that declares no entry file anywhere and which never
-    under-reports.
+def test_default_roots_are_the_entry_points_the_target_declares(whole_tree: Closure) -> None:
+    """With no `--entry`, the roots are what an agent host actually loads.
 
-    **Every inventoried file, including the ones that are never read.** This
-    asserted the opposite for one commit — that a binary is not a root, "because
-    a binary is never read for references" — and that was the wrong conclusion
-    from a true premise: not reading a file is a reason not to follow references
-    out of it, not a reason to leave it out of the artifact. The filter dropped
-    those files from `members` as well, so an inventoried file was absent from
-    `closure.json` with nothing saying so, while `coverage_gaps` claimed such a
-    member "is in the closure and is not read".
+    **This asserted the opposite twice, and the owner measured what it cost.**
+    First that the roots are every readable file, then — after an unreferenced
+    oversized file turned out to be absent from the artifact entirely — that
+    they are every inventoried file. Both compute the *tree*. FR-1.2 defines the
+    closure as "the entry file plus every file it references", and with every
+    file a root, every filename mentioned in any document becomes a reference to
+    resolve: `secrev closure .` over this repository produced 1,171 records,
+    1,036 of them `closure.missing_reference`. The defect was not the resolution
+    precision; it was that nothing was a closure.
+
+    The oversized-file property that the second version was reaching for is kept
+    by `unreachable` instead, which is the honest place for it: a file no entry
+    point reaches is a statement, not a member.
+
+    The count below is small and every line of it is explained, which is the
+    whole point — a reviewer reads six unresolved references; they do not read
+    1,036.
     """
     assert whole_tree.roots_given is False
-    assert "closure/entry.md" in whole_tree.roots
-    assert "assets/blob.bin" in whole_tree.roots
-    assert set(whole_tree.roots) == {member.path for member in whole_tree.members}, (
-        "with no --entry, every inventoried file is a member — an inventoried "
-        "file missing from the artifact is the silence this tool exists to notice"
-    )
-    binary = member(whole_tree, "assets/blob.bin")
-    assert binary.kind == KIND_BINARY
-    # Inbound edges are fine and useful — `README.md` names it. What must not
-    # exist is an *outbound* one: nothing is read out of a file nobody read, and
-    # that is the half this test first got backwards.
+    assert [item.path for item in whole_tree.roots] == [
+        "closure/SKILL.md",
+        "mcp/.mcp.json",
+        "plugin/hooks/hooks.json",
+        "skills/quiet/SKILL.md",
+    ]
+    # Each root says why it is one, in the artifact.
+    reasons = {item.path: item.reason for item in whole_tree.roots}
+    assert "skill" in reasons["skills/quiet/SKILL.md"]
+    assert "MCP" in reasons["mcp/.mcp.json"]
+    assert "hook" in reasons["plugin/hooks/hooks.json"]
+
+    # A binary is not an entry point, and nothing is read out of a file nobody
+    # read: no origin anywhere names one.
+    assert "assets/blob.bin" not in reasons
     origins = {
         origin.rsplit(":", 1)[0] for item in whole_tree.members for origin in item.referenced_from
     } | {
@@ -788,5 +808,130 @@ def test_default_roots_are_every_inventoried_file_and_say_so(whole_tree: Closure
         for origin in item.referenced_from
     }
     assert "assets/blob.bin" not in origins, "a reference was followed out of a binary"
+    assert member(whole_tree, "closure/helpers/payload.bin").kind == KIND_BINARY
+
     document = json.loads(to_json(whole_tree))
     assert document["roots"]["given"] is False
+    assert document["roots"]["paths"][0]["reason"]
+
+
+def test_the_closure_of_the_whole_fixture_tree_is_small_and_explained(
+    whole_tree: Closure,
+) -> None:
+    """The owner's own acceptance for this change: a small, explained count.
+
+    Written out by hand rather than read off the golden, for A1's reason — a
+    golden says what came out and cannot say that it was right. Every member is
+    reachable from one of the four declared entry points, and every unresolved
+    reference is one a reviewer can act on: two scripts a hook configuration
+    names and the tree does not contain, a remote MCP endpoint, a remote rule
+    set, a path above the root, and one missing helper.
+    """
+    assert [item.path for item in whole_tree.members] == [
+        "closure/SKILL.md",
+        "closure/entry.md",
+        "closure/helpers/cyclé.md",
+        "closure/helpers/direct.md",
+        "closure/helpers/payload.bin",
+        "closure/helpers/progressive.md",
+        "closure/helpers/run.sh",
+        "mcp/.mcp.json",
+        "plugin/hooks/hooks.json",
+        "skills/quiet/SKILL.md",
+    ]
+    assert [(item.rule_id, item.reference) for item in whole_tree.unresolved] == [
+        (RULE_ESCAPING, "../../../outside/notes.md"),
+        (RULE_MISSING, "./guard.sh"),
+        (RULE_MISSING, "./hello.sh"),
+        (RULE_MISSING, "helpers/absent.md"),
+        (RULE_REMOTE, "https://example.invalid/closure/rules.json"),
+        (RULE_REMOTE, "https://mcp.example.invalid/search"),
+    ]
+
+
+def test_a_file_no_entry_point_reaches_is_recorded_not_dropped(whole_tree: Closure) -> None:
+    """The property the "every file is a root" version was reaching for, kept
+    without making everything a root.
+
+    A closure computed from declared entry points leaves a second question open:
+    what about the rest of the tree? Answering it with silence is the failure
+    this project exists to notice — and the first place to hide something from a
+    closure-based review is outside the closure. So the complement is a list and
+    a gap line, and neither calls those files dead: a file no entry point
+    reaches is either loaded by a mechanism this tool did not see or not loaded
+    at all, and deciding which is reading rather than matching.
+    """
+    reached = {item.path for item in whole_tree.members}
+    assert whole_tree.unreachable
+    assert not (reached & set(whole_tree.unreachable))
+    # The two halves partition the inventory: nothing is in neither.
+    assert "assets/blob.bin" in whole_tree.unreachable
+    assert "rules/exec.shell_true/positive.py" in whole_tree.unreachable
+
+    [line] = [gap for gap in whole_tree.coverage_gaps if "reached by no declared" in gap]
+    assert str(len(whole_tree.unreachable)) in line
+    assert "not loaded at all" in line
+
+    document = json.loads(to_json(whole_tree))
+    assert document["unreachable"] == list(whole_tree.unreachable)
+
+
+def test_a_target_declaring_no_entry_point_is_a_usage_error(tmp_path: Path) -> None:
+    """Exit 2 asking for `--entry`, not a review of everything.
+
+    This is the case the "every file is a root" rule was papering over. A target
+    with no recognisable entry point is one this tool cannot compute a closure
+    for, and saying so is the honest answer; reviewing every file as its own
+    entry point answers a different question under FR-1.2's name.
+    """
+    tree = _tree(tmp_path, {"notes.md": "nothing declares anything here\n"})
+    with pytest.raises(ValueError, match="no entry point found"):
+        closure(tree)
+    # The message names what it looked for, so a caller can see why their
+    # artifact was not recognised rather than guessing.
+    try:
+        closure(tree)
+    except ValueError as exc:
+        assert "SKILL.md" in str(exc)
+        assert "--entry" in str(exc)
+
+
+def test_a_manifest_entry_point_resolves_to_a_file(tmp_path: Path) -> None:
+    """`[project.scripts]` and `package.json`'s `bin`, which name a module and a
+    path rather than being one.
+
+    Both layouts the packaging ecosystem uses are tried for a module target, and
+    a candidate not in the inventory is simply not a root — the entry point is
+    then `recon.json`'s business, which reports declared metadata, rather than a
+    closure member invented here.
+    """
+    tree = _tree(
+        tmp_path,
+        {
+            "pyproject.toml": '[project]\nname = "x"\n[project.scripts]\nx = "x.cli:main"\n',
+            "src/x/cli.py": "def main():\n    return 0\n",
+            "package.json": '{"bin": {"y": "./bin/y.js"}}\n',
+            "bin/y.js": "console.log(1)\n",
+        },
+    )
+    result = closure(tree)
+    found = {item.path: item.reason for item in result.roots}
+    assert "src/x/cli.py" in found
+    assert "project.scripts" in found["src/x/cli.py"]
+    assert "bin/y.js" in found
+    assert "bin" in found["bin/y.js"]
+
+
+def test_a_manifest_that_does_not_parse_contributes_no_roots(tmp_path: Path) -> None:
+    """And is not an error here. `recon` already reports an unparsable manifest
+    and `cli._incomplete` already makes the run exit 2 for it, so raising again
+    would report one fact twice and from the source least able to explain it."""
+    tree = _tree(
+        tmp_path,
+        {
+            "package.json": "[not an object",
+            "SKILL.md": "a declared entry point, so the run has a root\n",
+        },
+    )
+    result = closure(tree)
+    assert [item.path for item in result.roots] == ["SKILL.md"]
