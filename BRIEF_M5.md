@@ -317,16 +317,19 @@ and its own block.
 
 ---
 
-## 7. What M4 left on the table, and where it went
+## 7. What M4 left on the table
 
-Recorded so that M5 does not inherit it silently:
+**The list lives in `.claude/TASKS_M5.md`, not here.** That file is this milestone's ledger, and it
+exists because the owner asked whether everything open was recorded anywhere and the answer was no:
+M4's carried obligations sat in `BRIEF_M4.md` §6 Q5, which worked while M4 was open and stopped
+working when it closed. A closed brief is CLAUDE.md's "obligation that lives only in a commit
+message" with a longer shelf life. Six carried items are there, each with what changed since M4
+wrote it down.
 
-- **HARNESS-FS** (`.claude/TASKS_M2.md`) — a confined test run. Until it exists, `.venv/bin` and the
-  interpreters the gate executes are *detected* rather than prevented, and the protected-path check
-  says so in its own docstring.
-- **HARNESS-CI** — the approval gate for workflow changes, accepted in M3.5 and unbuilt.
-- **A symlinked ancestor** of an interpreter is outside the replaceability walk, with the reasoning
-  written beside the walk rather than here.
-- **The five findings the M4 freeze deferred are closed** (`BRIEF_M4.md` §6, the (i)–(v) list), so
-  they are *not* inherited: unreadable files, child exit codes, system git configuration, path
-  normalisation, and a failed `ask`.
+The one that touches this milestone directly: **`closure.py` is the fifth consumer to re-read every
+file after `inventory` already read it**, which widens the TOCTOU window M4 recorded when it added
+the fourth. Whether M5 records it or closes it is open with the owner, because closing it edits four
+files §2 does not list.
+
+The five findings M4's freeze deferred are **closed** (`BRIEF_M4.md` §6, (i)–(v)) and are not
+inherited.

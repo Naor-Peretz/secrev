@@ -153,6 +153,15 @@ done of `BRIEF_M0.md`, `BRIEF_M1.md` and `BRIEF_M2.md` is ticked, with per-task 
 owner decision — TASK-M1-010's macOS run, which lived as a box in `BRIEF_M2.md` §4 because a
 carried obligation that lives only in a commit message stops being one, and which M2's push closed.
 
+**M5's ledger is `.claude/TASKS_M5.md`, and it holds what is carried as well as what is decided.**
+There is deliberately no `TASKS_M4.md`: M4 kept its decisions and its carried obligations in
+`BRIEF_M4.md` §6, which worked while M4 was open and stopped working when it closed — a closed brief
+is the rule above with a longer shelf life. Writing one retroactively was declined (owner decision,
+2026-10-07) because a ledger for a closed milestone is archaeology; the obligations moved to M5's
+ledger instead, where they are live. Six are carried, and the one that touches M5 directly is the
+single-read TOCTOU window: `closure.py` is the fifth consumer to re-read a file `inventory` has
+already read.
+
 That marker is the harness's only notion of where the project is, and it has been wrong in both
 directions: it read `M1` through the whole of M0, so `scope-guard.sh` policed a boundary the project
 had not reached; leaving it at `M0` after M0 closed would have refused every write to `src/` and
