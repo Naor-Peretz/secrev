@@ -7,8 +7,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 `src/secrev/` holds the M1, M2, M4 and M5 pipeline — `inventory`, `ids`, `catalog`, `sweep`,
 `recon`, `ledger`, `kinds`, `surfaces`, `parser`, `structure`, `structure_rules`, `closure`, `cli`
 — and `secrev recon`, `secrev sweep`, `secrev surfaces`, `secrev structure` and `secrev closure`
-run. `patterns/` ships nine
-patterns in two packs (`_base.yaml`, `python.yaml`); `surfaces/` ships seven kinds in
+run. `patterns/` ships **21 patterns in four packs** — `_base.yaml` and `python.yaml` at version
+`2026.09.3`, M1's and closed, and `_instruction.yaml` and `_manifest.yaml` at `2026.10.1`, M5's,
+one pattern per FR-3.13 and FR-3.14 class. **A version is per pack, not per catalog** (owner
+decision, 2026-10-07): a record's `catalog_version` is the version of the pack whose pattern
+produced it, which is what `ledger.Hit.catalog_version` has always said the field means and what
+the surface and structural sources already did. One version for the whole catalog would have made
+adding a pack an edit to M1's closed packs, and deriving one as the maximum hides a bump in every
+pack but the highest — `catalog.Pattern.pack_version` carries the reasoning and FR-3.12's wording
+was corrected to match. `surfaces/` ships seven kinds in
 `_surfaces.yaml`; `structure/` ships four structural rules in `_structure.yaml`. Both gates are
 green and every stage has something to check, including the artifact half of the determinism
 stage, which compares every named artifact and **every block** of `hits.jsonl` — the blocks are
@@ -185,7 +192,8 @@ was refused (H-6). **The remedy is to write the next brief and give the guard it
 move the marker back to buy write access.** Under M3 the guard permits `threat-models/` and refuses
 everything else in the scoped tree: M3 writes prose, and `structure.py` is M4, the instruction and
 manifest packs M5, `SKILL.md` and the Phase 2 gate M6. **Under M5 the shape inverts once:**
-`patterns/` is permitted — it is the milestone those packs were deferred *to* — while `surfaces/`,
+`patterns/` is permitted **by filename** — `_instruction.yaml` and `_manifest.yaml`, the two the
+brief names, with every other file in the catalog refused because M1's is closed — while `surfaces/`,
 `structure/` and `threat-models/` are each refused by name, since the data that decides what later
 reviews ask belongs to the milestone that wrote it. It refuses with M3's own reason rather than
 falling through to `refuse_no_rules`, whose message ("this milestone needs its own rules added
@@ -242,11 +250,43 @@ expected-failure markers, so it lands in the same commit as the module.
 - **The `surface.` namespace is closed from both sides**: `kinds.py` requires it, `catalog.py`
   refuses it, so a `rule_id` in `hits.jsonl` names one question.
 - **One meaning of a glob**: `inventory.glob_to_regex`, used by both sources.
-- **Two window names**: `lines-20` on pattern records, `decl-20` on surface records — the same
-  span, anchored on the declaration, named so the two are never compared (STACK.md §5, C-2).
-- **`catalog_version` on a surface record carries the kinds file's `version`** — a default
-  pending the owner (Q4), not a decision.
+- **Four window names**: `lines-20` on pattern records *and* on the closure's reference records —
+  the same shape anchored on a line, which is what a shared name is for; `decl-20` on surface
+  records, which FR-4.1 says are traced rather than windowed, so the span is not what anyone
+  judges; `block-20` on structural records; and `digest-pair` on the closure's one
+  content-mismatch record, whose span is two digests and not lines at all. C-2 keeps differently
+  *shaped* spans from ever being compared (STACK.md §5).
+- **`catalog_version` on a record carries the version of the ruleset that produced it** — the
+  kinds file's on a surface record, the rule file's on a structural one, the *pack's* on a pattern
+  record since M5, and `closure.CLOSURE_RULES_VERSION` on a closure record. Was a default pending
+  the owner on the surface side (Q4); the per-pack half is an owner decision of 2026-10-07.
 - **Line-oriented, no `ast`, in M2** (Q3). A declaration spanning lines is a coverage gap.
+
+### What M5 added to that shape
+
+- **`is_prose(path)` is one function and two consumers use it** (§6 Q3, Q4): `sweep.applies`
+  decides where the instruction pack runs, and `closure.json`'s prose inventory lists the members
+  it ran on. A test asserts the two sets are equal, computed independently — if they came apart,
+  the inventory would list files the pack never ran on and nothing else here would report it.
+  It is a function rather than a `languages:` list in the YAML because `.mdc` — Cursor's rules
+  files, prose an agent reads as instruction — is absent from `LANGUAGE_BY_SUFFIX`, so
+  `languages: [markdown]` would have skipped every one of them in silence.
+- **The manifest layer is deliberately not narrowed the same way.** Structured configuration
+  arrives with whatever extension a client chose; narrowing it would be the `languages: [markdown]`
+  mistake in a second place. `paths_exclude` is the per-pattern instrument if one is ever needed.
+- **The prose inventory carries a line count and no threshold.** What counts as "substantial"
+  under FR-3.15 is M7's rule, and choosing the number here would be this milestone deciding a
+  later one's (§6 Q4). `lines` is `null` — never `0` — for a member that was not read, because a
+  count of zero says the file is empty and this says nobody looked.
+- **F1 corrected two of M5's own patterns, and only running them could have.**
+  `manifest.hook_rewrite_event` claimed `precision: high` on the argument that event names are
+  literal rather than a shape; over this repository it produced 144 candidates of which three are
+  bindings, the rest being prose and comments naming the events. Now `medium`.
+  `manifest.wildcard_grant` had `deny` in its key list, so `"deny": ["Read(**/.env)"]` was
+  reported as an unbounded grant — a broad refusal flagged as its opposite. `deny` is out; the
+  tool-scoped half still matches that line, because an entry reads identically under `allow` and
+  under `deny` while the key is on another line, and §4 makes cross-line reasoning a structural
+  rule by definition. The limit is stated in the pack.
 
 ### Working against the guards
 
@@ -401,7 +441,7 @@ including a network client stack, and the environment that vouches for the code 
 only packages someone chose.
 
 `uv` is permitted but is no longer the default (§3). Its advertised install pipes a fetched
-script into a shell, which is `net.fetch_exec` — one of the nine patterns this tool
+script into a shell, which is `net.fetch_exec` — one of the code patterns this tool
 ships. The objection is to the method, not the tool.
 
 The gate runs, in order: `ruff format --check`, `ruff check`, `mypy --strict`, `pytest`, the

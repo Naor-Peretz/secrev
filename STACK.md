@@ -94,7 +94,7 @@ Binding consequences:
   `.github/requirements/audit.txt`.
 - **`gitleaks` is installed from a pinned, hash-verified release tarball.** Not
   `curl … | sh`, and not `gitleaks/gitleaks-action`: the first is
-  `net.fetch_exec`, one of the nine patterns this project ships, and the
+  `net.fetch_exec`, one of the code patterns this project ships, and the
   second is a third-party action with access to the checkout when a checksum
   achieves the same thing. It is an external binary rather than a Python
   dependency, so it is not in `pyproject.toml` and absent it the gate exits 2.
@@ -126,7 +126,7 @@ Binding consequences:
 
   This reverses an earlier decision in this file, and the reason is the tool's own subject matter.
   `uv`'s advertised install is `curl … | sh` — a fetched script piped straight into a shell, which
-  is `net.fetch_exec`, one of the nine patterns this project ships. A scanner that flags that
+  is `net.fetch_exec`, one of the code patterns this project ships. A scanner that flags that
   construct and then installs itself with it cannot defend the finding. The objection is to the
   *method*, not the tool: `pipx install uv` or a distribution package carry none of it. But with
   four dev dependencies `uv` buys nothing over stdlib `venv`, so the tie goes to the option with no
