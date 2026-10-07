@@ -281,9 +281,85 @@ executable code naming paths — test expectations listing fixture files, and th
 gate scripts. For a target that is itself a review tool that is expected, and it
 is the one case where the number is not evidence about the contract.
 
-**Not implemented.** The proposal is a change to what reaches `hits.jsonl` and
-therefore to what FR-4.3 gates on, which makes it `STACK.md` §3 territory and the
-owner's call. M5 measured it; M5 does not ship it.
+### DECIDED and implemented (owner, 2026-10-08)
+
+**The proposal plus the prose-URL clause, with one exception the owner added: a
+`remote_resource` in a *root* file stays per-instance.** An agent loads a declared
+entry point verbatim, so a URL there is usually an instruction rather than a
+citation — the one place where "prose" and "what the agent acts on" come apart.
+The contract is in `STACK.md` §3, because FR-4.3 gates on it and M7 inherits it.
+
+One ordering detail decided here and worth keeping: **a manifest is a manifest
+before it is a root.** `_referrer_kind` tests the format first, so a `.mcp.json`
+entry point keeps every record. Asking "is it a root?" first was the first
+version and a test caught it: a `plugin.json`'s ambiguous reference was *grouped*,
+because the root exception only covers URLs.
+
+And one edge the literal reading gets wrong, fixed: **a file nobody read has no
+citations to group.** The single reference that reaches the grouping from an unread
+file is a declared entry point the target does not contain — `--entry nowhere.md` —
+and calling that a citation in prose is false twice over: there is no prose, and
+the caller named it as the thing the artifact loads. It keeps its own record. None
+of the four measured targets uses `--entry`, so this neither explains nor
+contradicts their numbers.
+
+### A fourth defect, and it was the worst of them
+
+**A TypeScript ESM specifier names the emitted file, and the source has a
+different extension.** `import { x } from "./tool.js"` in a `.ts` file means
+`tool.ts`. On `modelcontextprotocol/servers` the owner measured 42
+`missing_reference` records that were relative `.js` imports whose `.ts` file is
+in the tree — so the records were wrong **and the real source never entered the
+closure**. A TypeScript MCP server's own code sat outside the reachable set while
+the artifact showed a tidy list of paths the target supposedly lacked.
+
+Over-reporting is this project's chosen direction; that was under-reporting
+wearing over-reporting's clothes, which is worse than either. `.js`→`.ts`/`.tsx`,
+`.jsx`→`.tsx`, `.mjs`→`.mts`, `.cjs`→`.cts`, tried only after the literal path
+fails so a repository that commits its compiled output still resolves to the
+`.js` that exists. One positive fixture per shape, and the permit with them.
+Verified on the case the owner named: `toggle-subscriber-updates.ts` is a member,
+36 `.ts` members in that target, 6 `.js` references left — one build artefact, one
+URL, one product name in prose, and three prose mentions written without `./`
+whose paths are unresolvable either way. `.mts` and `.cts` joined
+`inventory.LANGUAGE_BY_SUFFIX`, so a rewritten member is not reported as "an
+extension naming no language".
+
+### The final numbers, all four targets
+
+| target | before this round | after | |
+|---|---|---|---|
+| `jacob-bd/gemini-notebook-mcp-cli` | 1,597 | **218** | owner's model predicted 224 |
+| `anthropics/skills` | 1,175 | **242** | predicted 269 |
+| `modelcontextprotocol/servers` | 409 | **50** | predicted 96 — the ESM fix is the difference |
+| this repository | 1,210 | **913** | code-heavy; see below |
+
+By rule, after:
+
+| target | records | missing | remote | citations | ambiguous | escaping |
+|---|---|---|---|---|---|---|
+| gemini-notebook-mcp-cli | 218 | 116 | 68 | 22 | 12 | — |
+| anthropics/skills | 242 | 111 | 54 | 67 | 10 | — |
+| modelcontextprotocol/servers | 50 | 11 | 17 | 15 | 7 | — |
+| this repository | 913 | 783 | 34 | 35 | 52 | 9 |
+
+**Where my numbers and the owner's differ, and I did not tune to close it.**
+Modelling the contract on 7ff5a8b before implementing, my reading gave 213/242/89
+and a variant keyed on (file, rule) gave 230/283/97 — the owner's 224/269/96 sits
+between them, so one clause of their model is one I cannot see. Candidates: which
+names count as manifests, whether a citation inside a *comment* in a code file
+groups, and whether a file's grouped record is one or one per rule. Matching a
+number by trying clauses until it coincides is the move this project refuses, so
+the contract is implemented as *stated*, the reading is written out in
+`STACK.md` §3 and in `closure._PER_INSTANCE_KINDS`, and the delta is here. One
+line from the owner closes it if the difference matters.
+
+**This repository stays high (913) and that is not the contract failing.** 783 of
+its records are `missing_reference` from executable code — test expectations
+listing fixture paths, the gate scripts, `src/` naming artefacts — which the
+contract keeps per-instance by design because a path in code is a path something
+opens. For a target that is itself a review tool, that is the honest answer, and
+it is the one case among the four where the number says nothing about the rule.
 
 ## The answer to that question, given by the owner (2026-10-07)
 

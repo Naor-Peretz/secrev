@@ -87,7 +87,14 @@ from secrev.inventory import (
     split_lines,
     walk,
 )
-from secrev.ledger import CLOSURE_DIGEST_SPEC, WINDOW_SPEC, Hit, excerpt, window
+from secrev.ledger import (
+    CITATION_SET_SPEC,
+    CLOSURE_DIGEST_SPEC,
+    WINDOW_SPEC,
+    Hit,
+    excerpt,
+    window,
+)
 
 # The version of *these* rules, carried on every record this module emits.
 #
@@ -173,6 +180,71 @@ _EXTRA_REFERENCE_SUFFIXES = frozenset(
 )
 
 _REFERENCE_SUFFIXES = frozenset(LANGUAGE_BY_SUFFIX) | _EXTRA_REFERENCE_SUFFIXES
+
+# Formats a program parses as configuration. A path written in one of these is a
+# path something opens, whoever wrote it — which is why the ledger contract below
+# treats it as evidence of loading rather than as a citation.
+_STRUCTURED_SUFFIXES = frozenset({".json", ".yaml", ".yml", ".toml", ".ini", ".cfg"})
+
+# TypeScript ESM: an import names the *emitted* file, and the source has a
+# different extension. `import { x } from "./tool.js"` in a `.ts` file means
+# `tool.ts`, because the compiler rewrites the extension and the specifier has to
+# be what the runtime will load.
+#
+# **This was a silent loss of scope, not noise, and it is the worst defect this
+# source has had.** On `modelcontextprotocol/servers` the owner measured 42
+# `missing_reference` records that were relative `.js` imports whose `.ts` file
+# is right there in the tree — so the records were wrong *and* the real source
+# file never entered the closure. A TypeScript MCP server's code sat outside the
+# reachable set while the artifact reported a tidy-looking list of paths the
+# target supposedly lacked. Over-reporting is the direction this project chooses
+# on purpose; this was under-reporting dressed as over-reporting.
+#
+# Tried only after the literal path fails, so a repository that commits its
+# compiled output still resolves to the `.js` that genuinely exists.
+_ESM_SOURCE_SUFFIXES = {
+    ".js": (".ts", ".tsx"),
+    ".jsx": (".tsx",),
+    ".mjs": (".mts",),
+    ".cjs": (".cts",),
+}
+
+
+def _esm_rewrites(path: str | None) -> list[str]:
+    """The TypeScript source paths an emitted-JavaScript path could come from."""
+    if path is None:
+        return []
+    cut = path.rfind(".")
+    if cut < 0:
+        return []
+    stem, suffix = path[:cut], path[cut:].lower()
+    return [f"{stem}{replacement}" for replacement in _ESM_SOURCE_SUFFIXES.get(suffix, ())]
+
+
+def _esm_source(
+    raw: str,
+    relative: str,
+    root_relative: str | None,
+    inventory: dict[str, FileEntry],
+) -> str | None:
+    """The TypeScript source a relative emitted-JavaScript specifier names.
+
+    Only for a *relative* specifier — a bare one is a package and `_resolve`
+    dropped it before reaching here — and only after the literal path has failed,
+    so a repository that commits its compiled output still resolves to the `.js`
+    that genuinely exists.
+
+    Split out of `_resolve` because that function had seven exits and `ruff` is
+    right about it: a resolver a reader has to trace rather than read is one
+    nobody checks.
+    """
+    if not raw.startswith((".", "/")):
+        return None
+    for candidate in (*_esm_rewrites(relative), *_esm_rewrites(root_relative)):
+        if candidate in inventory:
+            return candidate
+    return None
+
 
 # A resource somewhere else. Any scheme, not an allowlist of network ones: the
 # question FR-1.2 asks is whether the artifact pulls something in at load or run
@@ -287,6 +359,81 @@ RULE_MISSING = "closure.missing_reference"
 RULE_ESCAPING = "closure.escaping_reference"
 RULE_CHANGED = "closure.content_changed"
 RULE_AMBIGUOUS = "closure.ambiguous_reference"
+RULE_CITATIONS = "closure.unresolved_citations"
+
+# **The ledger contract for this source** (owner decision, 2026-10-08), after the
+# owner ran the branch on three real targets and measured what reaches
+# `hits.jsonl`.
+#
+# A reference that is *evidence of loading* gets its own record. A citation in
+# prose does not: the paths a document names are grouped into one record per
+# referring file, listing them. Both stay in the ledger, so FR-4.3 still forces a
+# decision on every one of them, and a prose file gets FR-3.15's full read
+# anyway — the grouping changes how many times a reviewer is asked, not whether
+# they are asked.
+#
+# The measurements behind it, per target, from `.claude/TASKS_M5.md`: the volume
+# is prose citation by a wide margin — 710 of 821 `missing_reference` on one
+# target, 259 of 289 `remote_resource` on another — and a reviewer facing a
+# thousand paragraphs reads none of them, which is H-1 arriving as volume.
+#
+# **The root exception is the owner's and is the sharp part.** A URL in a file an
+# agent loads *verbatim* — a skill body, `CLAUDE.md`, a declared entry point — is
+# usually an instruction rather than a citation, so it keeps its own record even
+# though the file is prose. That is the one place where "prose" and "what the
+# agent acts on" come apart.
+#
+# **The residual cost, stated rather than discovered later:** a non-root member
+# loaded on demand — `skills/claude-api/shared/live-sources.md` was the owner's
+# example — gets one grouped record listing every URL it names, where a root file
+# would have got one record each. FR-3.15's full read of the prose closure is
+# what covers it, and that read is mandatory rather than a hope.
+_PER_INSTANCE_KINDS = frozenset({"code", "manifest"})
+
+
+def _referrer_kind(path: str, roots: frozenset[str]) -> str:
+    """What kind of file a reference was written in, for the ledger contract.
+
+    **Format first, `root` last, and the order is load-bearing.** `root` means "a
+    *prose* file a client loads verbatim" — a skill body, `CLAUDE.md`, an
+    `AGENTS.md` — which is what the owner's exception is about: a URL in text an
+    agent reads as instruction is usually an instruction. A `.mcp.json` or a
+    `settings.json` is a declared entry point too, and it is a manifest first:
+    every path in it is a path something opens, so every record from it stands
+    alone and the exception never needs to apply.
+
+    Asking `root` first was the first version and it was wrong in a way a test
+    caught: a `plugin.json` entry point had its ambiguous reference *grouped*,
+    because `root` is not in the per-instance kinds and only the URL rule checks
+    for it. Format first makes a manifest a manifest whether or not it is also a
+    root.
+
+    **Not `inventory.is_prose`.** That answers whether a format holds prose,
+    which is right for the instruction layer and wrong here: a path in a
+    `package.json` is a path something opens. The two questions get two
+    functions, which is the same separation `language_of` and `is_prose` already
+    keep.
+    """
+    suffix = path[path.rfind(".") :].lower() if "." in path.rsplit("/", 1)[-1] else ""
+    if suffix in _STRUCTURED_SUFFIXES:
+        return "manifest"
+    language = language_of(path)
+    if language is not None and language not in NOT_CODE_LANGUAGES:
+        return "code"
+    return "root" if path in roots else "prose"
+
+
+def _is_per_instance(rule_id: str, kind: str) -> bool:
+    """Whether this record stands alone or joins its file's grouped record."""
+    if rule_id in (RULE_ESCAPING, RULE_CHANGED):
+        # A path climbing out of the tree, and a file whose bytes changed under
+        # the review, are never citations. Both are facts about the review
+        # itself rather than about what a document mentions.
+        return True
+    if rule_id == RULE_REMOTE:
+        return kind in _PER_INSTANCE_KINDS or kind == "root"
+    return kind in _PER_INSTANCE_KINDS
+
 
 # One question per rule, phrased as a question (FR-3.2: patterns are questions,
 # not verdicts, and a source that concluded would be deciding what M7 decides).
@@ -313,6 +460,14 @@ _QUESTIONS = {
         "not say which. Which one is loaded, and does the loader resolve it the "
         "same way under every working directory?"
     ),
+    RULE_CITATIONS: (
+        "This file names paths that resolve to nothing in the target. Prose "
+        "cites files it does not load, so which of these does the artifact "
+        "actually pull in, and which is a mention? One record rather than one "
+        "each because the answer is usually the same for all of them — and the "
+        "file gets a full read under FR-3.15 regardless, which is what covers "
+        "the ones this record groups."
+    ),
 }
 
 _PRECISIONS = {
@@ -331,6 +486,9 @@ _PRECISIONS = {
     # The name really does match several files. Whether the line meant one of
     # them is the imprecise half.
     RULE_AMBIGUOUS: "medium",
+    # A document naming a path it does not load is the normal case, which is the
+    # whole reason these are grouped.
+    RULE_CITATIONS: "low",
 }
 
 # What this source cannot reach, one line each, so a reader sees the limit
@@ -351,6 +509,15 @@ _CLOSURE_GAPS = (
     "closure: a member that is binary, unreadable, not a regular file, or past "
     "the size bound is in the closure and is not read, so references inside it "
     "are not followed",
+    "closure: a citation in prose outside a declared entry point does not get "
+    "its own ledger record — the paths one file names and the target does not "
+    "contain are grouped into one record for that file, listing them all. "
+    "Evidence of loading is not grouped: a reference from code or a manifest, a "
+    "path leaving the tree, and a URL in a file an agent loads verbatim each "
+    "keep their own record. **The residual cost**: a non-root member loaded on "
+    "demand gets one record listing every URL it names, where a root file would "
+    "get one each — the full read FR-3.15 requires of prose in the closure is "
+    "what covers those individually",
     "closure: a lockfile is a member and is not read for references — its "
     "content is resolved dependency metadata, and FR-0.3 puts dependency "
     "behaviour out of scope by default. What a package manager will install is "
@@ -711,16 +878,47 @@ class _Record:
 def _pending_records(
     unresolved: tuple[Unresolved, ...],
     changed: list[tuple[FileEntry, str]],
+    roots: frozenset[str],
+    read_files: frozenset[str],
 ) -> dict[str, list[_Record]]:
     """Every record this source will emit, grouped by the file it is anchored in.
 
-    One record per (reference, referring line), which is what makes two
-    references on one line two records (D-6).
+    **Two shapes, and which one a reference gets is the ledger contract**
+    (`_PER_INSTANCE_KINDS`, owner decision 2026-10-08). Evidence of loading gets
+    its own record, and D-6 holds there: one per (reference, referring line), so
+    two references on one line stay two. A citation in prose joins one record per
+    referring file.
+
+    D-6 is not weakened by the grouping, and the distinction is worth stating:
+    D-6 says two *questions* earn two answers, and a document naming twelve paths
+    it does not load is asking one question twelve times. The grouped record's
+    `question` says so, and every path is in it.
     """
     pending: dict[str, list[_Record]] = {}
+    # Citations that join their file's grouped record, by referring file. A set,
+    # because one document naming one path on five lines asks one question.
+    citations: dict[str, set[str]] = {}
+
     for item in unresolved:
         for origin in item.referenced_from:
             from_path, _, raw_number = origin.rpartition(":")
+            # **A file nobody read has no citations to group.** The one reference
+            # that reaches here from an unread file is a declared entry point the
+            # target does not contain — `--entry nowhere.md` — and calling that
+            # "a citation in prose" would be false twice over: there is no prose,
+            # and the caller named it as the thing the artifact loads. It is the
+            # strongest evidence of loading this source can record, so it keeps
+            # its own record.
+            #
+            # This case does not arise in any of the four targets the contract was
+            # measured against, none of which used `--entry`, so it neither
+            # explains nor contradicts those numbers.
+            grouped_here = from_path in read_files and not _is_per_instance(
+                item.rule_id, _referrer_kind(from_path, roots)
+            )
+            if grouped_here:
+                citations.setdefault(from_path, set()).add(item.reference)
+                continue
             pending.setdefault(from_path, []).append(
                 _Record(
                     line=int(raw_number),
@@ -730,6 +928,31 @@ def _pending_records(
                     window_spec=WINDOW_SPEC,
                 )
             )
+
+    for from_path in sorted(citations):
+        references = sorted(citations[from_path])
+        shown = ", ".join(references[:GAP_LIST_LIMIT])
+        if len(references) > GAP_LIST_LIMIT:
+            shown += f", and {len(references) - GAP_LIST_LIMIT} more"
+        pending.setdefault(from_path, []).append(
+            _Record(
+                # Line 0: a grouped record is about the file, not a line in it.
+                line=0,
+                rule_id=RULE_CITATIONS,
+                # The window is the *set*, joined — see `CITATION_SET_SPEC`. It
+                # is what FR-4.6 keys the verification to, so adding a citation
+                # expires it and editing unrelated prose does not.
+                reference="\n".join(references),
+                reason=(
+                    f"{len(references)} path(s) named here resolve to nothing in the "
+                    f"target: {shown}. Grouped because a document citing paths it does "
+                    "not load is the normal case; the full read FR-3.15 requires of "
+                    "prose in the closure is what covers them individually"
+                ),
+                window_spec=CITATION_SET_SPEC,
+            )
+        )
+
     for entry, actual in changed:
         # Line 0: there is no line. A content mismatch is a fact about the whole
         # file, and `_record_text` reads the zero as "nothing to anchor on"
@@ -754,6 +977,12 @@ def _record_text(record: _Record, lines: list[str]) -> tuple[str, str]:
     computed by two copies of the same three-branch decision until this returned
     a pair.
     """
+    if record.window_spec == CITATION_SET_SPEC:
+        # `citation-set`: the window is the sorted set of cited paths, the
+        # excerpt is the count and a sample. Keyed on the set so FR-4.6 expires
+        # the verification when a citation is added and not when unrelated prose
+        # in the same file changes.
+        return record.reference, record.reason
     if record.window_spec == CLOSURE_DIGEST_SPEC:
         # `digest-pair`: the two digests and nothing else. There is no line to
         # anchor on, and the file's own bytes are what the finding is about —
@@ -797,6 +1026,7 @@ def _hits(
     unresolved: tuple[Unresolved, ...],
     changed: list[tuple[FileEntry, str]],
     lines_by_path: dict[str, list[str]],
+    roots: frozenset[str],
 ) -> list[Hit]:
     """The block this source contributes to `hits.jsonl` (§6 Q1).
 
@@ -816,8 +1046,12 @@ def _hits(
     A content mismatch is the exception and carries `digest-pair`, because its
     span is not lines at all — there is no line to anchor on, and quoting the
     file would be quoting the bytes whose provenance is the finding.
+
+    A grouped citation record is the other exception and carries `citation-set`:
+    one record per referring file, windowed on the set of paths it cites. See
+    `_PER_INSTANCE_KINDS` for which references group and why.
     """
-    pending = _pending_records(unresolved, changed)
+    pending = _pending_records(unresolved, changed, roots, frozenset(lines_by_path))
     hits: list[Hit] = []
     for from_path in sorted(pending):
         records = sorted(pending[from_path])
@@ -1144,15 +1378,24 @@ def _resolve(
     if root_relative is not None and root_relative in inventory:
         return root_relative, "", ""
 
-    if "/" in reference.raw:
-        return None, RULE_MISSING, "no file at that path in the target"
+    source = _esm_source(reference.raw, relative, root_relative, inventory)
+    if source is not None:
+        return source, "", ""
+
     return _by_name(reference.raw, by_basename)
 
 
 def _by_name(reference: str, by_basename: dict[str, list[str]]) -> tuple[str | None, str, str]:
     """`_resolve`'s third convention, split out so neither function has seven
     exits — which `ruff`'s PLR0911 is right about: a resolver with seven ways
-    out is one a reader has to trace rather than read."""
+    out is one a reader has to trace rather than read.
+
+    It owns the "names a directory, so there is nothing to look up by name" case
+    too, for the same reason: that was a seventh exit in `_resolve` and it is the
+    same decision as finding no match here.
+    """
+    if "/" in reference:
+        return None, RULE_MISSING, "no file at that path in the target"
     matches = by_basename.get(reference, [])
     if len(matches) == 1:
         return matches[0], "", ""
@@ -1339,7 +1582,12 @@ def closure(
         unresolved=unresolved,
         unreachable=unreachable,
         prose=prose,
-        hits=_hits(unresolved, graph.changed, graph.lines_by_path),
+        hits=_hits(
+            unresolved,
+            graph.changed,
+            graph.lines_by_path,
+            frozenset(item.path for item in roots),
+        ),
         coverage_gaps=(*_derived_gaps(members), *_unreachable_gap(unreachable), *_CLOSURE_GAPS),
     )
 

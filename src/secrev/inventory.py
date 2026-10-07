@@ -124,6 +124,12 @@ LANGUAGE_BY_SUFFIX = {
     ".jsx": "javascript",
     ".ts": "typescript",
     ".tsx": "typescript",
+    # ESM and CommonJS TypeScript. Added in M5 with the closure's ESM rewrite:
+    # `import … from "./x.mjs"` resolves to `x.mts`, and a member whose language
+    # the map does not know is reported as "an extension naming no language",
+    # which would be false of a file that is plainly TypeScript.
+    ".mts": "typescript",
+    ".cts": "typescript",
     ".rb": "ruby",
     ".go": "go",
     ".rs": "rust",

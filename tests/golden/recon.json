@@ -6,18 +6,19 @@
     "sha": null
   },
   "inventory": {
-    "files_total": 73,
+    "files_total": 79,
     "by_language": {
+      "javascript": 1,
       "json": 8,
       "markdown": 21,
       "python": 25,
       "shell": 1,
       "text": 8,
       "toml": 1,
-      "typescript": 2,
+      "typescript": 7,
       "yaml": 4
     },
-    "loc_total": 785,
+    "loc_total": 821,
     "binary": [
       "assets/blob.bin",
       "closure/helpers/payload.bin"
@@ -45,18 +46,18 @@
   "coverage_gaps": [
     "excluded from review and not read at all: node_modules/ — override the set with --exclude",
     "present but not read, classified binary (over 5% non-text bytes in the first 8 KiB): assets/blob.bin, closure/helpers/payload.bin",
-    "closure: a member in a code language no rule set reads is in the closure and nothing examines its contents; not implemented for: shell, typescript",
+    "closure: a member in a code language no rule set reads is in the closure and nothing examines its contents; not implemented for: javascript, shell, typescript",
     "closure: a reference is read line by line and recognised by its file suffix or by a Markdown link target, so a path built from variables, split across lines, or naming a directory is not followed — `closure.json` names the references that did not resolve",
     "closure: a resource named for fetching is recorded and never fetched (STACK.md §2.1 forbids runtime network calls), so what it would have contained is unreviewed by construction (FR-1.2) and enters `hits.jsonl` under `source: closure` rather than being passed over",
     "instruction: comments and docstrings in code are not examined by the instruction pack, which applies to markdown, text, JSON, YAML and TOML. Deliberate rather than forgotten: in FastMCP a tool's docstring *is* the description sent to the model, and it already falls inside the `surface.mcp_tool` window, so it reaches the manual read rather than vanishing (FR-3.15 requires that read anyway)",
     "instruction: these patterns are weaker signals than code patterns — paraphrase defeats a regex over prose — so they raise questions and never auto-classify, and where the instruction layer is substantial the triage phase must read the whole prose closure rather than only these windows (FR-3.15). This is a permanent cost of P8, not a temporary gap",
     "manifest: whether a grant exceeds the artifact's stated purpose is a comparison, and no line-oriented rule holds both sides of one — the capability manifest FR-1.4 requires is implemented by no milestone and PRD §13 assigns it to no row (raised in `.claude/TASKS_M3.md`). These patterns narrow that gap and do not close it",
-    "structure: rules are read in Python only; not implemented for: shell, typescript",
+    "structure: rules are read in Python only; not implemented for: javascript, shell, typescript",
     "structure: reasoning stops at one function body — a value reaching a sink through an intermediate call is not followed (FR-3.7, v2)",
     "structure: a value bound outside the body it is used in is not followed, so a collection held in a module constant is not read as a literal one",
     "structure: what counts as validating is a list of names, not a proof — a call that is named here suppresses a candidate whether or not it confines anything",
     "structure: a file that fails to parse is not reviewed by this source at all; `secrev structure` names it and exits 2 rather than reporting no candidates",
-    "surface: code entry points are read in Python only; not read for: shell, typescript",
+    "surface: code entry points are read in Python only; not read for: javascript, shell, typescript",
     "surface: HTTP routes are not enumerated (framework-specific; FR-1.3)",
     "surface: IPC handlers are not enumerated (framework-specific; FR-1.3)",
     "surface: the argument parser beneath a declared CLI command is not enumerated — it needs an AST, which exists since M4, but reading it is the surface source's work and not the structural source's",

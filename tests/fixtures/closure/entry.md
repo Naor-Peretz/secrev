@@ -40,3 +40,6 @@ specifiers beside one relative specifier that must still resolve; and uv.lock is
 a member of this closure whose dependency table is not read for references at
 all.
 
+helpers/esm.ts holds the TypeScript ESM shapes, where the specifier names the
+emitted file and the tree contains the source.
+

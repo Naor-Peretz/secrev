@@ -87,6 +87,20 @@ BLOCK_WINDOW_SPEC = "block-20"
 # rest: two spans of the same shape sharing a name is what the name is for.
 CLOSURE_DIGEST_SPEC = "digest-pair"
 
+# The closure's window for a *grouped* record: one record per referring file
+# carrying every path that file cites and the target does not contain (M5, owner
+# decision 2026-10-08). Its span is the set of cited paths, not lines of text, so
+# it gets a name of its own under C-2's rule.
+#
+# The span is chosen so that FR-4.6 expires exactly the right verification. A
+# reviewer who reads a file's citations and concludes they are mentions rather
+# than loads has made a judgment about *that set*; editing unrelated prose in the
+# same file must not expire it, and adding a citation must. Keying the window on
+# the sorted set of references does both, where keying it on the file's content
+# would re-identify the record on every edit and keying it on a line would be
+# false — a grouped record has no line.
+CITATION_SET_SPEC = "citation-set"
+
 # `BRIEF_M1.md` §5: "the matched span with a small margin, truncated to 200
 # chars". Cited wrongly as `STACK.md` §5 until M3.5 — §5 there fixes traversal,
 # hashing and the window, and says nothing about excerpts. The number was right

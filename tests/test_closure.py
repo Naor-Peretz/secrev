@@ -44,6 +44,7 @@ from secrev.closure import (
     LOAD_FETCH,
     RULE_AMBIGUOUS,
     RULE_CHANGED,
+    RULE_CITATIONS,
     RULE_ESCAPING,
     RULE_MISSING,
     RULE_REMOTE,
@@ -52,7 +53,13 @@ from secrev.closure import (
     to_json,
 )
 from secrev.inventory import content_sha256, is_prose, language_of
-from secrev.ledger import CLOSURE_DIGEST_SPEC, LAYERS, RESERVED_NAMESPACES, WINDOW_SPEC
+from secrev.ledger import (
+    CITATION_SET_SPEC,
+    CLOSURE_DIGEST_SPEC,
+    LAYERS,
+    RESERVED_NAMESPACES,
+    WINDOW_SPEC,
+)
 from secrev.recon import GAP_LIST_LIMIT as RECON_GAP_LIST_LIMIT
 from secrev.sweep import applies, sweep
 
@@ -147,16 +154,28 @@ def test_the_closure_of_the_fixture_is_exactly_this(from_entry: Closure) -> None
         "helpers/calls.py",
         "helpers/cyclé.md",
         "helpers/direct.md",
+        # The five ESM targets, every one of them reached through a specifier
+        # naming the *emitted* file rather than the source.
+        "helpers/emitted.js",
+        "helpers/esm.ts",
         "helpers/imports.ts",
+        "helpers/legacy.cts",
         "helpers/local.ts",
+        "helpers/modern.mts",
         "helpers/payload.bin",
         "helpers/progressive.md",
         "helpers/run.sh",
+        "helpers/toggle-subscriber-updates.ts",
+        "helpers/widget.tsx",
         "uv.lock",
     ]
-    # Three unresolved, and no more: `calls.py`, `imports.ts` and `uv.lock` are
-    # each read (or deliberately not read) and contribute nothing, which is the
-    # extractor-precision fix stated as a count.
+    # **Three unresolved, and no more**, which is the extractor-precision work
+    # stated as a count: `calls.py`, `imports.ts`, `esm.ts` and `uv.lock` are
+    # each read (or deliberately not read) and contribute nothing false between
+    # them. `SKILL.md`'s own URL is absent because this fixture enters at
+    # `entry.md`, which does not name the skill body — it appears in the
+    # whole-tree run, where `SKILL.md` is a *detected* root, and that is where
+    # the ledger contract's root exception is asserted.
     assert [(item.rule_id, item.reference) for item in from_entry.unresolved] == [
         (RULE_ESCAPING, "../../../outside/notes.md"),
         (RULE_MISSING, "helpers/absent.md"),
@@ -220,7 +239,122 @@ def test_a_root_reached_by_nothing_is_distinguishable(from_entry: Closure) -> No
     assert alone.roots_given is True
 
 
+# --- the ledger contract (owner decision, 2026-10-08) --------------------
+
+
+def test_evidence_of_loading_keeps_its_own_record(whole_tree: Closure) -> None:
+    """The contract's first half, and the root exception is the sharp part.
+
+    A URL in `closure/SKILL.md` keeps its own record because a client loads that
+    file verbatim, so a URL in it is usually an instruction rather than a
+    citation. The same URL in a non-root document would join that document's
+    grouped record — which is asserted directly below.
+    """
+    own = {(hit.rule_id, hit.file) for hit in whole_tree.hits if hit.rule_id != RULE_CITATIONS}
+    assert (RULE_REMOTE, "closure/SKILL.md") in own, (
+        "a URL in a declared entry point was grouped — that is the one place "
+        "where prose and what the agent acts on come apart"
+    )
+    # A path leaving the tree is never a citation, wherever it is written.
+    assert (RULE_ESCAPING, "closure/entry.md") in own
+    # And a manifest's references stand alone, root or not.
+    assert (RULE_REMOTE, "mcp/.mcp.json") in own
+
+
+def test_a_citation_in_prose_joins_one_record_for_its_file(whole_tree: Closure) -> None:
+    """The contract's second half.
+
+    `closure/entry.md` is prose, loaded on demand rather than declared, and it
+    names two paths the target does not contain — a missing helper and a remote
+    rule set. One record, listing them, anchored on the file rather than on a
+    line, windowed on the *set* so FR-4.6 expires the verification when a
+    citation is added and not when unrelated prose changes.
+    """
+    grouped = [hit for hit in whole_tree.hits if hit.rule_id == RULE_CITATIONS]
+    assert "closure/entry.md" in {hit.file for hit in grouped}
+    [entry] = [hit for hit in grouped if hit.file == "closure/entry.md"]
+    assert entry.line == 0, "a grouped record is about the file, not a line in it"
+    assert entry.window_spec == CITATION_SET_SPEC
+    assert "helpers/absent.md" in entry.match_excerpt
+    assert "path(s) named here resolve to nothing" in entry.match_excerpt
+    assert "?" in entry.question, "it still has to ask something (FR-3.2)"
+
+
+def test_grouping_loses_no_reference_from_the_artifact(whole_tree: Closure) -> None:
+    """`closure.json` keeps every reference individually, whatever the ledger does.
+
+    The grouping is a decision about how many times a reviewer is asked, not
+    about what the artifact records. If it also thinned `closure.json` it would
+    be losing evidence, which is the one thing P6 does not allow — negative
+    findings are the only proof of coverage.
+    """
+    document = json.loads(to_json(whole_tree))
+    assert len(document["unresolved"]) == len(whole_tree.unresolved)
+    assert len(document["unresolved"]) > len(whole_tree.hits), (
+        "the artifact should carry more detail than the ledger here, or the "
+        "grouping is not doing anything and this test proves nothing"
+    )
+    for item in whole_tree.unresolved:
+        assert item.reason.strip()
+
+
+def test_the_grouping_and_its_residual_cost_are_stated(whole_tree: Closure) -> None:
+    """FR-3.8 for the contract itself.
+
+    A source that quietly emits one record where it used to emit twelve has
+    changed what a reader is being told, and the artifact has to say so — with
+    the cost named, which is that a non-root member loaded on demand gets one
+    record listing every URL it names where a root file would get one each.
+    """
+    [line] = [gap for gap in whole_tree.coverage_gaps if "does not get" in gap]
+    assert "grouped into one record" in line
+    assert "residual cost" in line.lower()
+    assert "FR-3.15" in line
+
+
 # --- extractor precision, found on three real targets --------------------
+
+
+def test_a_typescript_esm_specifier_resolves_to_its_source(from_entry: Closure) -> None:
+    """The worst defect this source has had, and it was a silent loss of scope.
+
+    `import { x } from "./tool.js"` in a `.ts` file means `tool.ts`: the compiler
+    rewrites the extension and the specifier has to be what the runtime loads. On
+    `modelcontextprotocol/servers` the owner measured 42 `missing_reference`
+    records that were relative `.js` imports whose `.ts` file is in the tree — so
+    the records were wrong *and* the real source never entered the closure. A
+    TypeScript MCP server's code sat outside the reachable set while the artifact
+    showed a tidy list of paths the target supposedly lacked.
+
+    Over-reporting is the direction this project chooses on purpose. This was
+    under-reporting wearing over-reporting's clothes, which is worse than either.
+
+    One case per shape, and the permit last: a repository that commits its
+    compiled output has a real `.js` on disk, and the import resolves to that
+    rather than being rewritten — which is why the rewrite is tried only after
+    the literal path fails.
+    """
+    members = {item.path for item in from_entry.members}
+    for source in (
+        "helpers/toggle-subscriber-updates.ts",  # ./x.js  -> x.ts
+        "helpers/modern.mts",  # ./x.mjs -> x.mts
+        "helpers/legacy.cts",  # ./x.cjs -> x.cts
+        "helpers/widget.tsx",  # ./x.jsx -> x.tsx
+    ):
+        assert source in members, f"{source} is outside the closure — the ESM rewrite is gone"
+    assert "helpers/emitted.js" in members, (
+        "the literal path stopped winning: a committed .js must resolve to itself"
+    )
+    from_esm = [
+        item
+        for item in from_entry.unresolved
+        for origin in item.referenced_from
+        if origin.startswith("helpers/esm.ts")
+    ]
+    assert not from_esm, f"an ESM specifier is still unresolved: {[i.reference for i in from_esm]}"
+
+
+# --- the two shapes measured on real targets ------------------------------
 
 
 def test_a_token_followed_by_a_paren_is_a_call_not_a_path(from_entry: Closure) -> None:
@@ -372,13 +506,41 @@ def test_an_unresolved_member_reaches_the_ledger(from_entry: Closure) -> None:
     """
     assert {hit.source for hit in from_entry.hits} == {"closure"}
     assert {hit.status for hit in from_entry.hits} == {"unresolved"}
-    assert {hit.rule_id for hit in from_entry.hits} == {
-        RULE_ESCAPING,
-        RULE_MISSING,
-        RULE_REMOTE,
-    }
     assert all(hit.catalog_version == CLOSURE_RULES_VERSION for hit in from_entry.hits)
     assert all(hit.layer in LAYERS for hit in from_entry.hits)
+
+    # **Every unresolved member reaches the ledger, but not all of them one
+    # record each** — the contract of 2026-10-08. Four unresolved references and
+    # three records: the escaping path and the URL in the *root* keep their own,
+    # and `entry.md`'s two citations share one. What A3 requires is that none of
+    # the four is passed over, so this asserts the path from reference to record
+    # rather than a count of records.
+    assert {hit.rule_id for hit in from_entry.hits} == {
+        RULE_ESCAPING,
+        RULE_REMOTE,
+        RULE_CITATIONS,
+    }
+    assert len([hit for hit in from_entry.hits if hit.rule_id == RULE_CITATIONS]) == 1
+
+    # The guarantee, stated at the level it holds: every unresolved reference is
+    # either the subject of its own record, or one of its referring files has a
+    # grouped record that carries it. Checked by *referring file* rather than by
+    # parsing an excerpt, because `excerpt` truncates at 200 characters and a
+    # test that reads a truncated list would pass for the wrong reason on a small
+    # fixture and fail on a real target.
+    grouped_files = {hit.file for hit in from_entry.hits if hit.rule_id == RULE_CITATIONS}
+    own_record = {hit.file: hit.line for hit in from_entry.hits if hit.rule_id != RULE_CITATIONS}
+    for item in from_entry.unresolved:
+        origins = {origin.rsplit(":", 1)[0] for origin in item.referenced_from}
+        reached = bool(origins & grouped_files) or any(
+            origin.rsplit(":", 1)[0] in own_record
+            and own_record[origin.rsplit(":", 1)[0]] == int(origin.rsplit(":", 1)[1])
+            for origin in item.referenced_from
+        )
+        assert reached, (
+            f"{item.reference} reaches no record at all — that is the omission "
+            "FR-1.2 forbids, and the grouping must never cause it"
+        )
 
 
 def test_every_record_says_why_it_could_not_be_resolved(from_entry: Closure) -> None:
@@ -590,9 +752,21 @@ def test_a_member_in_an_unread_language_is_a_named_gap(from_entry: Closure) -> N
     """E1 (FR-3.8), and the paths rather than only the language: "no coverage
     for: shell" tells a reviewer that a gap exists, and the path tells them
     where to look."""
-    lines = [line for line in from_entry.coverage_gaps if "helpers/run.sh" in line]
-    assert len(lines) == 1, f"run.sh is in no gap line: {from_entry.coverage_gaps}"
-    assert "Python only" in lines[0]
+    [line] = [gap for gap in from_entry.coverage_gaps if "code language no rule set reads" in gap]
+    assert "Python only" in line
+    # The line is capped at `GAP_LIST_LIMIT` names and says where the rest are,
+    # which is the same truncation `recon` uses. So the assertion is that the
+    # *class* is named with a pointer, not that one particular path fits in the
+    # sample — the ESM fixtures pushed `run.sh` out of the first five, and a test
+    # pinning a sample slot would have failed for a reason unrelated to its claim.
+    assert "the full list is members[]" in line
+    unread = {
+        item.path
+        for item in from_entry.members
+        if (language_of(item.path) or "python") not in ("python",)
+    }
+    assert "helpers/run.sh" in unread
+    assert "helpers/esm.ts" in unread
 
 
 def test_the_fixed_gaps_name_each_limit(from_entry: Closure) -> None:
@@ -801,17 +975,38 @@ def test_a_name_matching_several_files_is_its_own_finding(tmp_path: Path) -> Non
     tree = _tree(
         tmp_path,
         {
-            "entry.md": "The rules are in SKILL.md.\n",
+            # A manifest, so the record is evidence of loading and keeps its own
+            # row under the ledger contract. The prose case is asserted below.
+            "plugin.json": '{"rules": "SKILL.md"}\n',
             "one/SKILL.md": "a\n",
             "two/SKILL.md": "b\n",
         },
     )
-    result = closure(tree, ["entry.md"])
+    result = closure(tree, ["plugin.json"])
     assert [(item.rule_id, item.reference) for item in result.unresolved] == [
         (RULE_AMBIGUOUS, "SKILL.md")
     ]
     assert "one/SKILL.md, two/SKILL.md" in result.unresolved[0].reason
     assert [hit.rule_id for hit in result.hits] == [RULE_AMBIGUOUS]
+
+    # The same reference in non-root prose is still *recorded* — it is in
+    # `closure.json` with the same rule and reason — and joins that file's
+    # grouped ledger record rather than getting its own. The finding does not
+    # disappear; the number of times a reviewer is asked does.
+    prose = _tree(
+        tmp_path / "prose",
+        {
+            "SKILL.md": "Read notes.md for the rules.\n",
+            "notes.md": "The rules are in CONFIG.md.\n",
+            "one/CONFIG.md": "a\n",
+            "two/CONFIG.md": "b\n",
+        },
+    )
+    grouped = closure(prose)
+    assert [(item.rule_id, item.reference) for item in grouped.unresolved] == [
+        (RULE_AMBIGUOUS, "CONFIG.md")
+    ]
+    assert [(hit.rule_id, hit.file) for hit in grouped.hits] == [(RULE_CITATIONS, "notes.md")]
 
 
 def test_the_escape_test_is_relative_not_root_relative(tmp_path: Path) -> None:
@@ -938,11 +1133,17 @@ def test_the_closure_of_the_whole_fixture_tree_is_small_and_explained(
         "closure/helpers/calls.py",
         "closure/helpers/cyclé.md",
         "closure/helpers/direct.md",
+        "closure/helpers/emitted.js",
+        "closure/helpers/esm.ts",
         "closure/helpers/imports.ts",
+        "closure/helpers/legacy.cts",
         "closure/helpers/local.ts",
+        "closure/helpers/modern.mts",
         "closure/helpers/payload.bin",
         "closure/helpers/progressive.md",
         "closure/helpers/run.sh",
+        "closure/helpers/toggle-subscriber-updates.ts",
+        "closure/helpers/widget.tsx",
         "closure/uv.lock",
         "mcp/.mcp.json",
         "plugin/hooks/hooks.json",
@@ -954,6 +1155,7 @@ def test_the_closure_of_the_whole_fixture_tree_is_small_and_explained(
         (RULE_MISSING, "./hello.sh"),
         (RULE_MISSING, "helpers/absent.md"),
         (RULE_REMOTE, "https://example.invalid/closure/rules.json"),
+        (RULE_REMOTE, "https://example.invalid/skill/rules.json"),
         (RULE_REMOTE, "https://mcp.example.invalid/search"),
     ]
 

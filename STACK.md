@@ -171,6 +171,31 @@ Binding consequences:
 - **Streams:** machine-readable output to **stdout**, human progress and diagnostics to
   **stderr**. `secrev sweep target > hits.jsonl` must produce a valid file.
 
+- **How many ledger records an unresolved closure member earns** (owner decision, 2026-10-08).
+  This is a contract rather than an implementation choice, because FR-4.3 gates report rendering on
+  unresolved hits — so it decides what a reviewer is obliged to answer, and M7's triage inherits it.
+
+  **Evidence of loading gets its own record.** A reference from code or from a manifest; a path that
+  resolves outside the target root; and a URL in a file an agent loads *verbatim* — a declared entry
+  point, so `SKILL.md`, `CLAUDE.md`, `AGENTS.md` and the rest of `closure._ROOT_BASENAMES`.
+
+  **A citation in prose does not.** The paths one non-root prose file names and the target does not
+  contain are grouped into **one record for that file**, listing them, windowed on the set of paths
+  under the spec `citation-set` (§5). Still in `hits.jsonl`, so FR-4.3 still forces a decision on
+  every one of them; `closure.json` still carries each reference individually, so no evidence is
+  lost (P6). What changes is how many times a reviewer is asked, not whether they are asked.
+
+  **Why, with the measurement.** Run on three real targets the source produced 1,597, 1,175 and 409
+  records, between 58% and 86% of them prose citing paths it does not load — and a reviewer facing a
+  thousand paragraphs reads none of them, which is H-1 arriving as volume rather than as a false
+  green. The same three now produce 218, 242 and 50. The root exception is the one place where
+  "prose" and "what the agent acts on" come apart: a URL in a skill body is usually an instruction.
+
+  **The residual cost, stated rather than discovered:** a non-root member loaded on demand gets one
+  record listing every URL it names, where a root file would get one each. FR-3.15's full read of
+  the prose closure is what covers those individually, and that read is mandatory rather than hoped
+  for. A manifest is a manifest before it is a root, so a `.mcp.json` entry point keeps every record.
+
 ## 4. Platforms
 
 **Supported:** Linux and macOS. **Out of scope for v1:** Windows; the answer is WSL. Revisit only
@@ -364,6 +389,15 @@ unachievable without fixing the following explicitly:
   provenance is unknown, so `window_sha256` over it would identify the very bytes nobody has
   established the origin of, and the id would move on every later edit while the question stayed
   the same.
+
+  **M5 also adds `citation-set`**, for the grouped record §3 defines: one record per referring file
+  carrying every path that file cites and the target does not contain. Its span is the sorted set of
+  those paths, which is a name of its own under C-2 for the same reason as `digest-pair` — it is not
+  a span of a file. The span is chosen so FR-4.6 expires the right verification: a reviewer who reads
+  a file's citations and concludes they are mentions has judged *that set*, so adding a citation must
+  expire it and editing unrelated prose in the same file must not. Keying on the file's content would
+  re-identify the record on every edit; keying on a line would be false, since a grouped record has
+  none.
 
   The closure's *other* records carry `lines-20` unchanged, anchored on the line that names the
   unresolved member. That is `lines-20`'s shape and anchor exactly as a pattern record's is, and

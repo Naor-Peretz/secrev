@@ -26,16 +26,16 @@
       "path": "closure/SKILL.md",
       "kind": "data",
       "load": "direct",
-      "size": 618,
-      "sha256": "fcabe7676adb61127c67f96cf942f032ccad397336b463a1c0df32614904ba0f",
+      "size": 1003,
+      "sha256": "b87878a38a52ece88f3bd4b95783e2736d875e96caff402d9546276450c61db0",
       "referenced_from": []
     },
     {
       "path": "closure/entry.md",
       "kind": "data",
       "load": "direct",
-      "size": 1989,
-      "sha256": "1c3f6c42d169d60c32a19f8343db102308821f2a5b292223535adbe6e55b775e",
+      "size": 2115,
+      "sha256": "bd8b5f62c4bc2ef4eac35ea8aa72e8242b7a9cfe56a67915506e00918319308b",
       "referenced_from": [
         "closure/SKILL.md:12",
         "closure/helpers/cyclé.md:10"
@@ -72,6 +72,26 @@
       ]
     },
     {
+      "path": "closure/helpers/emitted.js",
+      "kind": "source",
+      "load": "direct",
+      "size": 171,
+      "sha256": "6dd07de917a5fe5207bc3760b8f2b435d032dcaf65f7b113f4b9ef006b6e6aff",
+      "referenced_from": [
+        "closure/helpers/esm.ts:18"
+      ]
+    },
+    {
+      "path": "closure/helpers/esm.ts",
+      "kind": "source",
+      "load": "direct",
+      "size": 1076,
+      "sha256": "5a08f4dd89224a97255e3f34430faea57a62821eabd2f32d947ae95bec5bf9dc",
+      "referenced_from": [
+        "closure/entry.md:43"
+      ]
+    },
+    {
       "path": "closure/helpers/imports.ts",
       "kind": "source",
       "load": "direct",
@@ -83,6 +103,16 @@
       ]
     },
     {
+      "path": "closure/helpers/legacy.cts",
+      "kind": "source",
+      "load": "direct",
+      "size": 25,
+      "sha256": "e4a7fd68bea1a8919d2a7eae1b4008fca3d2b3e3560cdb03aeba38043809bad6",
+      "referenced_from": [
+        "closure/helpers/esm.ts:12"
+      ]
+    },
+    {
       "path": "closure/helpers/local.ts",
       "kind": "source",
       "load": "direct",
@@ -90,6 +120,16 @@
       "sha256": "14fb3a543adaf7cba2ccb3bf2fc3059c98aaf4015d36e2964069496364818b86",
       "referenced_from": [
         "closure/helpers/imports.ts:14"
+      ]
+    },
+    {
+      "path": "closure/helpers/modern.mts",
+      "kind": "source",
+      "load": "direct",
+      "size": 25,
+      "sha256": "9e6ca574fee74740fd1287ced61d2e624381f96fa68e999c6997959cd6ec5673",
+      "referenced_from": [
+        "closure/helpers/esm.ts:11"
       ]
     },
     {
@@ -124,6 +164,26 @@
         "closure/entry.md:21",
         "closure/helpers/direct.md:6",
         "closure/helpers/progressive.md:6"
+      ]
+    },
+    {
+      "path": "closure/helpers/toggle-subscriber-updates.ts",
+      "kind": "source",
+      "load": "direct",
+      "size": 43,
+      "sha256": "0c7a838a02c440e9a02adbfb28eb72c6b044a915362f98ed68283182ddcd59ea",
+      "referenced_from": [
+        "closure/helpers/esm.ts:10"
+      ]
+    },
+    {
+      "path": "closure/helpers/widget.tsx",
+      "kind": "source",
+      "load": "direct",
+      "size": 34,
+      "sha256": "d810c4072c897c9bae665906fb3582523ba37075e49ffdfd068ec49f946075d2",
+      "referenced_from": [
+        "closure/helpers/esm.ts:13"
       ]
     },
     {
@@ -208,6 +268,15 @@
       ]
     },
     {
+      "reference": "https://example.invalid/skill/rules.json",
+      "load": "fetch",
+      "rule_id": "closure.remote_resource",
+      "reason": "names a https resource; nothing here fetches it (STACK.md §2.1 forbids runtime network calls)",
+      "referenced_from": [
+        "closure/SKILL.md:17"
+      ]
+    },
+    {
       "reference": "https://mcp.example.invalid/search",
       "load": "fetch",
       "rule_id": "closure.remote_resource",
@@ -220,11 +289,11 @@
   "prose": [
     {
       "path": "closure/SKILL.md",
-      "lines": 15
+      "lines": 21
     },
     {
       "path": "closure/entry.md",
-      "lines": 42
+      "lines": 45
     },
     {
       "path": "closure/helpers/cyclé.md",
@@ -313,7 +382,7 @@
     "structural/structure.unvalidated_path_reach/positive.py"
   ],
   "coverage_gaps": [
-    "closure: members in a code language no rule set reads — structural rules are Python only, and the catalog's code patterns declare their own languages: closure/helpers/imports.ts, closure/helpers/local.ts, closure/helpers/run.sh",
+    "closure: members in a code language no rule set reads — structural rules are Python only, and the catalog's code patterns declare their own languages: closure/helpers/emitted.js, closure/helpers/esm.ts, closure/helpers/imports.ts, closure/helpers/legacy.cts, closure/helpers/local.ts, and 4 more — the full list is members[]",
     "closure: members in an extension naming no language this tool knows — so no rule set claims it and nothing decided whether it is code: closure/uv.lock",
     "closure: 59 inventoried file(s) are reached by no declared entry point and are therefore outside the closure: README.md, assets/blob.bin, cli/pyproject.toml, crlf_module.py, exports/__init__.py, and 54 more — the full list is unreachable[]. Each is either loaded by a mechanism this tool did not see or not loaded at all; which one is a question for the reader (P9)",
     "closure: references are read line by line, so a path built from variables, concatenated, or split across lines is not seen",
@@ -321,6 +390,7 @@
     "closure: whether a member is loaded conditionally is read from words on the referring line, which paraphrase defeats — the label never removes a member from the closure, so a wrong label costs a row and not a file",
     "closure: a resource named for fetching is recorded and never fetched (STACK.md §2.1 forbids runtime network calls), so what it would have contained is unreviewed by construction (FR-1.2)",
     "closure: a member that is binary, unreadable, not a regular file, or past the size bound is in the closure and is not read, so references inside it are not followed",
+    "closure: a citation in prose outside a declared entry point does not get its own ledger record — the paths one file names and the target does not contain are grouped into one record for that file, listing them all. Evidence of loading is not grouped: a reference from code or a manifest, a path leaving the tree, and a URL in a file an agent loads verbatim each keep their own record. **The residual cost**: a non-root member loaded on demand gets one record listing every URL it names, where a root file would get one each — the full read FR-3.15 requires of prose in the closure is what covers those individually",
     "closure: a lockfile is a member and is not read for references — its content is resolved dependency metadata, and FR-0.3 puts dependency behaviour out of scope by default. What a package manager will install is pinned there and is not reviewed here: Cargo.lock, Gemfile.lock, composer.lock, package-lock.json, pnpm-lock.yaml, poetry.lock, uv.lock, yarn.lock",
     "closure: an import specifier that does not start with `.` or `/` is read as a package rather than a path, because it resolves out of a dependency directory the walk excludes — so a dependency the artifact declares is not reported as a file it is missing, and equally is not reviewed",
     "closure: a token followed by `(` is read as a call rather than a path, so a method whose name is spelled like an extension — `response.json()` — is not a reference. A file genuinely named in a call's argument is still found, because the argument is a separate token",

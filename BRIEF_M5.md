@@ -253,7 +253,7 @@ finding candidate and not a shrug.
 
 ---
 
-## 6. Questions — all five answered
+## 6. Questions — all five answered, and two more that arrived during the work
 
 Each is kept in place with its reasoning rather than collapsed into the decision, because the
 reasoning is what will matter when the next question of the same shape appears. **Two of the five
@@ -262,6 +262,31 @@ the data distinguishes a pattern's kind (`layer` has been a validated field sinc
 `STACK.md` §3 lists five commands (it lists six). Both were written from memory of the code rather
 than from the code, which is the error F2 exists to catch, occurring in the document that raises
 the questions.
+
+**Q6 — ANSWERED by the owner (2026-10-07): a rule *file* is versioned, not the catalog.** It arrived
+during implementation rather than in this list, and it lives in `.claude/TASKS_M5.md`, which is where
+a live decision belongs. A record's `catalog_version` is the version of the pack whose pattern
+produced it. One version for the whole catalog would have made adding a pack an edit to M1's closed
+packs; deriving one as the maximum hides a bump in every pack but the highest. FR-3.12's wording was
+corrected to match.
+
+**Q7 — ANSWERED by the owner (2026-10-08): how many ledger records an unresolved closure member
+earns.** Also not in this list originally, and it is the question that decides what M7's triage
+inherits — so the answer is in `STACK.md` §3, as a contract rather than as an implementation note.
+
+Evidence of loading keeps its own record: a reference from code or a manifest, a path leaving the
+root, and a URL in a file an agent loads verbatim. A citation in prose outside a declared entry point
+joins one record per referring file, listing the paths. Both stay in `hits.jsonl`, so FR-4.3 still
+forces a decision on each; `closure.json` still carries every reference individually, so P6 loses
+nothing.
+
+**The question was asked by a measurement, not by a preference.** The owner ran this branch on three
+real targets and got 1,597, 1,175 and 409 records, 58% to 86% of them prose citing paths nothing
+loads. Three defects fell out of that run and all three were M5's — a lockfile read as a reference
+source, a call read as a path, and a package specifier read as a missing file — and a fourth, worse
+than noise: a TypeScript ESM specifier naming the emitted `.js` left the real `.ts` **outside the
+closure**. The same three targets now produce 218, 242 and 50. The numbers, the per-referrer-kind
+breakdown and the residual cost are in `.claude/TASKS_M5.md`.
 
 **Q1 — ANSWERED by the owner (2026-10-07): the ledger, and D-11's wording is corrected rather than
 FR-1.2 bent.** The question was whether an unresolvable closure member is a fourth `source:` value
