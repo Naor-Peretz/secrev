@@ -117,74 +117,105 @@ M4 built the seam for it. And two hits on one line stay two hits (D-6) — prose
 Each box names its evidence. A box ticked from memory is the failure mode this list exists to
 prevent, and M4's F2 found three documents asserting mechanisms that had been replaced.
 
-- [ ] **A1 — The closure of the fixture tree is correct and complete**, with a positive case per
+- [x] **A1 — The closure of the fixture tree is correct and complete**, with a positive case per
       member kind: a direct reference, a progressively loaded resource, a bundled script, a bundled
       binary, and a resource named for fetching. Evidence: `closure.json` beside a hand-written
       expectation in the test, not only a golden.
-- [ ] **A2 — A cycle terminates, and the output does not depend on the entry order.** Evidence: the
+- [x] **A2 — A cycle terminates, and the output does not depend on the entry order.** Evidence: the
       fixture contains one, and the test enters it from both ends and compares bytes.
-- [ ] **A3 — An unresolved member is a finding candidate, not an omission** (FR-1.2, and §6 Q1 as
+- [x] **A3 — An unresolved member is a finding candidate, not an omission** (FR-1.2, and §6 Q1 as
       the owner answered it). Evidence: the record is in `hits.jsonl` under `source: closure`, so
       FR-4.3 refuses to render a report while it is `unresolved`; it says why it could not be
       resolved; and nothing in `closure.py` attempts the fetch — asserted by the self-application
       check, which forbids runtime network calls. A `coverage_gaps` line instead of a ledger record
       would leave it through a *passing* gate, which is the omission FR-1.2 forbids.
-- [ ] **A4 — `cli.SOURCES` gains `closure`, in the same commit as the emitter and not before.**
+- [x] **A4 — `cli.SOURCES` gains `closure`, in the same commit as the emitter and not before.**
       Evidence: the determinism stage's artifact half derives the blocks it requires from
       `cli.SOURCES`, precisely so a new source is covered by adding it in one place — so removing
       the entry must turn that stage red, and adding it *ahead* of the emitter would turn it red for
       a block nothing produces. The owner caught that order in review of this brief's first draft.
-- [ ] **A5 — `closure.py` verifies what it read.** It recomputes `inventory.content_sha256` over the
+- [x] **A5 — `closure.py` verifies what it read.** It recomputes `inventory.content_sha256` over the
       bytes it read and compares against `entry.sha256`; a mismatch is an unresolvable closure
       member in `hits.jsonl` with that as its reason, never silence. Evidence: a test that swaps a
       file's content between the inventory read and the closure read, which must produce the record
       — and the control, that an unchanged tree produces none. This is the TOCTOU window closed for
       the consumer M5 adds; the four existing consumers keep it, recorded in `.claude/TASKS_M5.md`
       with the retrofit's shape argued.
-- [ ] **A6 — A pattern's file and its `layer` cannot disagree** (§6 Q2). Evidence: a pattern with
+- [x] **A6 — A pattern's file and its `layer` cannot disagree** (§6 Q2). Evidence: a pattern with
       `layer: [instruction]` in `_manifest.yaml` is exit 2 naming the offending id, and the reverse
       too; plus the permit, since a rule that only refuses passes by refusing everything.
-- [ ] **A7 — `is_prose` is one function and both consumers use it** (§6 Q3, Q4). Evidence: the
+- [x] **A7 — `is_prose` is one function and both consumers use it** (§6 Q3, Q4). Evidence: the
       instruction pack's applicability and `closure.json`'s prose inventory are derived from the
       same call, and `.mdc` is covered — a pattern restricted to `languages: [markdown]` would have
       skipped Cursor's rules files in silence, because `language_of` does not map that suffix.
       Comments and docstrings are an explicit `coverage_gaps` line stating why the gap is
       deliberate, not an omission.
-- [ ] **B1 — Every FR-3.13 class has a pattern, and every pattern has a positive and a negative
+- [x] **B1 — Every FR-3.13 class has a pattern, and every pattern has a positive and a negative
       fixture.** Evidence: the seven classes listed against the pattern ids that cover them, with
       the gaps named where a class has no regex worth shipping.
-- [ ] **B2 — Every FR-3.14 class has a pattern**, on the same terms.
-- [ ] **B3 — No instruction-layer or manifest-layer record concludes anything.** Evidence: the
+- [x] **B2 — Every FR-3.14 class has a pattern**, on the same terms.
+- [x] **B3 — No instruction-layer or manifest-layer record concludes anything.** Evidence: the
       `question` field of each new pattern reads as a question, and no new code assigns a severity
       or a verdict. FR-3.15 is the citation.
-- [ ] **B4 — The recorded coverage gaps that motivated each new pattern are named**, and the ones
+- [x] **B4 — The recorded coverage gaps that motivated each new pattern are named**, and the ones
       this milestone does *not* close are still recorded. Evidence: the gap list before and after.
-- [ ] **C1 — `closure.json` is byte-identical across two runs**, and adding an unrelated file to the
+- [x] **C1 — `closure.json` is byte-identical across two runs**, and adding an unrelated file to the
       target moves nothing in it.
-- [ ] **C2 — `closure.py` is in `is_nfr3_path` before it exists**, so the determinism guard speaks
+- [x] **C2 — `closure.py` is in `is_nfr3_path` before it exists**, so the determinism guard speaks
       on the first write. Evidence: the ordering in the commit history, and the assertion that
       fails when the line is removed.
-- [ ] **C3 — The cross-platform digest comparison covers `closure.json`**, derived from
+- [x] **C3 — The cross-platform digest comparison covers `closure.json`**, derived from
       `cli.COMMANDS` rather than from someone remembering this stage exists.
-- [ ] **D1 — A non-ASCII filename appears in the closure fixture tree** (`STACK.md` §9), so the NFC
+- [x] **D1 — A non-ASCII filename appears in the closure fixture tree** (`STACK.md` §9), so the NFC
       rule stays honest in the one artifact that maps names to names.
-- [ ] **E1 — Every closure member in a language with no coverage is a `coverage_gaps` line**, never
+- [x] **E1 — Every closure member in a language with no coverage is a `coverage_gaps` line**, never
       silence (FR-3.8).
-- [ ] **E2 — `secrev closure` honours the exit-code contract**: 0 success, 2 usage or config error
+- [x] **E2 — `secrev closure` honours the exit-code contract**: 0 success, 2 usage or config error
       including a malformed pack, 3 internal error. Evidence: one case each.
 - [ ] **F1 — The tool runs on itself and the result is read, not assumed.** `secrev closure .` over
       this repository, and every candidate the two new packs raise against `.claude/` resolved under
       P4 — this repository *is* an agentic artifact, and the instruction layer is the one place
       where that is not a cute observation.
+
+      **Half done, and held open deliberately.** The reading happened and changed the work: 373
+      candidates, 202 in `.claude/`, and two of M5's own patterns were corrected because of what
+      the output showed — `manifest.hook_rewrite_event`'s precision and
+      `manifest.wildcard_grant`'s `deny` key. The closure was run on this repository four times
+      and the roots were rewritten because of the fourth. All of that is in
+      `.claude/TASKS_M5.md` and `.claude/receipts.md`.
+
+      What is *not* done is the second clause: the 202 were resolved as five classes, not
+      individually. P4 says every candidate, and 202 individual resolutions need the triage
+      mechanism `verify_ledger` provides — which is M7. Ticking this on the class resolution
+      would be reading the box as it is convenient rather than as it is written. The open
+      question it depends on is recorded: whether P4 admits resolving a class in one paragraph.
 - [ ] **F2 — Every document claim this milestone makes is true or gone**, searched with
       `git grep -n "<old name>"` from the root, **no pathspec**, with the candidate names derived
       from `git log -p` rather than recalled. Every hit sorted into false, true-for-the-old-reason,
       or historical.
-- [ ] **G1 — `scope-guard.sh` has M5 rules** answering every scoped directory by name, including the
+
+      **The sweep is done; nine lines remain and this box is the owner's to close.** `git grep`
+      from the root with no pathspec, candidates derived from `git log -p main..HEAD`. Nine stale
+      lines found: seven in `threat-models/` saying the two packs do not exist, two saying every
+      pack declares the same `version`, and `patterns/python.yaml:19` stating the superseded
+      version rule in a product-code comment. Each is in `.claude/TASKS_M5.md` with the exact
+      edit and with what must *not* be written into them.
+
+      I read this box as covering the claims *this milestone makes*, which would have closed it.
+      **The owner overruled that reading** (2026-10-07): M5 made those nine lines false, so they
+      are M5's to fix, on the precedent of `_base.yaml:147` in PR #16. `scope-guard.sh` refuses
+      both directories and both refusals are right, so the owner is making the nine edits. The
+      three claims M5 *could* fix — in `CLAUDE.md` and `STACK.md` — are in `2f48142`.
+- [x] **G1 — `scope-guard.sh` has M5 rules** answering every scoped directory by name, including the
       ones that did not exist when the case was written.
-- [ ] **G2 — The marker moves to `M5` only after G1**, never before (H-6).
-- [ ] Both gates green; self-application clean; every golden regenerated deliberately and every
+- [x] **G2 — The marker moves to `M5` only after G1**, never before (H-6).
+- [x] Both gates green; self-application clean; every golden regenerated deliberately and every
       changed line explained; the receipt written.
+
+      715 tests (was 613 at M4's close), 169 guard assertions unchanged — no harness work, which
+      is §1's rule. Four goldens moved and every regeneration was diffed by *record* rather than
+      by line: a record-level diff of `hits.jsonl` and a member-level diff of `closure.json`, so
+      "0 removed" is a measurement rather than an impression. Receipts TASK-M5-001 to -007.
 
 ---
 
