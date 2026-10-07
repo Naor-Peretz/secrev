@@ -27,6 +27,41 @@ here — two places holding the same argument is how they drift apart. In one li
 | Q3 | Prose is decided by what reaches an agent's context, through one `is_prose(path)` beside `language_of` | §6 Q3 |
 | Q4 | `closure.json` carries the prose inventory, derived from that same function; the "substantial" threshold is M7's | §6 Q4 |
 | Q5 | `secrev closure` is its own command; `STACK.md` §3 amended | §6 Q5, STACK §3 |
+| Q6 | A rule *file* is versioned, not the catalog; a record carries its own pack's version. FR-3.12's wording corrected | PRD FR-3.12, below |
+
+**Q6 was not in the brief's §6 — it arrived while implementing step 3** and is recorded here
+because the ledger is where a live decision belongs. The question: `catalog.load` required every
+pack to declare the same `version`, so adding `_instruction.yaml` would have forced an edit to
+M1's closed `_base.yaml` and `python.yaml` — files `scope-guard.sh` refuses by name — for a change
+that corrects no pattern in them.
+
+Three routes were put to the owner: permit `patterns/*.yaml` again with a committed pin on M1's
+nine patterns; have the owner make the two version edits by hand; or derive one catalog version
+from the packs. **The owner took the third direction and corrected its mechanism: per-pack version
+carried on the record, not `max`.** The defect in `max` is theirs and is the part to keep: with
+`_instruction.yaml` at 2026.10.1, correcting a pattern in `_base.yaml` and bumping it to 2026.09.4
+leaves the maximum unchanged, so `catalog_version` does not move, FR-4.6 never fires, and the
+verifications the corrected pattern now reaches stay in force. Every bump would have to clear the
+highest version in the catalog — a convention no loader can enforce, because it cannot know what
+was there before.
+
+Why per-pack is right rather than merely workable, in the owner's terms: it is what
+`ledger.Hit.catalog_version` already says the field means — "the version of the ruleset that
+produced this record" — and what the other two sources already do, a surface record carrying the
+kinds file's version and a structural record the rule file's. The pattern source was the odd one
+out because it is the only source reading several files. It gives FR-4.6's second trigger the
+granularity it asks for. It needs no version grammar. The goldens do not move, because every
+existing record already carries `2026.09.3`, which is its pack's version — verified: `hits.jsonl`
+is byte-unchanged. M1's packs stay closed and the guard is untouched.
+
+The cost, accepted: `run.json` records a pack-to-version mapping rather than one value, and
+FR-3.12's wording needed the correction, which is now in the PRD on the same footing as D-11's —
+the requirement's intent is unchanged and the sentence that stated it described one file.
+
+**One thing worth recording about the rule that was removed: nothing asserted it.** The
+"every pack declares the same version" check could be deleted without a test turning red; the only
+thing holding it was the docstring arguing for it. Its replacement has four assertions, including
+one that fails if a bump to one pack moves another pack's records.
 
 **Two of those questions rested on premises that were false**, both corrected by the owner from the
 code: that nothing in the data distinguishes a pattern's kind (`ledger.LAYERS` has been validated

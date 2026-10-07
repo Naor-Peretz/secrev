@@ -65,12 +65,21 @@ def test_the_shipped_catalog_loads_and_is_the_expected_size() -> None:
     original seed pattern touched path handling (§6)."""
     loaded = load(PACKS)
     assert len(loaded.patterns) == 9
-    # Bumped in M3.5 with `log.sensitive`'s `{0,400}` bound, and again when the
-    # four remaining quadratic patterns gained the same bound;
-    # `patterns/_base.yaml` carries both reasons. Pinning the literal here is
-    # deliberate: a catalog version change expires verifications (FR-4.6), so it
-    # should cost an edit to a test rather than pass unnoticed.
-    assert loaded.version == "2026.09.3"
+    # **Per pack since M5** (owner decision, 2026-10-07). This asserted one
+    # `loaded.version`, which is gone: a pack's version is what its own records
+    # carry, because one derived version hides a bump in every pack but the
+    # highest. `catalog.Pattern.pack_version` has the reasoning.
+    #
+    # `_base.yaml` was bumped in M3.5 with `log.sensitive`'s `{0,400}` bound, and
+    # again when the four remaining quadratic patterns gained the same bound;
+    # the pack carries both reasons. Pinning the literals here is deliberate: a
+    # version change expires verifications (FR-4.6), so it should cost an edit
+    # to a test rather than pass unnoticed.
+    assert dict(loaded.versions) == {
+        "_base.yaml": "2026.09.3",
+        "python.yaml": "2026.09.3",
+    }
+    assert {pattern.pack_version for pattern in loaded.patterns} == {"2026.09.3"}
 
 
 def test_every_pattern_has_a_fixture_directory(catalog: Catalog) -> None:

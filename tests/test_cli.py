@@ -397,7 +397,12 @@ def test_run_json_keeps_one_entry_per_command(tmp_path: Path) -> None:
     document = json.loads(path.read_text(encoding="utf-8"))
     assert set(document) == {"recon", "sweep", "surfaces"}
     assert document["sweep"]["window_spec"] == "lines-20"
-    assert "catalog_version" in document["sweep"]
+    # A mapping, not one value (M5, owner decision): a pack's version is what
+    # its records carry, so a run has to record every pack it ran against.
+    assert document["sweep"]["pack_versions"] == {
+        "_base.yaml": "2026.09.3",
+        "python.yaml": "2026.09.3",
+    }
     assert document["surfaces"]["window_spec"] == "decl-20"
     assert "kinds_version" in document["surfaces"]
     assert "catalog_version" not in document["surfaces"]

@@ -356,6 +356,20 @@ unachievable without fixing the following explicitly:
   cannot be mistaken for a pattern window that happens to cover the same lines (`TASKS_M2.md`,
   C-2).
 
+  **M5 adds `digest-pair`**, for the one record the closure emits that has no line to anchor on: a
+  file whose bytes changed between the inventory read and the closure read. Its span is the two
+  digests rather than lines of text, which is why it is a name of its own rather than `lines-20` —
+  C-2 keeps differently *shaped* spans from ever being compared, and this one is not a span of a
+  file at all. Windowing the file would be worse than useless: the finding is that the content's
+  provenance is unknown, so `window_sha256` over it would identify the very bytes nobody has
+  established the origin of, and the id would move on every later edit while the question stayed
+  the same.
+
+  The closure's *other* records carry `lines-20` unchanged, anchored on the line that names the
+  unresolved member. That is `lines-20`'s shape and anchor exactly as a pattern record's is, and
+  unlike a surface candidate a closure verification *is* a judgment of that span — the reference is
+  what a reviewer reads. Two spans of the same shape sharing a name is what the name is for.
+
 - **Stable IDs** — candidate `id` is derived from
   **`(relative_path, rule_id, window_sha256, ordinal)`**, not from a counter over traversal, and
   the `ordinal` ranges over *byte-identical windows only* — never over every match of the rule in
@@ -395,10 +409,10 @@ Never inside the reviewed target (G-4).
 ~/.security-review/
 └── <target-slug>/
     └── <version>/
-        ├── run.json          # timestamps, tool version, catalog_version (NFR-3 exempt)
+        ├── run.json          # timestamps, tool version, rule-file versions (NFR-3 exempt)
         ├── recon.json
         ├── closure.json
-        ├── hits.jsonl        # the ledger — all three sources
+        ├── hits.jsonl        # the ledger — the three detection sources and the closure
         ├── findings.json
         ├── poc/
         └── report.md

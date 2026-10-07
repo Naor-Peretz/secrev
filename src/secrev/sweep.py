@@ -119,7 +119,14 @@ def _file_hits(entry: FileEntry, text: str, catalog: Catalog) -> list[Hit]:
                 question=" ".join(pattern.question.split()),
                 match_excerpt=excerpt(lines[index], column, end),
                 status="unresolved",
-                catalog_version=catalog.version,
+                # The *pack's* version, not one version for the whole catalog
+                # (M5, owner decision). `ledger.Hit.catalog_version` is "the
+                # version of the ruleset that produced this record", which the
+                # surface and structural sources already satisfy because each
+                # reads one file. The pattern source reads several, and a single
+                # derived version hides a bump in any pack but the highest —
+                # `catalog.Pattern.pack_version` carries the full reasoning.
+                catalog_version=pattern.pack_version,
                 window_spec=WINDOW_SPEC,
             )
         )

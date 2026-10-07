@@ -542,7 +542,7 @@ def run_recon(
     directory, result = _prepare(target, workspace, excluded, max_bytes)
     _emit(directory, "recon.json", to_json(result))
     write_run_json(
-        directory, "recon", {"catalog_version": catalog.version, "window_spec": WINDOW_SPEC}
+        directory, "recon", {"pack_versions": dict(catalog.versions), "window_spec": WINDOW_SPEC}
     )
     return _incomplete(result)
 
@@ -559,7 +559,14 @@ def run_sweep(
     block = to_jsonl(hits)
     _write_block(directory, "pattern", block)
     write_run_json(
-        directory, "sweep", {"catalog_version": catalog.version, "window_spec": WINDOW_SPEC}
+        # `pack_versions`, a mapping, not one `catalog_version` (M5, owner
+        # decision). A pack's version is what its records carry, so the run has
+        # to record every pack it ran — one value would either be a lie about
+        # the packs that differ or a derived number that hides a bump in all but
+        # the highest (`catalog.Pattern.pack_version`).
+        directory,
+        "sweep",
+        {"pack_versions": dict(catalog.versions), "window_spec": WINDOW_SPEC},
     )
     sys.stdout.write(block)
     sys.stderr.write(f"{len(hits)} candidates, all unresolved\n")
