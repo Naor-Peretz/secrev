@@ -218,6 +218,52 @@ _PATH = re.compile(
 # `[the playbook](references/playbook)` names a file and `_PATH` cannot see it.
 _MD_TARGET = re.compile(r"!?\]\(\s*(?P<target>[^)\s]{1,512})\s*\)")
 
+# A line that resolves a module through a package manager rather than through the
+# filesystem: an `import`, an `export … from`, or a `require(`. A token on such a
+# line is a *specifier*, and a specifier that does not start with `.` or `/`
+# names a package — resolved out of `node_modules` or `site-packages`, neither of
+# which is in the tree (`STACK.md` §5 excludes `node_modules` by name).
+#
+# Found by the owner running this on three real targets: the single commonest
+# false `missing_reference` in a TypeScript repository is
+# `from "@scope/sdk/types.js"`, reported as a file the artifact does not contain
+# when it is a dependency the artifact declares.
+_IMPORT = re.compile(
+    r"""(?x)
+    (?: ^\s* (?: import | export ) \b
+      | \b from \s* ["']
+      | \b require \s* \(
+      | \b import \s* \( )
+    """
+)
+
+# Files whose whole content is resolved dependency metadata. **Not reference
+# sources**, and the distinction is FR-0.3's: dependency CVEs and third-party
+# service behaviour are out of scope by default, so a lockfile's several thousand
+# artefact URLs are not this artifact pulling something in — they are the record
+# of what a package manager resolved.
+#
+# Measured by the owner on `jacob-bd/gemini-notebook-mcp-cli`: 1,597 records, of
+# which **925 were `remote_resource` out of `uv.lock` alone**. A source that
+# spends 58% of its output on one file's dependency table has stopped being
+# readable, which is H-1 arriving as volume.
+#
+# They stay closure *members* — a lockfile is part of the artifact and pins what
+# will be installed — and the gap line says they were not read for references, so
+# the omission is stated rather than silent.
+_LOCKFILES = frozenset(
+    {
+        "uv.lock",
+        "package-lock.json",
+        "yarn.lock",
+        "pnpm-lock.yaml",
+        "poetry.lock",
+        "Cargo.lock",
+        "Gemfile.lock",
+        "composer.lock",
+    }
+)
+
 # Words on the referring line that read as loading something only sometimes.
 #
 # Low precision by construction — paraphrase defeats this exactly as FR-3.15
@@ -305,6 +351,19 @@ _CLOSURE_GAPS = (
     "closure: a member that is binary, unreadable, not a regular file, or past "
     "the size bound is in the closure and is not read, so references inside it "
     "are not followed",
+    "closure: a lockfile is a member and is not read for references — its "
+    "content is resolved dependency metadata, and FR-0.3 puts dependency "
+    "behaviour out of scope by default. What a package manager will install is "
+    "pinned there and is not reviewed here: "
+    f"{', '.join(sorted(_LOCKFILES))}",
+    "closure: an import specifier that does not start with `.` or `/` is read as "
+    "a package rather than a path, because it resolves out of a dependency "
+    "directory the walk excludes — so a dependency the artifact declares is not "
+    "reported as a file it is missing, and equally is not reviewed",
+    "closure: a token followed by `(` is read as a call rather than a path, so a "
+    "method whose name is spelled like an extension — `response.json()` — is not "
+    "a reference. A file genuinely named in a call's argument is still found, "
+    "because the argument is a separate token",
     "closure: a reference is resolved relative to the referring file, then "
     "relative to the target root, then by filename when it names no directory "
     "— so a name matching one file somewhere in the target is reported as that "
@@ -535,11 +594,30 @@ def _references_on_line(from_path: str, number: int, line: str) -> list[_Referen
             continue
         found.append(_Reference(from_path=from_path, line=number, raw=target, load=load))
 
+    specifier = _IMPORT.search(line) is not None
     for match in _PATH.finditer(line):
-        if match.group("suffix").lower() in _REFERENCE_SUFFIXES:
-            found.append(
-                _Reference(from_path=from_path, line=number, raw=match.group("path"), load=load)
-            )
+        if match.group("suffix").lower() not in _REFERENCE_SUFFIXES:
+            continue
+        token = match.group("path")
+        # **A token followed by `(` is a call, not a path.** `response.json()`
+        # matched because `.json` is a real suffix, and the owner found it in a
+        # sample from a live target. The same shape covers `loader.yaml()`,
+        # `cfg.toml()` and anything else whose attribute happens to be spelled
+        # like an extension.
+        if line[match.end("path") : match.end("path") + 1] == "(":
+            continue
+        # **An import specifier that is not relative is a package, not a missing
+        # file.** `from "@modelcontextprotocol/sdk/types.js"` resolves out of
+        # `node_modules`, which is excluded from the walk by name
+        # (`STACK.md` §5) — so reporting it as a path the target does not
+        # contain is reporting dependency resolution as a hole in the artifact,
+        # and FR-0.3 puts dependency behaviour out of scope by default.
+        #
+        # A *relative* specifier is still a reference, and must be: `./local.ts`
+        # in an import is exactly the progressive-load shape the closure is for.
+        if specifier and not token.startswith((".", "/")):
+            continue
+        found.append(_Reference(from_path=from_path, line=number, raw=token, load=load))
     return found
 
 
@@ -1159,6 +1237,11 @@ def _read_one(
     graph.lines_by_path[entry.path] = lines
 
     frontier: set[str] = set()
+    # A lockfile is a member and is not a referrer: its content is resolved
+    # dependency metadata, which FR-0.3 puts out of scope by default. See
+    # `_LOCKFILES` for the measurement that forced this.
+    if entry.path.rsplit("/", 1)[-1] in _LOCKFILES:
+        return frontier
     for number, line in enumerate(lines, start=1):
         for reference in _references_on_line(entry.path, number, line):
             origin = f"{entry.path}:{number}"

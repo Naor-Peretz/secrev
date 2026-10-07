@@ -32,3 +32,11 @@ this tree and is never read.
 helpers/absent.md is named here and is not in the tree at all.
 
 The cycle is helpers/cyclé.md, which names this file back.
+
+Three shapes the extractor must *not* read as references, each with its own file
+so the negative case is demonstrated rather than described. helpers/calls.py
+holds attributes spelled like extensions; helpers/imports.ts holds package
+specifiers beside one relative specifier that must still resolve; and uv.lock is
+a member of this closure whose dependency table is not read for references at
+all.
+

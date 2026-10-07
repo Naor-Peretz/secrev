@@ -34,11 +34,21 @@
       "path": "closure/entry.md",
       "kind": "data",
       "load": "direct",
-      "size": 1590,
-      "sha256": "3efa9573b4d718fe0a91bc5e29f1f0461860e476b79a5e18e32974da9065f08a",
+      "size": 1989,
+      "sha256": "1c3f6c42d169d60c32a19f8343db102308821f2a5b292223535adbe6e55b775e",
       "referenced_from": [
         "closure/SKILL.md:12",
         "closure/helpers/cyclé.md:10"
+      ]
+    },
+    {
+      "path": "closure/helpers/calls.py",
+      "kind": "source",
+      "load": "direct",
+      "size": 749,
+      "sha256": "ca6731d4bb190d6f984af5f7237e2ff1ee6771c2238aa961a8575f3e1deccb31",
+      "referenced_from": [
+        "closure/entry.md:37"
       ]
     },
     {
@@ -62,6 +72,27 @@
       ]
     },
     {
+      "path": "closure/helpers/imports.ts",
+      "kind": "source",
+      "load": "direct",
+      "size": 883,
+      "sha256": "11eaca983fc5d579ccae6020273d239c2b57778aa6e3ce406b6ed8c576b348ff",
+      "referenced_from": [
+        "closure/entry.md:38",
+        "closure/helpers/local.ts:1"
+      ]
+    },
+    {
+      "path": "closure/helpers/local.ts",
+      "kind": "source",
+      "load": "direct",
+      "size": 243,
+      "sha256": "14fb3a543adaf7cba2ccb3bf2fc3059c98aaf4015d36e2964069496364818b86",
+      "referenced_from": [
+        "closure/helpers/imports.ts:14"
+      ]
+    },
+    {
       "path": "closure/helpers/payload.bin",
       "kind": "binary",
       "load": "direct",
@@ -79,7 +110,8 @@
       "size": 497,
       "sha256": "48bc01d26c95dfc7849eb9257f7ce37da542ca22de392bf1f3394c5ace8a17e7",
       "referenced_from": [
-        "closure/entry.md:16"
+        "closure/entry.md:16",
+        "closure/helpers/calls.py:19"
       ]
     },
     {
@@ -92,6 +124,16 @@
         "closure/entry.md:21",
         "closure/helpers/direct.md:6",
         "closure/helpers/progressive.md:6"
+      ]
+    },
+    {
+      "path": "closure/uv.lock",
+      "kind": "data",
+      "load": "direct",
+      "size": 922,
+      "sha256": "9ace529ca80dfa306640245afe7f9ce0f7165df612fce9988faf1cf424b2b2ac",
+      "referenced_from": [
+        "closure/entry.md:39"
       ]
     },
     {
@@ -182,7 +224,7 @@
     },
     {
       "path": "closure/entry.md",
-      "lines": 34
+      "lines": 42
     },
     {
       "path": "closure/helpers/cyclé.md",
@@ -271,13 +313,17 @@
     "structural/structure.unvalidated_path_reach/positive.py"
   ],
   "coverage_gaps": [
-    "closure: members in a code language no rule set reads — structural rules are Python only, and the catalog's code patterns declare their own languages: closure/helpers/run.sh",
+    "closure: members in a code language no rule set reads — structural rules are Python only, and the catalog's code patterns declare their own languages: closure/helpers/imports.ts, closure/helpers/local.ts, closure/helpers/run.sh",
+    "closure: members in an extension naming no language this tool knows — so no rule set claims it and nothing decided whether it is code: closure/uv.lock",
     "closure: 59 inventoried file(s) are reached by no declared entry point and are therefore outside the closure: README.md, assets/blob.bin, cli/pyproject.toml, crlf_module.py, exports/__init__.py, and 54 more — the full list is unreachable[]. Each is either loaded by a mechanism this tool did not see or not loaded at all; which one is a question for the reader (P9)",
     "closure: references are read line by line, so a path built from variables, concatenated, or split across lines is not seen",
     "closure: a reference is recognised by its file suffix or by a Markdown link target, so a directory, an extensionless script, or a bare module name named in prose is not followed",
     "closure: whether a member is loaded conditionally is read from words on the referring line, which paraphrase defeats — the label never removes a member from the closure, so a wrong label costs a row and not a file",
     "closure: a resource named for fetching is recorded and never fetched (STACK.md §2.1 forbids runtime network calls), so what it would have contained is unreviewed by construction (FR-1.2)",
     "closure: a member that is binary, unreadable, not a regular file, or past the size bound is in the closure and is not read, so references inside it are not followed",
+    "closure: a lockfile is a member and is not read for references — its content is resolved dependency metadata, and FR-0.3 puts dependency behaviour out of scope by default. What a package manager will install is pinned there and is not reviewed here: Cargo.lock, Gemfile.lock, composer.lock, package-lock.json, pnpm-lock.yaml, poetry.lock, uv.lock, yarn.lock",
+    "closure: an import specifier that does not start with `.` or `/` is read as a package rather than a path, because it resolves out of a dependency directory the walk excludes — so a dependency the artifact declares is not reported as a file it is missing, and equally is not reviewed",
+    "closure: a token followed by `(` is read as a call rather than a path, so a method whose name is spelled like an extension — `response.json()` — is not a reference. A file genuinely named in a call's argument is still found, because the argument is a separate token",
     "closure: a reference is resolved relative to the referring file, then relative to the target root, then by filename when it names no directory — so a name matching one file somewhere in the target is reported as that file even where the line meant another, which over-reports a member rather than missing one (P4, P6)"
   ]
 }

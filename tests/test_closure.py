@@ -144,12 +144,19 @@ def test_the_closure_of_the_fixture_is_exactly_this(from_entry: Closure) -> None
     above."""
     assert [item.path for item in from_entry.members] == [
         "entry.md",
+        "helpers/calls.py",
         "helpers/cyclé.md",
         "helpers/direct.md",
+        "helpers/imports.ts",
+        "helpers/local.ts",
         "helpers/payload.bin",
         "helpers/progressive.md",
         "helpers/run.sh",
+        "uv.lock",
     ]
+    # Three unresolved, and no more: `calls.py`, `imports.ts` and `uv.lock` are
+    # each read (or deliberately not read) and contribute nothing, which is the
+    # extractor-precision fix stated as a count.
     assert [(item.rule_id, item.reference) for item in from_entry.unresolved] == [
         (RULE_ESCAPING, "../../../outside/notes.md"),
         (RULE_MISSING, "helpers/absent.md"),
@@ -211,6 +218,104 @@ def test_a_root_reached_by_nothing_is_distinguishable(from_entry: Closure) -> No
     assert [item.path for item in alone.roots] == ["helpers/progressive.md"]
     assert alone.roots[0].reason == "named with --entry"
     assert alone.roots_given is True
+
+
+# --- extractor precision, found on three real targets --------------------
+
+
+def test_a_token_followed_by_a_paren_is_a_call_not_a_path(from_entry: Closure) -> None:
+    """`response.json()` matched because `.json` is a real suffix.
+
+    Found by the owner sampling `missing_reference` records from live targets, not
+    by reading the regex. `helpers/calls.py` holds the shape three times —
+    `.json`, `.yaml`, `.toml` — and is a member of the closure, so the assertion
+    is that a file which *is* read produces none of them.
+
+    The permit is in the same fixture and matters as much: `open("progressive.md")`
+    names a file inside a call's argument, which is a separate token with its own
+    boundaries, and it still resolves.
+    """
+    assert "helpers/calls.py" in [item.path for item in from_entry.members]
+    from_calls = [
+        item
+        for item in from_entry.unresolved
+        for origin in item.referenced_from
+        if origin.startswith("helpers/calls.py")
+    ]
+    assert not from_calls, f"a call was read as a path: {[i.reference for i in from_calls]}"
+    # The permit: the argument is still a reference.
+    assert "helpers/progressive.md" in [item.path for item in from_entry.members]
+    assert any(
+        origin.startswith("helpers/calls.py")
+        for origin in member(from_entry, "helpers/progressive.md").referenced_from
+    )
+
+
+def test_a_package_specifier_is_not_a_missing_file(from_entry: Closure) -> None:
+    """`from "@modelcontextprotocol/sdk/types.js"` was the commonest false
+    `missing_reference` in a real TypeScript target.
+
+    It resolves out of a dependency directory the walk excludes by name
+    (`STACK.md` §5), so reporting it as a path the artifact does not contain
+    reports dependency resolution as a hole in the artifact — and FR-0.3 puts
+    dependency behaviour out of scope by default.
+
+    The permit, again in the same fixture: a *relative* specifier is exactly the
+    progressive-load shape the closure exists to follow, so `./local.ts` resolves
+    to a member.
+    """
+    assert "helpers/imports.ts" in [item.path for item in from_entry.members]
+    from_imports = [
+        item
+        for item in from_entry.unresolved
+        for origin in item.referenced_from
+        if origin.startswith("helpers/imports.ts")
+    ]
+    assert not from_imports, (
+        f"a package specifier was read as a missing file: "
+        f"{[item.reference for item in from_imports]}"
+    )
+    assert "helpers/local.ts" in [item.path for item in from_entry.members], (
+        "the relative specifier stopped resolving — a rule that only refuses "
+        "passes by refusing everything"
+    )
+
+
+def test_a_lockfile_is_a_member_and_not_a_referrer(from_entry: Closure) -> None:
+    """FR-0.3, and the measurement that forced it.
+
+    `uv.lock` in one real target produced **925** `remote_resource` records, 58%
+    of that run's whole output. A lockfile's content is what a package manager
+    resolved, not what this artifact pulls in, and dependency behaviour is out of
+    scope by default.
+
+    It stays a *member*, because a lockfile is part of the artifact and pins what
+    will be installed — and the gap line says it was not read, so the omission is
+    stated rather than silent.
+    """
+    assert "uv.lock" in [item.path for item in from_entry.members]
+    from_lock = [
+        item
+        for item in from_entry.unresolved
+        for origin in item.referenced_from
+        if origin.startswith("uv.lock")
+    ]
+    assert not from_lock, (
+        f"a lockfile was read for references: {[item.reference for item in from_lock]}"
+    )
+    [line] = [gap for gap in from_entry.coverage_gaps if "lockfile is a member" in gap]
+    assert "uv.lock" in line and "FR-0.3" in line
+
+
+def test_every_suppression_has_a_stated_gap(from_entry: Closure) -> None:
+    """Three suppressions, three gap lines. A rule that stops reporting something
+    without saying so is the silence FR-3.8 exists to prevent, and these three
+    were each added because a real target measured them as noise — which makes
+    the gap line the only thing standing between a precision fix and a quiet
+    loss of coverage."""
+    text = "\n".join(from_entry.coverage_gaps)
+    for phrase in ("lockfile is a member", "read as a package", "read as a call"):
+        assert phrase in text, f"a suppression with no gap line: {phrase!r}"
 
 
 # --- A2: the cycle -------------------------------------------------------
@@ -830,11 +935,15 @@ def test_the_closure_of_the_whole_fixture_tree_is_small_and_explained(
     assert [item.path for item in whole_tree.members] == [
         "closure/SKILL.md",
         "closure/entry.md",
+        "closure/helpers/calls.py",
         "closure/helpers/cyclé.md",
         "closure/helpers/direct.md",
+        "closure/helpers/imports.ts",
+        "closure/helpers/local.ts",
         "closure/helpers/payload.bin",
         "closure/helpers/progressive.md",
         "closure/helpers/run.sh",
+        "closure/uv.lock",
         "mcp/.mcp.json",
         "plugin/hooks/hooks.json",
         "skills/quiet/SKILL.md",

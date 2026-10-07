@@ -1,0 +1,22 @@
+version = 1
+requires-python = ">=3.11"
+
+# A lockfile is a closure member and is not read for references. Every URL below
+# would otherwise be a `closure.remote_resource` record: the owner measured 925
+# of them out of one real target's `uv.lock`, 58% of that run's whole output.
+#
+# What a package manager resolved is not this artifact pulling something in, and
+# FR-0.3 puts dependency behaviour out of scope by default. The gap line says the
+# file was not read, so the omission is stated.
+
+[[package]]
+name = "example-one"
+version = "1.0.0"
+sdist = { url = "https://files.example.invalid/example-one-1.0.0.tar.gz" }
+wheels = [{ url = "https://files.example.invalid/example_one-1.0.0-py3-none-any.whl" }]
+
+[[package]]
+name = "example-two"
+version = "2.0.0"
+sdist = { url = "https://files.example.invalid/example-two-2.0.0.tar.gz" }
+wheels = [{ url = "https://files.example.invalid/example_two-2.0.0-py3-none-any.whl" }]

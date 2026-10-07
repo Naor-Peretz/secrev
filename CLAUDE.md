@@ -645,7 +645,7 @@ the last checkpoint before work becomes history.
 | `BRIEF_M3.md` | The threat-model layer. Closed. |
 | `BRIEF_M3.5.md` | Hardening the reviewer against a hostile target. Closed. Written against a review that ran the tool, not from the PRD — where a finding contradicts binding text, the text is corrected through spec-guard. |
 | `BRIEF_M4.md` | The structural source. Closed as PR #16. Four of its twenty-two commits were the source; the rest were the harness, after review found that the layer verifying the project could be defeated. |
-| `BRIEF_M5.md` | The closure (FR-1.2) and the instruction and manifest layers (FR-3.13, FR-3.14). **Current.** Five questions in its §6 are open for the owner, and the first is a PRD/D-11 conflict rather than a preference: whether an unresolvable closure member is a fourth ledger source. |
+| `BRIEF_M5.md` | The closure (FR-1.2) and the instruction and manifest layers (FR-3.13, FR-3.14). **Current.** All five §6 questions are answered, and the reasoning is kept in place beside each rather than collapsed into the decision. A sixth arrived during implementation and is in `.claude/TASKS_M5.md`, which is where a live decision belongs: a rule *file* is versioned, not the catalog. |
 
 Resolution order: **a brief loses to `STACK.md`; `STACK.md` loses to the PRD on intent and wins on
 mechanism.** Where a brief and the PRD conflict, raise it rather than silently resolving — a
@@ -855,8 +855,12 @@ rule**, because a pack written from the FR list alone is a pack written against 
 milestones of evidence sits in the ledger.
 
 **The rule that produced those gaps still holds everywhere else.** A milestone that wants a pattern
-which does not exist records a finding about the catalog; it does not add a pack. That is why nine
-patterns have shipped since M1 and nothing has been added since.
+which does not exist records a finding about the catalog; it does not add a pack. That rule is why
+nine patterns stood unchanged from M1 to M5 while four milestones recorded gaps instead of adding
+packs — and M5 is the milestone those gaps were recorded *for*, so the catalog is now **21 patterns
+in four packs**: M1's `_base.yaml` and `python.yaml`, and M5's `_instruction.yaml` and
+`_manifest.yaml`, one pattern per FR-3.13 and FR-3.14 class. The rule binds the next milestone again
+from here.
 
 HTTP routes and IPC handlers are named in FR-1.3 and are enumerated by no source: they are recorded
 as coverage gaps in `recon.json` rather than approximated. Denylist detection and

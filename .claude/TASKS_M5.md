@@ -151,6 +151,140 @@ owner; each is noted because a later reader would otherwise have to re-derive it
       precision under P4 — a false positive costs a paragraph and a miss is a
       silent gap — but a thousand paragraphs is not a review.
 
+## Four real targets, two defects fixed, and the contract decision
+
+**The owner ran PR #23's head on three real targets, which is the measurement no
+amount of running it on this repository could have produced.** Both defects below
+are M5's, and both were invisible here: this repository has no lockfile and
+almost no TypeScript.
+
+### The two fixes
+
+1. **A lockfile is a member and is not a referrer** (FR-0.3: dependency CVEs and
+   third-party service behaviour are out of scope by default). `uv.lock`,
+   `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, `poetry.lock`,
+   `Cargo.lock`, `Gemfile.lock`, `composer.lock`. The owner measured **925
+   `remote_resource` records out of one `uv.lock`** — 58% of that target's entire
+   output on one file's dependency table. A source spending the majority of its
+   output there has stopped being readable, which is H-1 arriving as volume. The
+   file stays a member, because a lockfile pins what will be installed, and a gap
+   line says it was not read.
+2. **Extractor precision, two shapes.** A token followed by `(` is a call:
+   `response.json()` matched because `.json` is a real suffix. An import
+   specifier that does not start with `.` or `/` is a package: `from
+   "@modelcontextprotocol/sdk/types.js"` resolves out of `node_modules`, which
+   `STACK.md` §5 excludes from the walk by name — so reporting it was reporting
+   dependency resolution as a hole in the artifact. **Both permits are in the
+   same fixtures**, because a rule that only refuses passes by refusing
+   everything: `open("progressive.md")` still resolves, and `./local.ts` in an
+   import still resolves.
+
+Each suppression has its own `coverage_gaps` line and a test asserting the line
+exists, because a rule that quietly stops reporting something is the silence
+FR-3.8 exists to prevent — and these three were added *because* a measurement
+called them noise, which is exactly when a gap line matters most.
+
+### The fixes measured in isolation, same tree before and after
+
+| target | before | after | |
+|---|---|---|---|
+| `jacob-bd/gemini-notebook-mcp-cli` | 1,597 | **665** | −932, 58% — almost all the lockfile |
+| `modelcontextprotocol/servers` | 409 | **348** | −61, 15% |
+| `anthropics/skills` | 1,175 | **1,156** | −19, 2% |
+| this repository | 1,210 | **1,190** | −20, 2% |
+
+**This repository's figure went from 1,040 to 1,190 across the same change, and
+that is not the fix going backwards.** It is the fixture files and test prose this
+work added; measured on one identical tree the fixes take 1,210 to 1,190. Worth
+stating because the raw before-and-after looks like a regression and is not.
+
+### Per rule and per referrer kind, after the fixes
+
+A referring file is a manifest (structured configuration a client reads as data),
+code (something an interpreter or shell runs), or prose. `is_prose` counts JSON,
+YAML and TOML as prose, which is right for the instruction layer and wrong here —
+a path in a manifest is a path something opens — so manifests are split out by
+name first.
+
+| target | records | rule | code | manifest | prose |
+|---|---|---|---|---|---|
+| gemini-notebook-mcp-cli | 665 | `missing_reference` 297 | 116 | — | 181 |
+| | | `remote_resource` 289 | 45 | 3 | 241 |
+| | | `ambiguous_reference` 79 | 10 | — | 69 |
+| anthropics/skills | 1,156 | `missing_reference` 821 | 111 | — | 710 |
+| | | `remote_resource` 289 | 30 | — | 259 |
+| | | `ambiguous_reference` 46 | 10 | — | 36 |
+| modelcontextprotocol/servers | 348 | `remote_resource` 218 | 10 | 3 | 203 |
+| | | `missing_reference` 112 | 50 | — | 62 |
+| | | `ambiguous_reference` 18 | 7 | — | 11 |
+| this repository | 1,190 | `missing_reference` 1,058 | 546 | 15 | 497 |
+| | | `ambiguous_reference` 86 | 48 | — | 38 |
+| | | `remote_resource` 37 | 20 | 1 | 14 |
+| | | `escaping_reference` 9 | 7 | — | 2 |
+
+**And the `code` column is not what it looks like, which took a second
+measurement to see.** The first split tested whether the matched *line* starts
+with a comment marker and reported 567 of this repository's 621 code records as
+executable — wrong, because only a docstring's opening line carries the marker and
+this repository's modules are mostly docstring. Tracking the state across lines:
+
+| target | from code | executable | comment | docstring |
+|---|---|---|---|---|
+| this repository | 621 | 507 | 41 | 73 |
+| gemini-notebook-mcp-cli | 171 | 147 | 4 | 20 |
+| anthropics/skills | 151 | 94 | 32 | 25 |
+| modelcontextprotocol/servers | 67 | 59 | 8 | 0 |
+
+So a sixth of the code records are prose living in a code file. That matters to
+the proposal below, which treats a reference from code as evidence of loading.
+
+### The contract proposal, modelled, for the owner's decision
+
+**The proposal as stated:** per-instance records for evidence of loading —
+`remote_resource`, `escaping_reference`, and missing or ambiguous references from
+code or manifests — and unresolved citations in prose grouped into one record per
+referring file listing the paths. Still in the ledger, so FR-4.3 still forces a
+decision, and the file gets FR-3.15's full read anyway.
+
+| target | now | under the proposal | |
+|---|---|---|---|
+| this repository | 1,190 | **613** | 547 per-instance + 66 grouped |
+| gemini-notebook-mcp-cli | 665 | **424** | 397 + 27 |
+| anthropics/skills | 1,156 | **423** | 362 + 61 |
+| modelcontextprotocol/servers | 348 | **284** | 272 + 12 |
+
+It roughly halves the volume and leaves 284 to 613. **What holds it up is
+`remote_resource` from prose**, which the proposal keeps per-instance by design —
+241 of them in one target, 259 in another, 203 in a third, and nearly all are
+documentation links in a README.
+
+**One clause changes that, and the owner should see the number before deciding:**
+group a URL in prose too, on the grounds that a documentation link is a citation
+on exactly the same footing as a filename in a sentence.
+
+| target | now | with that clause | |
+|---|---|---|---|
+| this repository | 1,190 | **597** | 527 + 70 |
+| gemini-notebook-mcp-cli | 665 | **183** | 150 + 33 |
+| anthropics/skills | 1,156 | **176** | 94 + 82 |
+| modelcontextprotocol/servers | 348 | **82** | 62 + 20 |
+
+That is the readable number on every real target, and it costs one thing worth
+naming: a URL in a README that *is* fetched at run time would arrive grouped with
+the citations rather than on its own. FR-1.2 asks for resources fetched at load or
+run time to be recorded as unresolvable members, and grouping records them — but
+it records them beside links to documentation, which is a worse reading position
+for the one that matters.
+
+This repository stays near 600 under both, because 507 of its records come from
+executable code naming paths — test expectations listing fixture files, and the
+gate scripts. For a target that is itself a review tool that is expected, and it
+is the one case where the number is not evidence about the contract.
+
+**Not implemented.** The proposal is a change to what reaches `hits.jsonl` and
+therefore to what FR-4.3 gates on, which makes it `STACK.md` §3 territory and the
+owner's call. M5 measured it; M5 does not ship it.
+
 ## The answer to that question, given by the owner (2026-10-07)
 
 **P4 forbids unexamined membership, not shared reasoning.** A class resolution is
