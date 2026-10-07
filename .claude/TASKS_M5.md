@@ -45,6 +45,81 @@ this milestone introduce it?*
 New findings go under the heading below. The heading exists now so that nobody has to decide where
 to put the first one while deciding whether to fix it.
 
+## Decided during implementation, because the brief left them to mechanism
+
+Each is recorded here rather than in `BRIEF_M5.md`, because the brief states
+requirements and these are how they were met. None of them is a question for the
+owner; each is noted because a later reader would otherwise have to re-derive it.
+
+- **An unresolved closure record is anchored on the referring line, with
+  `lines-20`.** The member has no content — that is why it is unresolved — so
+  the span a reviewer reads is the line that pulls it in. FR-4.6 then expires
+  the verification when that line changes, which is the right trigger. Not a
+  window name of its own: C-2 keeps differently *shaped* spans from being
+  compared, and this is `lines-20`'s shape anchored on a line in a file exactly
+  as a pattern record's is. `decl-20` exists because FR-4.1 says a surface is
+  traced rather than windowed, so a surface verification is not a judgment of
+  its span; a closure verification is a judgment of this one.
+- **The content-mismatch record (A5) carries a new spec, `digest-pair`.** Its
+  span is the two digests, not lines, because there is no line to anchor on and
+  windowing the file would identify the very bytes whose provenance is the
+  finding. The digests are redacted out of `match_excerpt` — a 64-character hex
+  run is credential-shaped and G-3 is deliberately blunt — and that was left
+  alone rather than fixed by weakening the credential rule or shortening a
+  digest below its floor. The full pair survives in `closure.json` and in the
+  unredacted window the id is derived from, so two different replacements
+  produce two different candidates; a test holds exactly that.
+- **`layer` is `code` on every closure record.** `ledger.LAYERS` is
+  `{code, instruction, manifest}` and FR-3.11 defines `layer` as a field of a
+  *pattern* — the three values say what kind of question a pattern asks. A
+  closure record asks about composition, which is a property of the artifact's
+  structure rather than of its prose or its grants, whichever file the reference
+  sits in. That the field's name and value set fit patterns better than they fit
+  this is the same PRD naming question already raised for `catalog_version` in
+  `.claude/TASKS_M2.md`, and it is raised rather than resolved.
+- **`status` is `unresolved`, not `deferred`.** §6 Q1 noted that FR-4.4's
+  `deferred` with its mandatory reason is where most of these will land. That is
+  a *triage* status, which M7 assigns; emitting it at the source would be this
+  milestone resolving its own candidates (FR-3.2, FR-3.11).
+- **The entry set defaults to every readable file, and `closure.json` records
+  which question was asked.** `--entry` is repeatable, because FR-1.5 says
+  multiple archetypes are the norm and a plugin bundle has several entry files.
+  With no `--entry` the question becomes "what does this tree pull in that is
+  not in it", which can be asked of a target that declares no entry point
+  anywhere and which never under-reports. An entry the target lacks is a ledger
+  record; an entry *outside* the target is exit 2, because that is a hole in the
+  invocation rather than in the artifact.
+- **`STACK.md` §7 and `BRIEF_M5.md` §2 looked contradictory and are not.** §7 is
+  binding and says `recon.json` records a closure member in a language with no
+  structural coverage; the brief's deliverable row asks for the same line and in
+  the same row says `recon.py` must not know about the closure (P11). The two
+  are compatible exactly one way, which is how the surface and structural lines
+  already work: `recon.json` states the *class*, derived from the languages the
+  walk found, and `closure.json` names the individual members. Raised here
+  rather than resolved silently, and both documents are satisfied as written.
+
+## Consequences for later milestones, found by running the tool
+
+- [ ] **`secrev closure .` over this repository produces 1,153 ledger records,
+      and FR-4.3 refuses to render a report while any hit is unresolved.** That
+      is an M7 problem, stated now because M7 will meet it on its first run and
+      the arithmetic should not be a surprise. The distribution:
+      `closure.missing_reference` 1,022, `closure.ambiguous_reference` 76,
+      `closure.remote_resource` 50, `closure.escaping_reference` 5. The bulk is
+      documentation naming example files — `run.json`, `install.sh`,
+      `package.json`, `src/secrev/x.py` — which is honest low precision under
+      P4, where a false positive costs a paragraph and a miss is a silent gap.
+      **The question M7 has to answer is whether P4's "every candidate is
+      resolved" admits resolving a *class* in one paragraph.** It is not a
+      question M5 may answer, because the answer is a triage rule.
+      The first measurement was 3,692, every one a document citing another by
+      name — `STACK.md` alone 415 times, because a mention inside `src/secrev/`
+      resolved to `src/secrev/STACK.md`. That was fixed in M5 rather than
+      deferred: a reference is now resolved relative to the referring file, then
+      relative to the target root, then by filename when it names no directory,
+      because those are the three conventions that actually exist. A signal that
+      is always on is H-1's habit in a new place.
+
 ### Harness findings raised during M5
 
 - [ ] **Nothing asserts that the current milestone has a ledger, or that a named one exists.**

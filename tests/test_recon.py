@@ -131,8 +131,17 @@ def test_a_tree_with_dist_and_one_without_report_differently(tmp_path: Path) -> 
 
 
 def test_binary_is_detected_by_content_and_listed() -> None:
+    """The whole list, not a membership test: the point is also that nothing
+    *else* is classified binary, and `assets/blob.bin in result` would stay
+    green while a text file joined it.
+
+    `closure/helpers/payload.bin` arrived with M5's closure fixtures, where it
+    is FR-1.2's "bundled binary" case. It is binary by the proportion rule
+    rather than by its extension (`STACK.md` §5), which is what makes it a
+    legitimate second entry here rather than a name this file has to trust.
+    """
     result = recon(FIXTURES)
-    assert result.inventory["binary"] == ["assets/blob.bin"]
+    assert result.inventory["binary"] == ["assets/blob.bin", "closure/helpers/payload.bin"]
 
 
 def test_an_unreadable_file_is_listed_rather_than_omitted(tmp_path: Path) -> None:
@@ -652,8 +661,44 @@ def test_other_code_languages_are_named(tmp_path: Path) -> None:
     assert structural.endswith("not implemented for: shell, typescript")
 
 
-def test_a_python_only_tree_says_so() -> None:
-    gaps = recon(FIXTURES).coverage_gaps
+def test_the_closure_gap_is_stated_without_recon_knowing_the_closure(tmp_path: Path) -> None:
+    """`STACK.md` §7 and `BRIEF_M5.md` §2, which look contradictory and are not.
+
+    §7 is binding and says `recon.json` records a closure member in a language
+    with no structural coverage. The brief's deliverable row asks for the same
+    line and, in the same row, says this module must not know about the closure
+    (P11). The two halves are compatible exactly one way, which is the way the
+    surface and structural lines already work: the *class* is stated here from
+    the languages the walk found, and the individual members are named in
+    `closure.json`, by the source that knows them.
+
+    So this asserts both at once — the line exists, and nothing here imports the
+    module it is about.
+    """
+    (tmp_path / "server.rb").write_text("puts 1\n", encoding="utf-8")
+    gaps = recon(tmp_path).coverage_gaps
+    [closure_line] = [gap for gap in gaps if gap.startswith("closure: a member in a code")]
+    assert closure_line.endswith("not implemented for: ruby")
+
+    source = (ROOT / "src" / "secrev" / "recon.py").read_text(encoding="utf-8")
+    assert "import closure" not in source
+    assert "from secrev.closure" not in source
+
+
+def test_a_python_only_tree_says_so(tmp_path: Path) -> None:
+    """The other polarity of the test above: with no unreached code language,
+    the line says so rather than trailing an empty list.
+
+    **Over a tree of its own, not over `tests/fixtures/`.** It read the shared
+    fixture tree until M5, which made it an assertion about that tree's
+    incidental contents rather than about this code — and M5's closure fixtures
+    added a `.sh`, so it failed on a milestone that changed nothing it was
+    about. The companion test above already builds its own tree; this one now
+    does too, and the pair reads as the two sides of one rule.
+    """
+    (tmp_path / "app.py").write_text("x = 1\n", encoding="utf-8")
+    (tmp_path / "notes.md").write_text("prose, which is not a code language\n", encoding="utf-8")
+    gaps = recon(tmp_path).coverage_gaps
     [surface] = [gap for gap in gaps if gap.startswith("surface:") and "Python only" in gap]
     [structural] = [gap for gap in gaps if gap.startswith("structure:") and "Python only" in gap]
     assert surface.endswith("no other code language present")
@@ -673,7 +718,7 @@ def test_every_coverage_gap_names_the_source_it_belongs_to() -> None:
     unprefixed = [
         gap
         for gap in gaps
-        if not gap.startswith(("surface:", "structure:"))
+        if not gap.startswith(("surface:", "structure:", "closure:"))
         and not gap.startswith(("excluded from review", "present but not read"))
     ]
     assert not unprefixed, f"coverage gaps naming no source: {unprefixed}"

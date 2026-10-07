@@ -4,15 +4,25 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repository state
 
-`src/secrev/` holds the M1, M2 and M4 pipeline — `inventory`, `ids`, `catalog`, `sweep`, `recon`,
-`ledger`, `kinds`, `surfaces`, `parser`, `structure`, `structure_rules`, `cli` — and `secrev
-recon`, `secrev sweep`, `secrev surfaces` and `secrev structure` run. `patterns/` ships nine
+`src/secrev/` holds the M1, M2, M4 and M5 pipeline — `inventory`, `ids`, `catalog`, `sweep`,
+`recon`, `ledger`, `kinds`, `surfaces`, `parser`, `structure`, `structure_rules`, `closure`, `cli`
+— and `secrev recon`, `secrev sweep`, `secrev surfaces`, `secrev structure` and `secrev closure`
+run. `patterns/` ships nine
 patterns in two packs (`_base.yaml`, `python.yaml`); `surfaces/` ships seven kinds in
 `_surfaces.yaml`; `structure/` ships four structural rules in `_structure.yaml`. Both gates are
 green and every stage has something to check, including the artifact half of the determinism
-stage, which compares real `recon.json` and **every block** of `hits.jsonl` — the blocks it
-requires are derived from `cli.SOURCES`, so a fourth source is covered by adding it in one place
-rather than by someone remembering this stage exists.
+stage, which compares every named artifact and **every block** of `hits.jsonl` — the blocks are
+derived from `cli.SOURCES` and the artifacts from `cli.ARTIFACT_BY_COMMAND`, so a new source or a
+new artifact is covered by adding it in one place rather than by someone remembering this stage
+exists.
+
+**Both derivations guard one direction only, and the other direction is now closed.** Deriving the
+required blocks from `SOURCES` means removing an entry removes the requirement too, so M5 measured
+it: with `closure` taken out of `SOURCES`, `merge_ledger`'s join silently dropped the block the
+command had just written and the determinism stage stayed green. `merge_ledger` now refuses a
+source that is not in `SOURCES`, and the determinism stage fails on a named artifact no run
+produced instead of skipping it. A list that is complete by construction still needs something
+asserting that what it names was actually written (H-1).
 
 **M3.5 is closed and merged as PR #15**; M3 as PR #14, M2 as PR #13. The
 owner's decisions are in `.claude/TASKS_M3.md`, which is the ledger — read it before touching M3.
@@ -206,11 +216,20 @@ A determinism check written after the generators exist is a retrofit onto code c
 it, and NFR-3 is the one requirement that does not survive being retrofitted: getting it wrong
 invalidates every verification recorded above it (D-4).
 
-**The same held for M2.** `surfaces.py` is a third consumer of the walk and a third generator of
-ids in `hits.jsonl`, so its golden test came first, and it joined `is_nfr3_path` in
+**The same held for M2, M4 and M5.** `surfaces.py` is a third consumer of the walk and a third
+generator of ids in `hits.jsonl`, so its golden test came first, and it joined `is_nfr3_path` in
 `.claude/hooks/lib/paths.sh` before it existed. That function names files exactly — `ids.py`,
-`inventory.py`, `sweep.py`, `recon.py`, `surfaces.py`, `ledger.py` — so a new generator of
-deterministic output is silent under `determinism-guard.sh` until it is added.
+`inventory.py`, `sweep.py`, `recon.py`, `surfaces.py`, `ledger.py`, `structure.py`, `parser.py`,
+`closure.py` — so a new generator of deterministic output is silent under `determinism-guard.sh`
+until it is added.
+
+`closure.py` is the clearest case of the ordering, because the gap between the two commits is
+visible in the history: it joined `is_nfr3_path` in `m4/close` while the file did not exist, and
+`tests/harness/attack.py` carried an assertion that it was *absent* so that the claim was tested
+rather than asserted. That assertion said in its own failure message to rename it when the file
+arrived, which M5 did. The one half of step 1 that could not be done first is the golden test: a
+golden with no generator is a red gate rather than a guard, since nothing here uses
+expected-failure markers, so it lands in the same commit as the module.
 
 ### The M2 shape, which takes several files to see
 
@@ -579,13 +598,14 @@ rendering while any hit is `unresolved` (P4, AC-2).
 
 ## Commands (decided in `STACK.md` §3)
 
-All three candidate sources are implemented; `verify` and `report` are not.
+All three candidate sources are implemented, and so is the closure; `verify` and `report` are not.
 
 ```
 secrev recon     <target>    # → recon.json  (M1, implemented)
 secrev sweep     <target>    # → hits.jsonl  (M1, implemented)
 secrev surfaces  <target>    # → hits.jsonl  (M2, implemented; its own block of the ledger)
 secrev structure <target>    # → hits.jsonl  (M4, implemented; its own block, `block-20` windows)
+secrev closure   <target>    # → closure.json + hits.jsonl (M5, implemented; the fourth block)
 secrev verify    <workspace> # gate          (M7)
 secrev report    <workspace> # → report.md   (M9)
 ```
@@ -593,12 +613,22 @@ secrev report    <workspace> # → report.md   (M9)
 One entry point with subcommands — not five standalone scripts. The PRD's `scripts/` listing names
 modules, not executables.
 
+**The closure is the fourth block and not a fourth detection source.** D-11 was amended to say
+"three peer **detection** sources", because an unresolvable closure member is not a detection but a
+hole in the set that was examined — and FR-1.2 calls it "a finding candidate, not an omission",
+which in this system exactly one mechanism guarantees: the ledger plus FR-4.3. So it enters
+`hits.jsonl` under `source: closure`, and it is deliberately absent from `cli._PEER_SOURCES`, whose
+rows describe a source that loads a versioned ruleset. The closure's rules are code, and
+`closure.CLOSURE_RULES_VERSION` is what `catalog_version` carries on its records.
+
 **Exit codes:** `0` success (for `verify`, ledger clean) · `1` gate failure (tool worked, answer is
 no) · `2` usage/config error, including any catalog schema violation · `3` internal error. The 0/1
 split exists so a hook can tell "the tool broke" from "the tool says no."
 
 **Streams:** machine-readable to stdout, progress and diagnostics to stderr — `secrev sweep target
-> hits.jsonl` must yield a valid file.
+> hits.jsonl` must yield a valid file. `secrev closure` is the first command producing **two**
+machine-readable payloads, and two on one stream would make neither file valid: `closure.json` goes
+to stdout and the ledger block goes only to the workspace, with its count on stderr.
 
 ## Invariants that constrain nearly every change
 

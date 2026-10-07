@@ -141,6 +141,19 @@ LANGUAGE_BY_SUFFIX = {
 }
 
 
+# Languages in the map above that hold no entry points of their own — prose,
+# data and configuration. Every other language in the map is code.
+#
+# Here beside the map rather than in a consumer, for the reason the map itself is
+# here (H-7): `recon.py` asks it to say which code languages no rule set reads,
+# and `closure.py` asks it to say what a closure member *is*. Two copies would
+# be two meanings of "code", and the two artifacts are read side by side — a
+# language counted as code in one and as data in the other is a coverage claim
+# with nothing behind it. It was a private constant in `recon.py` until M5,
+# which was correct while there was one consumer.
+NOT_CODE_LANGUAGES = frozenset({"ini", "json", "markdown", "text", "toml", "yaml"})
+
+
 def language_of(path: str) -> str | None:
     """The language for a relative POSIX path, or None when unrecognised.
 

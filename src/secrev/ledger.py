@@ -38,7 +38,11 @@ PRECISIONS = frozenset({"high", "medium", "low"})
 # added `surface` and `catalog.py` named it inline, so M4's `structure` was open
 # until a test asked — the closure was written once and then had to be
 # remembered, which is the shape H-7 exists to prevent.
-RESERVED_NAMESPACES = frozenset({"surface", "structure"})
+# `closure` joined in M5. It is not a detection source (D-11, as amended), and
+# the namespace is reserved on exactly the same terms anyway: a `rule_id` has to
+# name one question, and `closure.missing_reference` asked by a pattern and by
+# the closure would be two questions under one name.
+RESERVED_NAMESPACES = frozenset({"surface", "structure", "closure"})
 
 # ±20 lines. Named, carried on every record, and an FR-4.6 invalidation
 # trigger. See STACK.md §5 for why the name matters more than the number.
@@ -64,6 +68,24 @@ DECL_WINDOW_SPEC = "decl-20"
 # for. Ids stay distinct because `rule_id` is in the tuple. That re-windowing is
 # a milestone of its own and explicitly not M4's (`STACK.md` §5).
 BLOCK_WINDOW_SPEC = "block-20"
+
+# The closure source's window for the one record it emits that has no line to
+# anchor on (M5, `BRIEF_M5.md` A5): a file whose bytes changed between the
+# inventory read and the closure read. The span is the two digests, not lines of
+# text, which is why it is a separate name rather than `lines-20` — C-2 keeps
+# differently *shaped* spans from ever being compared, and this one is not a
+# span of a file at all.
+#
+# Windowing the file itself would be worse than useless. The finding is that the
+# content's provenance is unknown, so `window_sha256` over it would identify the
+# very bytes nobody has established the origin of, and the id would change on
+# every further edit while the question stayed the same.
+#
+# The closure's *other* records carry `lines-20` unchanged. They are anchored on
+# the line that names the member, which is `lines-20`'s shape and anchor exactly
+# as a pattern record's is, and ledger.py's note above on `block-20` says the
+# rest: two spans of the same shape sharing a name is what the name is for.
+CLOSURE_DIGEST_SPEC = "digest-pair"
 
 # `BRIEF_M1.md` §5: "the matched span with a small margin, truncated to 200
 # chars". Cited wrongly as `STACK.md` §5 until M3.5 — §5 there fixes traversal,

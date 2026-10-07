@@ -41,7 +41,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from secrev.inventory import FileEntry, exclusions_applied, language_of, split_lines, walk
+from secrev.inventory import (
+    NOT_CODE_LANGUAGES,
+    FileEntry,
+    exclusions_applied,
+    language_of,
+    split_lines,
+    walk,
+)
 
 # Files whose name marks them as tests, for `security_process.test_files`.
 _TEST_FILE = re.compile(r"(^|/)(test_[^/]+|[^/]+_test)\.[a-z]+$|(^|/)tests?/")
@@ -360,9 +367,14 @@ def _security_process(entries: list[FileEntry], found: frozenset[str]) -> dict[s
     }
 
 
-# Formats that hold no entry points of their own, or that the surface kinds
-# read only as named manifests. Every other language in the map is code.
-_NOT_CODE = frozenset({"ini", "json", "markdown", "text", "toml", "yaml"})
+# Formats that hold no entry points of their own, or that the surface kinds read
+# only as named manifests. The set moved to `inventory.py` in M5, beside the
+# language map it partitions, when `closure.py` became a second consumer: two
+# copies would be two meanings of "code", and a language counted as code in
+# `recon.json` and as data in `closure.json` is a coverage claim with nothing
+# behind it (H-7). The name is re-exported here so this file's own references
+# read as they did.
+_NOT_CODE = NOT_CODE_LANGUAGES
 
 # How many paths a `coverage_gaps` line names before it says "and N more".
 # Every ordinary target holds binary assets, so an uncapped list puts every
@@ -557,6 +569,32 @@ _SURFACE_GAPS = (
 )
 
 
+# What the closure source cannot reach, one line each. Fixed text, derived from
+# the languages the walk found — never from `closure.py`, which this module does
+# not import: recon is a peer that reports declared metadata, and `_entrypoints`
+# says in its own docstring that resolving references is not its work (P11).
+#
+# **`STACK.md` §7 is why these are here**, and it is binding: "where a closure
+# member is in a language with no structural coverage, `recon.json` records it
+# and the report states it as a coverage gap (FR-3.8)". `BRIEF_M5.md` §2 asks for
+# the same line and in the same row says this module must not know about the
+# closure — the two halves are only compatible one way, which is the way the
+# other two sources already work. The *class* is stated here, from the languages
+# present; the individual members are named in `closure.json`, by the source
+# that knows them. A brief loses to `STACK.md` on mechanism, and in this case
+# both are satisfied.
+_CLOSURE_GAPS = (
+    "closure: a reference is read line by line and recognised by its file suffix "
+    "or by a Markdown link target, so a path built from variables, split across "
+    "lines, or naming a directory is not followed — `closure.json` names the "
+    "references that did not resolve",
+    "closure: a resource named for fetching is recorded and never fetched "
+    "(STACK.md §2.1 forbids runtime network calls), so what it would have "
+    "contained is unreviewed by construction (FR-1.2) and enters `hits.jsonl` "
+    "under `source: closure` rather than being passed over",
+)
+
+
 def _coverage_gaps(
     languages: dict[str, int],
     applied: list[str] | None = None,
@@ -646,6 +684,13 @@ def _coverage_gaps(
     return [
         *skipped,
         *not_read,
+        # STACK.md §7's line, in the shape the other two use: references are
+        # resolved in any text file, so the gap is not in reaching a member but
+        # in what reads it once reached — the structural rules are Python only
+        # and each code pattern declares its own languages.
+        f"closure: a member in a code language no rule set reads is in the closure "
+        f"and nothing examines its contents; {unparsed_languages}",
+        *_CLOSURE_GAPS,
         f"structure: rules are read in Python only; {unparsed_languages}",
         *_STRUCTURE_GAPS,
         f"surface: code entry points are read in Python only; {others}",
