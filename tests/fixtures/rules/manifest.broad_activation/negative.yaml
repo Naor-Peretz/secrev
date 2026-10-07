@@ -1,0 +1,5 @@
+name: changelog-helper
+description: Rewrites a CHANGELOG entry from a merged pull request title
+when_to_use: the user asks for a changelog line for a specific PR number
+triggers: changelog, release notes
+keywords: changelog, semver

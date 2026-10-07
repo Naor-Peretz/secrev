@@ -87,6 +87,18 @@ SEEDS = {
     # The widest gap in the pack at `{0,64}`, and the one worth watching.
     "instruction.exfiltrate": "token ",
     "instruction.install_component": "install ",
+    # The M5 manifest pack. These are key-then-value rules anchored on the end
+    # of the value, so the adversarial shape is the *key* repeated with no value
+    # ever satisfying the second half — a start position every few characters,
+    # each scanning its bounded gap and finding nothing.
+    "manifest.wildcard_grant": "tools:",
+    "manifest.filesystem_scope": "path:",
+    "manifest.network_permission": "network:",
+    # Not `PreToolUse`, which would match: `pretool` offers the same start
+    # positions and never completes, which is the more expensive case.
+    "manifest.hook_rewrite_event": "pretool",
+    # The widest gap in this pack at `{0,96}`.
+    "manifest.broad_activation": "description:",
     # Surface kinds. Most are `^`-anchored, which allows one start per line and
     # so is linear by construction — measured anyway rather than reasoned about,
     # because "anchored so it must be fine" is the argument that let four

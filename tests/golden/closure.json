@@ -42,6 +42,16 @@
       "rules/instruction.write_outside/positive.md",
       "rules/log.sensitive/negative.txt",
       "rules/log.sensitive/positive.txt",
+      "rules/manifest.broad_activation/negative.yaml",
+      "rules/manifest.broad_activation/positive.yaml",
+      "rules/manifest.filesystem_scope/negative.yaml",
+      "rules/manifest.filesystem_scope/positive.yaml",
+      "rules/manifest.hook_rewrite_event/negative.json",
+      "rules/manifest.hook_rewrite_event/positive.json",
+      "rules/manifest.network_permission/negative.json",
+      "rules/manifest.network_permission/positive.json",
+      "rules/manifest.wildcard_grant/negative.json",
+      "rules/manifest.wildcard_grant/positive.json",
       "rules/net.bind_all/negative.txt",
       "rules/net.bind_all/positive.txt",
       "rules/net.fetch_exec/negative.txt",
@@ -425,6 +435,86 @@
       "referenced_from": []
     },
     {
+      "path": "rules/manifest.broad_activation/negative.yaml",
+      "kind": "data",
+      "load": "direct",
+      "size": 232,
+      "sha256": "73e21de01c4a0385ba5028499e40d5e2a698adf0b6fffa3011d13b2d82a096a1",
+      "referenced_from": []
+    },
+    {
+      "path": "rules/manifest.broad_activation/positive.yaml",
+      "kind": "data",
+      "load": "direct",
+      "size": 224,
+      "sha256": "5006c690b6c6f9b20d9732fe40a5d20f1fe7c144135ca26be9e7953a6517895a",
+      "referenced_from": []
+    },
+    {
+      "path": "rules/manifest.filesystem_scope/negative.yaml",
+      "kind": "data",
+      "load": "direct",
+      "size": 327,
+      "sha256": "5a0f7430ea631b30dc60698d6d926744f7caf17aea9086d8c9fcd97b408e1613",
+      "referenced_from": []
+    },
+    {
+      "path": "rules/manifest.filesystem_scope/positive.yaml",
+      "kind": "data",
+      "load": "direct",
+      "size": 233,
+      "sha256": "dbfd1b52184f743143a7ebd248529a69361ec4743354592ea9d96e756d435f25",
+      "referenced_from": []
+    },
+    {
+      "path": "rules/manifest.hook_rewrite_event/negative.json",
+      "kind": "data",
+      "load": "direct",
+      "size": 277,
+      "sha256": "9bfda0561384e36e30869518499a879b8b46e7ea2660287fc68c529481d9a42b",
+      "referenced_from": []
+    },
+    {
+      "path": "rules/manifest.hook_rewrite_event/positive.json",
+      "kind": "data",
+      "load": "direct",
+      "size": 253,
+      "sha256": "ebd681fb7656c415403e0205770ab9a46a155e364d363ba59f1c8b95acf7fbea",
+      "referenced_from": []
+    },
+    {
+      "path": "rules/manifest.network_permission/negative.json",
+      "kind": "data",
+      "load": "direct",
+      "size": 159,
+      "sha256": "f3c4ee3fc2d4470cf94e8d5d9296ac0cc6683f9156aff292b38d7ba53993e195",
+      "referenced_from": []
+    },
+    {
+      "path": "rules/manifest.network_permission/positive.json",
+      "kind": "data",
+      "load": "direct",
+      "size": 113,
+      "sha256": "ea7f53ed75c9ec7e9e2868d773f5fa5c7d9b35848defc8743b83b1da0713aafe",
+      "referenced_from": []
+    },
+    {
+      "path": "rules/manifest.wildcard_grant/negative.json",
+      "kind": "data",
+      "load": "direct",
+      "size": 216,
+      "sha256": "6c3560852254d2d618050cf4a9ef0e3bada23d807a36125911cd9b75b32cc8f6",
+      "referenced_from": []
+    },
+    {
+      "path": "rules/manifest.wildcard_grant/positive.json",
+      "kind": "data",
+      "load": "direct",
+      "size": 166,
+      "sha256": "db4ebdcec6baaaa30fc1c009c3f39ca267ab2bfbd3d8c36fb94c0f788dad4b04",
+      "referenced_from": []
+    },
+    {
       "path": "rules/net.bind_all/negative.txt",
       "kind": "data",
       "load": "direct",
@@ -574,6 +664,51 @@
       ]
     },
     {
+      "reference": "./audit.sh",
+      "load": "direct",
+      "rule_id": "closure.missing_reference",
+      "reason": "no file at that path in the target",
+      "referenced_from": [
+        "rules/manifest.hook_rewrite_event/positive.json:4"
+      ]
+    },
+    {
+      "reference": "./cleanup.sh",
+      "load": "direct",
+      "rule_id": "closure.missing_reference",
+      "reason": "no file at that path in the target",
+      "referenced_from": [
+        "rules/manifest.hook_rewrite_event/negative.json:5"
+      ]
+    },
+    {
+      "reference": "./filter.py",
+      "load": "direct",
+      "rule_id": "closure.missing_reference",
+      "reason": "no file at that path in the target",
+      "referenced_from": [
+        "rules/manifest.hook_rewrite_event/positive.json:7"
+      ]
+    },
+    {
+      "reference": "./gate.sh",
+      "load": "direct",
+      "rule_id": "closure.missing_reference",
+      "reason": "no file at that path in the target",
+      "referenced_from": [
+        "rules/manifest.hook_rewrite_event/positive.json:3"
+      ]
+    },
+    {
+      "reference": "./greet.sh",
+      "load": "direct",
+      "rule_id": "closure.missing_reference",
+      "reason": "no file at that path in the target",
+      "referenced_from": [
+        "rules/manifest.hook_rewrite_event/negative.json:3"
+      ]
+    },
+    {
       "reference": "./guard.sh",
       "load": "direct",
       "rule_id": "closure.missing_reference",
@@ -589,6 +724,33 @@
       "reason": "no file at that path in the target",
       "referenced_from": [
         "plugin/hooks/hooks.json:10"
+      ]
+    },
+    {
+      "reference": "./inject.sh",
+      "load": "direct",
+      "rule_id": "closure.missing_reference",
+      "reason": "no file at that path in the target",
+      "referenced_from": [
+        "rules/manifest.hook_rewrite_event/positive.json:5"
+      ]
+    },
+    {
+      "reference": "./report.sh",
+      "load": "direct",
+      "rule_id": "closure.missing_reference",
+      "reason": "no file at that path in the target",
+      "referenced_from": [
+        "rules/manifest.hook_rewrite_event/negative.json:4"
+      ]
+    },
+    {
+      "reference": "./rewrite.py",
+      "load": "direct",
+      "rule_id": "closure.missing_reference",
+      "reason": "no file at that path in the target",
+      "referenced_from": [
+        "rules/manifest.hook_rewrite_event/positive.json:6"
       ]
     },
     {
@@ -713,7 +875,8 @@
       "rule_id": "closure.remote_resource",
       "reason": "names a https resource; nothing here fetches it (STACK.md §2.1 forbids runtime network calls)",
       "referenced_from": [
-        "rules/instruction.exfiltrate/negative.md:4"
+        "rules/instruction.exfiltrate/negative.md:4",
+        "rules/manifest.network_permission/negative.json:5"
       ]
     },
     {

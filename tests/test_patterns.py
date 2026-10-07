@@ -66,8 +66,9 @@ def test_the_shipped_catalog_loads_and_is_the_expected_size() -> None:
     loaded = load(PACKS)
     # Nine until M5, which is the first milestone since M1 permitted to write
     # `patterns/` — and permitted by filename, not by directory. Seven
-    # instruction-layer patterns, one per FR-3.13 class.
-    assert len(loaded.patterns) == 16
+    # instruction-layer patterns, one per FR-3.13 class, and five
+    # manifest-layer, one per FR-3.14 class.
+    assert len(loaded.patterns) == 21
     # **Per pack since M5** (owner decision, 2026-10-07). This asserted one
     # `loaded.version`, which is gone: a pack's version is what its own records
     # carry, because one derived version hides a bump in every pack but the
@@ -81,6 +82,7 @@ def test_the_shipped_catalog_loads_and_is_the_expected_size() -> None:
     assert dict(loaded.versions) == {
         "_base.yaml": "2026.09.3",
         "_instruction.yaml": "2026.10.1",
+        "_manifest.yaml": "2026.10.1",
         "python.yaml": "2026.09.3",
     }
     # **The point of the whole change, asserted:** M1's packs keep 2026.09.3
@@ -138,6 +140,117 @@ def test_python_patterns_are_scoped_to_python(catalog: Catalog) -> None:
         "tls.verify_off",
         "path.traversal",
     }
+
+
+# --- B1 and B2: every FR class has a pattern, and the mapping is written down -
+
+
+# FR-3.13's seven classes, quoted from the PRD, against the pattern that covers
+# each. B1's evidence is "the seven classes listed against the pattern ids that
+# cover them", and a list in a commit message is a list nobody re-reads — so it
+# is here, where a pattern renamed or removed turns it red.
+FR_3_13 = {
+    "directions to bypass, suppress, or pre-approve confirmation prompts": (
+        "instruction.approval_bypass"
+    ),
+    "assertions of elevated authorization or special permissions": ("instruction.authority_claim"),
+    "instructions to disregard prior, system, or user instructions": ("instruction.override_prior"),
+    "directions to conceal actions from the user or to avoid mentioning them": (
+        "instruction.conceal_action"
+    ),
+    "instructions to write outside the working directory or into "
+    "agent-configuration locations": "instruction.write_outside",
+    "directions to transmit context, file contents, or credentials to a "
+    "network destination": "instruction.exfiltrate",
+    "instructions to install, register, or modify other agentic components": (
+        "instruction.install_component"
+    ),
+}
+
+# FR-3.14's five, on the same terms.
+FR_3_14 = {
+    "unbounded or wildcard tool grants": "manifest.wildcard_grant",
+    "filesystem scopes exceeding the artifact's stated purpose": ("manifest.filesystem_scope"),
+    "network permissions in artifacts with no stated network need": ("manifest.network_permission"),
+    "hook bindings on events that permit rewriting or suppressing tool calls": (
+        "manifest.hook_rewrite_event"
+    ),
+    "activation descriptions broad enough to load the artifact into unrelated "
+    "contexts": "manifest.broad_activation",
+}
+
+
+def test_every_fr_3_13_class_has_a_pattern(catalog: Catalog) -> None:
+    """B1, in both directions.
+
+    The forward direction is the obvious one. The reverse is what catches a
+    rename: an instruction-layer pattern covering no class in the table is
+    either a class this table forgot or a pattern nobody can trace to a
+    requirement, and both are worth a failure.
+    """
+    known = {pattern.id for pattern in catalog.patterns}
+    missing = sorted(rule_id for rule_id in FR_3_13.values() if rule_id not in known)
+    assert not missing, f"FR-3.13 classes whose pattern is gone: {missing}"
+
+    instruction = {pattern.id for pattern in catalog.patterns if pattern.layer == ("instruction",)}
+    assert instruction == set(FR_3_13.values()), (
+        "the instruction pack and FR-3.13's classes have come apart: "
+        f"{sorted(instruction.symmetric_difference(set(FR_3_13.values())))}"
+    )
+    assert len(FR_3_13) == 7, "FR-3.13 names seven classes"
+
+
+def test_every_fr_3_14_class_has_a_pattern(catalog: Catalog) -> None:
+    """B2, on the same terms as B1."""
+    known = {pattern.id for pattern in catalog.patterns}
+    missing = sorted(rule_id for rule_id in FR_3_14.values() if rule_id not in known)
+    assert not missing, f"FR-3.14 classes whose pattern is gone: {missing}"
+
+    manifest = {pattern.id for pattern in catalog.patterns if pattern.layer == ("manifest",)}
+    assert manifest == set(FR_3_14.values()), (
+        "the manifest pack and FR-3.14's classes have come apart: "
+        f"{sorted(manifest.symmetric_difference(set(FR_3_14.values())))}"
+    )
+    assert len(FR_3_14) == 5, "FR-3.14 names five classes"
+
+
+def test_the_fr_class_text_is_the_prd_s_own() -> None:
+    """The tables above are quotes, and this is what keeps them quotes.
+
+    A paraphrase drifts: the table would still read plausibly while naming a
+    class the PRD does not have, and the coverage claim would be against our own
+    wording rather than the requirement's. Each key has to appear in the PRD,
+    whitespace-collapsed because the source is wrapped prose.
+    """
+    prd = " ".join((ROOT / "REQUIREMENTS_security-review-skill.md").read_text().split())
+    for table, name in ((FR_3_13, "FR-3.13"), (FR_3_14, "FR-3.14")):
+        for text in table:
+            assert text in prd, f"{name}: {text!r} is not the PRD's wording"
+
+
+def test_no_new_pattern_concludes_anything(catalog: Catalog) -> None:
+    """B3. FR-3.15 is the citation for the instruction half, and P10's "a
+    question about *this* manifest" for the other.
+
+    Two things are asserted. Every question reads as a question — a `question`
+    field that states a verdict is a pattern that has decided, and nothing in
+    M1 or M5 concludes anything (FR-3.2). And no new pattern claims a severity:
+    `default_severity_hint` is read by the phase that decides severity, so a
+    pattern forbidden to auto-classify must not pre-stage one for it.
+    """
+    added = [
+        pattern
+        for pattern in catalog.patterns
+        if pattern.layer in (("instruction",), ("manifest",))
+    ]
+    assert added, "neither new pack loaded"
+    for pattern in added:
+        assert "?" in pattern.question, f"{pattern.id}: the question states rather than asks"
+        assert pattern.default_severity_hint == "observation", (
+            f"{pattern.id} hints {pattern.default_severity_hint!r}. These patterns raise "
+            "questions for manual review and never auto-classify (FR-3.15), so the hint "
+            "must not pre-stage a severity for the phase that decides it"
+        )
 
 
 def test_precision_low_is_present_and_is_not_a_defect(catalog: Catalog) -> None:

@@ -1,0 +1,11 @@
+name: narrow-reach
+# A scope that names a directory is not a finding, and a path that merely
+# contains a slash is not a root. That distinction is the whole reason the rule
+# anchors on the end of the value.
+root: ./src
+workspace: /home/runner/work/project
+allowed_directories:
+  - ./docs
+  - ./examples
+paths:
+  - src/**/*.py

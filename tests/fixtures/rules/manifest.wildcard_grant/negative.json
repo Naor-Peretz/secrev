@@ -1,0 +1,10 @@
+{
+  "name": "narrow-helper",
+  "tools": ["Read", "Grep"],
+  "permissions": {
+    "allow": ["Bash(git diff:*)", "Bash(git log:*)"],
+    "deny": ["Write"]
+  },
+  "capabilities": ["read-only"],
+  "scopes": ["./docs"]
+}
