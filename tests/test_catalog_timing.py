@@ -72,6 +72,33 @@ SEEDS = {
     "deser.unsafe": "yaml.load(",
     "tls.verify_off": "verify=False ",
     "path.traversal": "Path(",
+    # The M5 instruction pack. Every one of these rules is a verb alternation
+    # followed by a bounded `[^\n]{0,N}` gap and a second alternation, which is
+    # precisely the shape the four quadratic patterns had before M3.5 bounded
+    # them — so the seed for each is its *verb*, repeated, which offers a start
+    # position every few characters and never satisfies the second half. That is
+    # the worst case: the engine scans the whole gap from every start and finds
+    # nothing.
+    "instruction.approval_bypass": "skip ",
+    "instruction.authority_claim": "you are ",
+    "instruction.override_prior": "ignore ",
+    "instruction.conceal_action": "do not ",
+    "instruction.write_outside": "write ",
+    # The widest gap in the pack at `{0,64}`, and the one worth watching.
+    "instruction.exfiltrate": "token ",
+    "instruction.install_component": "install ",
+    # The M5 manifest pack. These are key-then-value rules anchored on the end
+    # of the value, so the adversarial shape is the *key* repeated with no value
+    # ever satisfying the second half — a start position every few characters,
+    # each scanning its bounded gap and finding nothing.
+    "manifest.wildcard_grant": "tools:",
+    "manifest.filesystem_scope": "path:",
+    "manifest.network_permission": "network:",
+    # Not `PreToolUse`, which would match: `pretool` offers the same start
+    # positions and never completes, which is the more expensive case.
+    "manifest.hook_rewrite_event": "pretool",
+    # The widest gap in this pack at `{0,96}`.
+    "manifest.broad_activation": "description:",
     # Surface kinds. Most are `^`-anchored, which allows one start per line and
     # so is linear by construction — measured anyway rather than reasoned about,
     # because "anchored so it must be fine" is the argument that let four

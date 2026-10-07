@@ -373,9 +373,26 @@ the others structurally cannot.
   `default_severity_hint`, `references`, and `owasp` (Agentic Top 10 category, where one applies —
   see §2.4). Structural rules are likewise declared as data where their shape
   allows.
-- **FR-3.12** The catalog is versioned (`catalog_version`, bumped on any pattern or structural
-  rule change). Every run records the version it ran under — this is what makes FR-4.6
-  invalidation possible.
+- **FR-3.12** **Each rule file is versioned** (`catalog_version` on a record carries the version of
+  the file whose rule produced it, bumped on any pattern or structural rule change). Every run
+  records the versions it ran under — this is what makes FR-4.6 invalidation possible.
+
+  *Corrected in M5 (owner decision, 2026-10-07), and the original wording is worth keeping in view:
+  "the catalog is versioned… every run records the version it ran under", singular.* That was true
+  while the catalog was `_base.yaml` and `python.yaml` on one version, and `catalog.load` enforced
+  the agreement. It stopped being workable when M5 added `_instruction.yaml` and `_manifest.yaml`:
+  one version for the whole catalog means bumping one pack requires editing every other pack's
+  version line, so a new pack would have forced an edit to M1's closed packs that corrects no
+  pattern in them. A single version derived as the **maximum** was considered and rejected because
+  it hides a bump — with one pack at 2026.10.1, bumping another from 2026.09.3 to 2026.09.4 leaves
+  the maximum unchanged, so `catalog_version` does not move and FR-4.6 below never fires.
+
+  Per file is also what the other two sources already do — a surface record carries the kinds
+  file's version, a structural record the rule file's — and it gives FR-4.6's second trigger the
+  granularity it asks for: a change to the instruction pack invalidates verifications against
+  instruction records and leaves code records alone. This is a wording correction, on the same
+  footing as D-11's: the requirement's intent is unchanged, and the sentence that stated it
+  described one file.
 - **FR-3.4** Minimum **code-layer** coverage: command execution, deserialization, dynamic eval,
   path handling and traversal, file write and permission setting, credential/secret storage,
   network bind addresses and firewall rules, logging of sensitive parameters, TLS verification

@@ -124,6 +124,12 @@ LANGUAGE_BY_SUFFIX = {
     ".jsx": "javascript",
     ".ts": "typescript",
     ".tsx": "typescript",
+    # ESM and CommonJS TypeScript. Added in M5 with the closure's ESM rewrite:
+    # `import … from "./x.mjs"` resolves to `x.mts`, and a member whose language
+    # the map does not know is reported as "an extension naming no language",
+    # which would be false of a file that is plainly TypeScript.
+    ".mts": "typescript",
+    ".cts": "typescript",
     ".rb": "ruby",
     ".go": "go",
     ".rs": "rust",
@@ -139,6 +145,61 @@ LANGUAGE_BY_SUFFIX = {
     ".cfg": "ini",
     ".ini": "ini",
 }
+
+
+# What reaches an agent's context as text, by language (M5, BRIEF_M5.md §6 Q3).
+#
+# The instruction layer applies to markdown, text, JSON, YAML and TOML. Not
+# because of what the formats *are* — a YAML file is not prose — but because of
+# what an agent reads out of them: a `description:` line in skill frontmatter, a
+# `"description"` in a plugin manifest, a tool description in an MCP
+# configuration. `sweep` is line-oriented, so a description line in YAML is
+# examined like any other line and no extractor is needed.
+PROSE_LANGUAGES = frozenset({"markdown", "text", "json", "yaml", "toml"})
+
+# Suffixes that are prose an agent reads and that `LANGUAGE_BY_SUFFIX` does not
+# name. **`.mdc` is the reason this exists and the reason the decision was not a
+# `languages` list in the YAML** (§6 Q3): Cursor's rules files are prose an agent
+# reads as instruction, `language_of` returns `None` for them, and a pattern
+# shipped with `languages: [markdown]` would have skipped every one of them in
+# silence. One function to correct when the next format appears, rather than a
+# list in each pack.
+#
+# Not added to `LANGUAGE_BY_SUFFIX` instead, deliberately: that map decides
+# `recon.json`'s `by_language` counts and which code patterns run, and calling
+# `.mdc` "markdown" there would change both for a reason that has nothing to do
+# with either.
+PROSE_SUFFIXES = frozenset({".mdc"})
+
+
+def is_prose(path: str) -> bool:
+    """Whether this file's content reaches an agent's context as text (P8).
+
+    **One definition, two consumers** (§6 Q3, Q4, and A7 asks for exactly this):
+    `sweep` uses it to decide where the instruction pack applies, and
+    `closure.json` uses it for its prose inventory. If those two disagreed, the
+    inventory would list files the instruction pack never ran on, or the reverse
+    — a discrepancy nothing would report, which is the same reason
+    `language_of` and `split_lines` live here rather than in each consumer.
+
+    Suffix only, like `language_of`, so the answer stays a pure function of the
+    path and `closure.json` stays deterministic (NFR-3).
+    """
+    suffix = path[path.rfind(".") :].lower() if "." in path.rsplit("/", 1)[-1] else ""
+    return suffix in PROSE_SUFFIXES or language_of(path) in PROSE_LANGUAGES
+
+
+# Languages in the map above that hold no entry points of their own — prose,
+# data and configuration. Every other language in the map is code.
+#
+# Here beside the map rather than in a consumer, for the reason the map itself is
+# here (H-7): `recon.py` asks it to say which code languages no rule set reads,
+# and `closure.py` asks it to say what a closure member *is*. Two copies would
+# be two meanings of "code", and the two artifacts are read side by side — a
+# language counted as code in one and as data in the other is a coverage claim
+# with nothing behind it. It was a private constant in `recon.py` until M5,
+# which was correct while there was one consumer.
+NOT_CODE_LANGUAGES = frozenset({"ini", "json", "markdown", "text", "toml", "yaml"})
 
 
 def language_of(path: str) -> str | None:

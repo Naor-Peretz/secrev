@@ -291,31 +291,69 @@ jobs:
           PY
             fi
           else
-            .venv/bin/python -m secrev recon tests/fixtures --workspace "$RUNNER_TEMP/ws"
-            if [ -f src/secrev/sweep.py ]; then
-              .venv/bin/python -m secrev sweep tests/fixtures --workspace "$RUNNER_TEMP/ws"
-            fi
-            # Both blocks of the one ledger (TASK-M2-009). Only after the
-            # two-block merge landed (TASK-M2-007): before it, surfaces would
-            # have overwritten the pattern block and the digest would have
-            # stopped comparing it while staying green.
-            if [ -f src/secrev/surfaces.py ]; then
-              .venv/bin/python -m secrev surfaces tests/fixtures --workspace "$RUNNER_TEMP/ws"
-            fi
-            # The third block (M4, BRIEF_M4.md C3). Same guard and same reason:
-            # a block this job does not produce is a block it hashes nothing
-            # for, while still printing "Linux and macOS agree" — which is the
-            # H-1 collapse this whole job exists to avoid, one source along.
-            if [ -f src/secrev/structure.py ]; then
-              .venv/bin/python -m secrev structure tests/fixtures --workspace "$RUNNER_TEMP/ws"
-            fi
-            # shasum is present on both runners; sha256sum is GNU-only (STACK.md §4).
-            find "$RUNNER_TEMP/ws" \( -name recon.json -o -name hits.jsonl \) -print \
-              | sort \
-              | while read -r f; do
-                  printf '%s  %s\n' "$(shasum -a 256 "$f" | cut -d' ' -f1)" \
-                                    "${f#"$RUNNER_TEMP/ws"/}"
-                done > digest.txt
+            # Every subcommand the tool declares, and every artifact it names,
+            # read from `cli.COMMANDS` and `cli.ARTIFACT_BY_COMMAND` rather
+            # than listed here (M5, BRIEF_M5.md C3).
+            #
+            # This was four `if [ -f src/secrev/<name>.py ]` blocks and a
+            # `find \( -name recon.json -o -name hits.jsonl \)`. Both were
+            # complete when written and both had to be edited by someone who
+            # remembered this job exists: `closure.json` would have been hashed
+            # by nothing while the compare step still printed that Linux and
+            # macOS agree, which is the H-1 collapse this whole job exists to
+            # avoid — the same omission M4 found in the local determinism stage,
+            # one milestone on and in a file nobody reads during a milestone.
+            #
+            # Python rather than `find` plus `shasum`: STACK.md §1 keeps the
+            # BSD/GNU divergence class out by preferring Python for anything
+            # that is not genuinely shell, and hashing a list of files is not.
+            # The previous form already had to say in a comment which of the two
+            # digest utilities exists on both runners.
+            .venv/bin/python - <<'PY' > digest.txt
+          import hashlib
+          import os
+          import subprocess
+          import sys
+          from pathlib import Path
+
+          from secrev.cli import ARTIFACT_BY_COMMAND, COMMANDS
+
+          workspace = Path(os.environ["RUNNER_TEMP"]) / "ws"
+          for name in COMMANDS:
+              if not Path("src/secrev", f"{name}.py").exists():
+                  continue
+              # `capture_output`, and it is load-bearing here rather than tidy.
+              # This whole heredoc is redirected into digest.txt, and every
+              # subcommand writes its artifact to stdout by contract
+              # (STACK.md §3) — so an inherited stdout would paste recon.json
+              # and closure.json into the digest and the two platforms would
+              # "disagree" about a file neither of them hashed. The previous
+              # shell form ran these outside the redirect, which is why it did
+              # not need this.
+              done = subprocess.run(  # noqa: S603
+                  [sys.executable, "-m", "secrev", name, "tests/fixtures",
+                   "--workspace", str(workspace)],
+                  check=False,
+                  capture_output=True,
+              )
+              if done.returncode != 0:
+                  sys.stderr.write(done.stderr.decode("utf-8", errors="replace"))
+                  sys.exit(f"secrev {name} exited {done.returncode}")
+
+          wanted = {*ARTIFACT_BY_COMMAND.values(), "hits.jsonl"}
+          rows = {}
+          for path in workspace.rglob("*"):
+              if path.is_file() and path.name in wanted:
+                  relative = path.relative_to(workspace).as_posix()
+                  rows[relative] = hashlib.sha256(path.read_bytes()).hexdigest()
+          missing = sorted(wanted - {Path(name).name for name in rows})
+          if missing:
+              # Named and absent is a failure, not a skip: a file this job says
+              # it hashes and did not produce is a file the compare step would
+              # still call identical across platforms (H-1).
+              sys.exit(f"no artifact produced for: {', '.join(missing)}")
+          print("\n".join(f"{rows[name]}  {name}" for name in sorted(rows)))
+          PY
           fi
           cat digest.txt
 

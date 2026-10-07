@@ -1,0 +1,10 @@
+{
+  "name": "broad-helper",
+  "tools": "*",
+  "permissions": {
+    "allow": ["Bash(*)"],
+    "allowed_tools": "all"
+  },
+  "capabilities": "any",
+  "scopes": ["*"]
+}

@@ -282,25 +282,33 @@ def test_determinism_guard_speaks_on_structure_before_it_exists() -> None:
         )
 
 
-def test_determinism_guard_speaks_on_closure_before_it_exists() -> None:
+def test_determinism_guard_speaks_on_closure() -> None:
     """`BRIEF_M5.md` C2, and the fourth milestone to take this step first.
 
-    `closure.py` does not exist. It is named in `is_nfr3_path` anyway, because
-    the write that decides traversal order, normalisation and identity is the
-    *first* one, and a determinism check added afterwards is a retrofit onto
-    code composed without it (D-4).
+    **Renamed, as its own previous version instructed.** It was
+    `..._before_it_exists` and asserted that `src/secrev/closure.py` was absent,
+    which is what made it a statement about *ordering* rather than about
+    coverage: the guard spoke on the file for a full commit before the file
+    existed, so the write that decides traversal order, normalisation and
+    identity was watched from the first line. A determinism check added
+    afterwards is a retrofit onto code composed without it (D-4).
+
+    That assertion could only hold until M5 wrote the file, and said so in its
+    own failure message. The ordering it recorded is now in the commit history —
+    `is_nfr3_path` named `closure.py` in `m4/close`, the file arrived in
+    `m5/closure` — and what is left to assert every run is the coverage: the
+    guard still speaks, by absolute path and by relative path.
 
     **What this is not: the golden test.** The brief's step 1 says the golden
     test for `closure.json` comes first too, and taken literally that is a test
     with no generator — a red gate rather than a guard, since this repository
     does not use expected-failure markers. The golden lands in the same commit
-    as `closure.py`, written before the code inside that commit. What can
-    genuinely precede the file is this: the guard speaking on it.
+    as `closure.py`.
     """
     relative = "src/secrev/closure.py"
-    assert not (REPO / relative).exists(), (
-        "closure.py exists now, so this assertion has stopped testing what it "
-        "says — rename it and keep the determinism coverage in its golden test"
+    assert (REPO / relative).exists(), (
+        "closure.py is gone. This assertion is about the determinism guard's "
+        "coverage of it, so there is nothing to cover — do not weaken it to pass"
     )
     for path in (str(REPO / relative), relative):
         rc, out, _ = run_hook("determinism-guard.sh", write_payload(path, ""))

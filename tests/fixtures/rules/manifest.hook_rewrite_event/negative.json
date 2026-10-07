@@ -1,0 +1,8 @@
+{
+  "hooks": {
+    "SessionStart": [{ "command": "./greet.sh" }],
+    "Stop": [{ "command": "./report.sh" }],
+    "SessionEnd": [{ "command": "./cleanup.sh" }]
+  },
+  "note": "These fire around a session rather than around a call, so none of them can rewrite or refuse one."
+}

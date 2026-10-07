@@ -14,12 +14,14 @@ from pathlib import Path
 
 import pytest
 
-from secrev.cli import EXIT_INTERNAL, EXIT_OK, EXIT_USAGE, main, merge_ledger
+from secrev.cli import EXIT_INTERNAL, EXIT_OK, EXIT_USAGE, SOURCES, main, merge_ledger
+from secrev.closure import CLOSURE_RULES_VERSION
 
 ROOT = Path(__file__).resolve().parent.parent
 FIXTURES = ROOT / "tests" / "fixtures"
 PATTERN_GOLDEN = ROOT / "tests" / "golden" / "hits.jsonl"
 SURFACE_GOLDEN = ROOT / "tests" / "golden" / "surfaces.jsonl"
+CLOSURE_GOLDEN = ROOT / "tests" / "golden" / "closure.json"
 
 BROKEN_KINDS = """\
 version: "0000.00.0"
@@ -395,7 +397,14 @@ def test_run_json_keeps_one_entry_per_command(tmp_path: Path) -> None:
     document = json.loads(path.read_text(encoding="utf-8"))
     assert set(document) == {"recon", "sweep", "surfaces"}
     assert document["sweep"]["window_spec"] == "lines-20"
-    assert "catalog_version" in document["sweep"]
+    # A mapping, not one value (M5, owner decision): a pack's version is what
+    # its records carry, so a run has to record every pack it ran against.
+    assert document["sweep"]["pack_versions"] == {
+        "_base.yaml": "2026.09.3",
+        "_instruction.yaml": "2026.10.1",
+        "_manifest.yaml": "2026.10.1",
+        "python.yaml": "2026.09.3",
+    }
     assert document["surfaces"]["window_spec"] == "decl-20"
     assert "kinds_version" in document["surfaces"]
     assert "catalog_version" not in document["surfaces"]
@@ -863,3 +872,151 @@ def test_a_non_positive_size_bound_is_refused(tmp_path: Path) -> None:
         with pytest.raises(SystemExit) as caught:
             run(["recon", str(FIXTURES), "--workspace", str(tmp_path), "--max-file-bytes", value])
         assert caught.value.code == 2
+
+
+# --- `secrev closure` and the fourth block (BRIEF_M5.md §6 Q5, A4, E2) ----
+
+
+def test_closure_succeeds_and_writes_both_artifacts(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """E2's exit-0 case, and the shape §6 Q5 settled: its own command, writing
+    `closure.json` beside its block of the one ledger."""
+    assert run(["closure", str(FIXTURES), "--workspace", str(tmp_path)]) == EXIT_OK
+    assert (tmp_path / "fixtures" / "unversioned" / "closure.json").is_file()
+    assert block(ledger(tmp_path), "closure")
+    assert "closure member" in capsys.readouterr().err
+
+
+def test_closure_stdout_is_the_artifact_not_the_block(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The first command with two machine-readable payloads, and `STACK.md` §3
+    says a redirect must yield a valid file — which it cannot if two share one
+    stream. The artifact the command is named for wins; the block is in the
+    workspace, where `verify` reads it.
+    """
+    assert run(["closure", str(FIXTURES), "--workspace", str(tmp_path)]) == EXIT_OK
+    out = capsys.readouterr().out
+    assert out.encode("utf-8") == CLOSURE_GOLDEN.read_bytes()
+    assert json.loads(out)["closure_version"]
+
+
+def test_closure_never_loads_the_catalog(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """It loads no ruleset at all — its rules are code — so a broken or missing
+    catalog must not stop it, for the surface source's reason one source on."""
+
+    def refuse(_argument: str | None) -> None:
+        raise AssertionError("closure loaded the pattern catalog")
+
+    monkeypatch.setattr("secrev.cli.resolve_catalog", refuse)
+    assert run(["closure", str(FIXTURES), "--workspace", str(tmp_path)]) == EXIT_OK
+
+
+def test_all_four_blocks_are_kept_in_sources_order(tmp_path: Path) -> None:
+    """A4: the fourth block joins the one ledger, in `SOURCES` order, whichever
+    order the commands ran in. Run in reverse on purpose — appending would put
+    them in the right order by luck (H-8, and the two-block test records the
+    same reordering)."""
+    for name in ("closure", "structure", "surfaces", "sweep"):
+        run([name, str(FIXTURES), "--workspace", str(tmp_path)])
+    sources = [json.loads(line)["source"] for line in ledger(tmp_path).splitlines()]
+    assert set(sources) == set(SOURCES)
+    assert sources == sorted(sources, key=list(SOURCES).index)
+
+
+def test_a_block_not_in_sources_is_refused_rather_than_dropped() -> None:
+    """A4's evidence, made true. Found by defeat-verifying it.
+
+    Removing `closure` from `cli.SOURCES` left the determinism stage **green**:
+    that stage derives the blocks it requires from the same tuple, so
+    shortening it removes the requirement along with the block, and
+    `merge_ledger`'s join silently discarded the block the command had just
+    produced. Deriving the requirement is still right — it is what makes a new
+    source covered by one edit — but it only guards one direction.
+
+    This is the other direction, asserted where the loss happened. A block this
+    tool writes and then drops is a whole source missing from the ledger with
+    nothing saying so, which is H-1 inside the artifact FR-4.3 gates on.
+    """
+    with pytest.raises(ValueError, match="not one of this tool's ledger blocks"):
+        merge_ledger("", "nonesuch", '{"source": "nonesuch"}\n')
+
+
+def test_closure_run_json_records_its_own_version(tmp_path: Path) -> None:
+    """One entry per command, and the closure's entry names the version of the
+    rules that produced its block — `closure_version`, not a catalog's. A
+    reader must not have to branch on `source` to tell whether a verification
+    has expired (FR-4.6)."""
+    run(["closure", str(FIXTURES), "--workspace", str(tmp_path)])
+    document = json.loads(
+        (tmp_path / "fixtures" / "unversioned" / "run.json").read_text(encoding="utf-8")
+    )
+    # Only `closure`. Every command runs `recon` through `_prepare` for the
+    # workspace and the exit code, and none of them writes the other's entry —
+    # which is the owner decision this file's `run_json` test records, seen
+    # from the side that is easy to misread.
+    assert set(document) == {"closure"}
+    assert document["closure"]["closure_version"] == CLOSURE_RULES_VERSION
+    assert document["closure"]["roots_given"] is False
+
+
+def test_an_entry_outside_the_target_is_exit_two(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """E2's exit-2 case for this command. `--entry ../x.md` asks the tool to
+    begin its review above the target, which it refuses to read (G-4, P9), and
+    reviewing what remained would be a partial answer reported as a whole one.
+    """
+    code = run(
+        ["closure", str(FIXTURES), "--workspace", str(tmp_path), "--entry", "../elsewhere.md"]
+    )
+    assert code == EXIT_USAGE
+    assert "inside the target" in capsys.readouterr().err
+
+
+def test_a_target_declaring_no_entry_point_is_exit_two(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The owner's correction, at the exit-code level.
+
+    `closure.py` treated every readable file as its own entry point when none
+    was given, which computes the tree rather than the closure (FR-1.2). A
+    target with no recognisable entry point is now exit 2 asking for `--entry`,
+    and the message names what it looked for so a caller can see why their
+    artifact was not recognised.
+    """
+    target = tmp_path / "target"
+    target.mkdir()
+    (target / "notes.md").write_text("nothing declares anything here\n", encoding="utf-8")
+    code = run(["closure", str(target), "--workspace", str(tmp_path / "ws")])
+    assert code == EXIT_USAGE
+    err = capsys.readouterr().err
+    assert "no entry point found" in err
+    assert "SKILL.md" in err
+
+
+def test_closure_internal_error_is_three_not_one(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """E2's exit-3 case. `1` means the tool worked and the answer is no, and a
+    hook reading a bug's exit as a gate verdict is the confusion the split
+    exists to prevent."""
+
+    def explode(*_args: object, **_kwargs: object) -> None:
+        raise RuntimeError("deliberate")
+
+    monkeypatch.setattr("secrev.cli.closure", explode)
+    code = run(["closure", str(FIXTURES), "--workspace", str(tmp_path)])
+    assert code == EXIT_INTERNAL
+    assert "internal error" in capsys.readouterr().err
+
+
+def test_an_entry_the_target_lacks_is_a_finding_not_an_error(tmp_path: Path) -> None:
+    """The distinction that is easy to get backwards: a declared entry file the
+    target does not contain is a hole in the artifact, so it is exit 0 with a
+    ledger record — the review happened and reported what it could not reach."""
+    code = run(["closure", str(FIXTURES), "--workspace", str(tmp_path), "--entry", "nowhere.md"])
+    assert code == EXIT_OK
+    records = [json.loads(line) for line in block(ledger(tmp_path), "closure").splitlines()]
+    assert [record["rule_id"] for record in records] == ["closure.missing_reference"]

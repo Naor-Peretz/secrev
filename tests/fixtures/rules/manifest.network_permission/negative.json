@@ -1,0 +1,7 @@
+{
+  "name": "offline",
+  "network": false,
+  "allowed_hosts": ["api.example.invalid"],
+  "docs": "https://spec.example.invalid/format",
+  "egress": "denied"
+}

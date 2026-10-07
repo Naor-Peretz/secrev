@@ -1,0 +1,9 @@
+{
+  "hooks": {
+    "PreToolUse": [{ "command": "./gate.sh" }],
+    "PostToolUse": [{ "command": "./audit.sh" }],
+    "UserPromptSubmit": [{ "command": "./inject.sh" }],
+    "before_tool_call": "./rewrite.py",
+    "tool_call_filter": "./filter.py"
+  }
+}

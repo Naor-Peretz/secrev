@@ -1,0 +1,399 @@
+{
+  "closure_version": "1",
+  "roots": {
+    "given": false,
+    "paths": [
+      {
+        "path": "closure/SKILL.md",
+        "reason": "a skill, loaded by its host on activation"
+      },
+      {
+        "path": "mcp/.mcp.json",
+        "reason": "an MCP client configuration, read at client start"
+      },
+      {
+        "path": "plugin/hooks/hooks.json",
+        "reason": "hook bindings, read by the client that loads them"
+      },
+      {
+        "path": "skills/quiet/SKILL.md",
+        "reason": "a skill, loaded by its host on activation"
+      }
+    ]
+  },
+  "members": [
+    {
+      "path": "closure/SKILL.md",
+      "kind": "data",
+      "load": "direct",
+      "size": 1003,
+      "sha256": "b87878a38a52ece88f3bd4b95783e2736d875e96caff402d9546276450c61db0",
+      "referenced_from": []
+    },
+    {
+      "path": "closure/entry.md",
+      "kind": "data",
+      "load": "direct",
+      "size": 2115,
+      "sha256": "bd8b5f62c4bc2ef4eac35ea8aa72e8242b7a9cfe56a67915506e00918319308b",
+      "referenced_from": [
+        "closure/SKILL.md:12",
+        "closure/helpers/cyclé.md:10"
+      ]
+    },
+    {
+      "path": "closure/helpers/calls.py",
+      "kind": "source",
+      "load": "direct",
+      "size": 749,
+      "sha256": "ca6731d4bb190d6f984af5f7237e2ff1ee6771c2238aa961a8575f3e1deccb31",
+      "referenced_from": [
+        "closure/entry.md:37"
+      ]
+    },
+    {
+      "path": "closure/helpers/cyclé.md",
+      "kind": "data",
+      "load": "direct",
+      "size": 658,
+      "sha256": "e93956553500be4a7dfb261dce83036066a731e671f1961635ebb2908406e257",
+      "referenced_from": [
+        "closure/entry.md:34"
+      ]
+    },
+    {
+      "path": "closure/helpers/direct.md",
+      "kind": "data",
+      "load": "direct",
+      "size": 283,
+      "sha256": "92a6933bdf2420253f07e8f3bf8090af560e85bde96101da127a95eaba912e2b",
+      "referenced_from": [
+        "closure/entry.md:13"
+      ]
+    },
+    {
+      "path": "closure/helpers/emitted.js",
+      "kind": "source",
+      "load": "direct",
+      "size": 171,
+      "sha256": "6dd07de917a5fe5207bc3760b8f2b435d032dcaf65f7b113f4b9ef006b6e6aff",
+      "referenced_from": [
+        "closure/helpers/esm.ts:18"
+      ]
+    },
+    {
+      "path": "closure/helpers/esm.ts",
+      "kind": "source",
+      "load": "direct",
+      "size": 1076,
+      "sha256": "5a08f4dd89224a97255e3f34430faea57a62821eabd2f32d947ae95bec5bf9dc",
+      "referenced_from": [
+        "closure/entry.md:43"
+      ]
+    },
+    {
+      "path": "closure/helpers/imports.ts",
+      "kind": "source",
+      "load": "direct",
+      "size": 883,
+      "sha256": "11eaca983fc5d579ccae6020273d239c2b57778aa6e3ce406b6ed8c576b348ff",
+      "referenced_from": [
+        "closure/entry.md:38",
+        "closure/helpers/local.ts:1"
+      ]
+    },
+    {
+      "path": "closure/helpers/legacy.cts",
+      "kind": "source",
+      "load": "direct",
+      "size": 25,
+      "sha256": "e4a7fd68bea1a8919d2a7eae1b4008fca3d2b3e3560cdb03aeba38043809bad6",
+      "referenced_from": [
+        "closure/helpers/esm.ts:12"
+      ]
+    },
+    {
+      "path": "closure/helpers/local.ts",
+      "kind": "source",
+      "load": "direct",
+      "size": 243,
+      "sha256": "14fb3a543adaf7cba2ccb3bf2fc3059c98aaf4015d36e2964069496364818b86",
+      "referenced_from": [
+        "closure/helpers/imports.ts:14"
+      ]
+    },
+    {
+      "path": "closure/helpers/modern.mts",
+      "kind": "source",
+      "load": "direct",
+      "size": 25,
+      "sha256": "9e6ca574fee74740fd1287ced61d2e624381f96fa68e999c6997959cd6ec5673",
+      "referenced_from": [
+        "closure/helpers/esm.ts:11"
+      ]
+    },
+    {
+      "path": "closure/helpers/payload.bin",
+      "kind": "binary",
+      "load": "direct",
+      "size": 109,
+      "sha256": "8bd4263270ebe33447c2bb45ad1415789dae745e1a2149935c043f5c8bb450a5",
+      "referenced_from": [
+        "closure/entry.md:22",
+        "closure/helpers/run.sh:6"
+      ]
+    },
+    {
+      "path": "closure/helpers/progressive.md",
+      "kind": "data",
+      "load": "conditional",
+      "size": 497,
+      "sha256": "48bc01d26c95dfc7849eb9257f7ce37da542ca22de392bf1f3394c5ace8a17e7",
+      "referenced_from": [
+        "closure/entry.md:16",
+        "closure/helpers/calls.py:19"
+      ]
+    },
+    {
+      "path": "closure/helpers/run.sh",
+      "kind": "source",
+      "load": "direct",
+      "size": 280,
+      "sha256": "e8dbbd3846cb697aaea18c9b3492171a40892bbe7a93c9244243e437b12ad943",
+      "referenced_from": [
+        "closure/entry.md:21",
+        "closure/helpers/direct.md:6",
+        "closure/helpers/progressive.md:6"
+      ]
+    },
+    {
+      "path": "closure/helpers/toggle-subscriber-updates.ts",
+      "kind": "source",
+      "load": "direct",
+      "size": 43,
+      "sha256": "0c7a838a02c440e9a02adbfb28eb72c6b044a915362f98ed68283182ddcd59ea",
+      "referenced_from": [
+        "closure/helpers/esm.ts:10"
+      ]
+    },
+    {
+      "path": "closure/helpers/widget.tsx",
+      "kind": "source",
+      "load": "direct",
+      "size": 34,
+      "sha256": "d810c4072c897c9bae665906fb3582523ba37075e49ffdfd068ec49f946075d2",
+      "referenced_from": [
+        "closure/helpers/esm.ts:13"
+      ]
+    },
+    {
+      "path": "closure/uv.lock",
+      "kind": "data",
+      "load": "direct",
+      "size": 922,
+      "sha256": "9ace529ca80dfa306640245afe7f9ce0f7165df612fce9988faf1cf424b2b2ac",
+      "referenced_from": [
+        "closure/entry.md:39"
+      ]
+    },
+    {
+      "path": "mcp/.mcp.json",
+      "kind": "data",
+      "load": "direct",
+      "size": 269,
+      "sha256": "deca15f1f00bab3742857f0a125dd984baf39c76e668de108e7779327ef2feb1",
+      "referenced_from": []
+    },
+    {
+      "path": "plugin/hooks/hooks.json",
+      "kind": "data",
+      "load": "direct",
+      "size": 253,
+      "sha256": "93b895ff988fea58afedc65ac1c55d78a7c986fe98ecad2a32ddea66218341cb",
+      "referenced_from": []
+    },
+    {
+      "path": "skills/quiet/SKILL.md",
+      "kind": "data",
+      "load": "direct",
+      "size": 456,
+      "sha256": "d6ca6d0312891e0b26e2ef80102864bfcd4c740e6d7e3f3712bd068fb9ba584b",
+      "referenced_from": []
+    }
+  ],
+  "unresolved": [
+    {
+      "reference": "../../../outside/notes.md",
+      "load": "direct",
+      "rule_id": "closure.escaping_reference",
+      "reason": "resolves outside the target root and was not read (P9)",
+      "referenced_from": [
+        "closure/entry.md:29"
+      ]
+    },
+    {
+      "reference": "./guard.sh",
+      "load": "direct",
+      "rule_id": "closure.missing_reference",
+      "reason": "no file at that path in the target",
+      "referenced_from": [
+        "plugin/hooks/hooks.json:6"
+      ]
+    },
+    {
+      "reference": "./hello.sh",
+      "load": "direct",
+      "rule_id": "closure.missing_reference",
+      "reason": "no file at that path in the target",
+      "referenced_from": [
+        "plugin/hooks/hooks.json:10"
+      ]
+    },
+    {
+      "reference": "helpers/absent.md",
+      "load": "direct",
+      "rule_id": "closure.missing_reference",
+      "reason": "no file at that path in the target",
+      "referenced_from": [
+        "closure/entry.md:32"
+      ]
+    },
+    {
+      "reference": "https://example.invalid/closure/rules.json",
+      "load": "fetch",
+      "rule_id": "closure.remote_resource",
+      "reason": "names a https resource; nothing here fetches it (STACK.md §2.1 forbids runtime network calls)",
+      "referenced_from": [
+        "closure/entry.md:25"
+      ]
+    },
+    {
+      "reference": "https://example.invalid/skill/rules.json",
+      "load": "fetch",
+      "rule_id": "closure.remote_resource",
+      "reason": "names a https resource; nothing here fetches it (STACK.md §2.1 forbids runtime network calls)",
+      "referenced_from": [
+        "closure/SKILL.md:17"
+      ]
+    },
+    {
+      "reference": "https://mcp.example.invalid/search",
+      "load": "fetch",
+      "rule_id": "closure.remote_resource",
+      "reason": "names a https resource; nothing here fetches it (STACK.md §2.1 forbids runtime network calls)",
+      "referenced_from": [
+        "mcp/.mcp.json:10"
+      ]
+    }
+  ],
+  "prose": [
+    {
+      "path": "closure/SKILL.md",
+      "lines": 21
+    },
+    {
+      "path": "closure/entry.md",
+      "lines": 45
+    },
+    {
+      "path": "closure/helpers/cyclé.md",
+      "lines": 14
+    },
+    {
+      "path": "closure/helpers/direct.md",
+      "lines": 8
+    },
+    {
+      "path": "closure/helpers/progressive.md",
+      "lines": 10
+    },
+    {
+      "path": "mcp/.mcp.json",
+      "lines": 13
+    },
+    {
+      "path": "plugin/hooks/hooks.json",
+      "lines": 13
+    },
+    {
+      "path": "skills/quiet/SKILL.md",
+      "lines": 13
+    }
+  ],
+  "unreachable": [
+    "README.md",
+    "assets/blob.bin",
+    "cli/pyproject.toml",
+    "crlf_module.py",
+    "exports/__init__.py",
+    "mcp/lowlevel.py",
+    "mcp/server.py",
+    "naïve-café.py",
+    "pkg/deep/nested.py",
+    "rules/deser.unsafe/negative.py",
+    "rules/deser.unsafe/positive.py",
+    "rules/exec.dynamic/negative.py",
+    "rules/exec.dynamic/positive.py",
+    "rules/exec.shell_true/negative.py",
+    "rules/exec.shell_true/positive.py",
+    "rules/fs.agent_config_write/negative.txt",
+    "rules/fs.agent_config_write/positive.txt",
+    "rules/instruction.approval_bypass/negative.md",
+    "rules/instruction.approval_bypass/positive.md",
+    "rules/instruction.authority_claim/negative.md",
+    "rules/instruction.authority_claim/positive.md",
+    "rules/instruction.conceal_action/negative.md",
+    "rules/instruction.conceal_action/positive.md",
+    "rules/instruction.exfiltrate/negative.md",
+    "rules/instruction.exfiltrate/positive.md",
+    "rules/instruction.install_component/negative.md",
+    "rules/instruction.install_component/positive.md",
+    "rules/instruction.override_prior/negative.md",
+    "rules/instruction.override_prior/positive.md",
+    "rules/instruction.write_outside/negative.md",
+    "rules/instruction.write_outside/positive.md",
+    "rules/log.sensitive/negative.txt",
+    "rules/log.sensitive/positive.txt",
+    "rules/manifest.broad_activation/negative.yaml",
+    "rules/manifest.broad_activation/positive.yaml",
+    "rules/manifest.filesystem_scope/negative.yaml",
+    "rules/manifest.filesystem_scope/positive.yaml",
+    "rules/manifest.hook_rewrite_event/negative.json",
+    "rules/manifest.hook_rewrite_event/positive.json",
+    "rules/manifest.network_permission/negative.json",
+    "rules/manifest.network_permission/positive.json",
+    "rules/manifest.wildcard_grant/negative.json",
+    "rules/manifest.wildcard_grant/positive.json",
+    "rules/net.bind_all/negative.txt",
+    "rules/net.bind_all/positive.txt",
+    "rules/net.fetch_exec/negative.txt",
+    "rules/net.fetch_exec/positive.txt",
+    "rules/path.traversal/negative.py",
+    "rules/path.traversal/positive.py",
+    "rules/tls.verify_off/negative.py",
+    "rules/tls.verify_off/positive.py",
+    "structural/structure.built_value_into_sink/negative.py",
+    "structural/structure.built_value_into_sink/positive.py",
+    "structural/structure.denylist_decision/negative.py",
+    "structural/structure.denylist_decision/positive.py",
+    "structural/structure.permission_after_creation/negative.py",
+    "structural/structure.permission_after_creation/positive.py",
+    "structural/structure.unvalidated_path_reach/negative.py",
+    "structural/structure.unvalidated_path_reach/positive.py"
+  ],
+  "coverage_gaps": [
+    "closure: members in a code language no rule set reads — structural rules are Python only, and the catalog's code patterns declare their own languages: closure/helpers/emitted.js, closure/helpers/esm.ts, closure/helpers/imports.ts, closure/helpers/legacy.cts, closure/helpers/local.ts, and 4 more — the full list is members[]",
+    "closure: members in an extension naming no language this tool knows — so no rule set claims it and nothing decided whether it is code: closure/uv.lock",
+    "closure: 59 inventoried file(s) are reached by no declared entry point and are therefore outside the closure: README.md, assets/blob.bin, cli/pyproject.toml, crlf_module.py, exports/__init__.py, and 54 more — the full list is unreachable[]. Each is either loaded by a mechanism this tool did not see or not loaded at all; which one is a question for the reader (P9)",
+    "closure: references are read line by line, so a path built from variables, concatenated, or split across lines is not seen",
+    "closure: a reference is recognised by its file suffix or by a Markdown link target, so a directory, an extensionless script, or a bare module name named in prose is not followed",
+    "closure: whether a member is loaded conditionally is read from words on the referring line, which paraphrase defeats — the label never removes a member from the closure, so a wrong label costs a row and not a file",
+    "closure: a resource named for fetching is recorded and never fetched (STACK.md §2.1 forbids runtime network calls), so what it would have contained is unreviewed by construction (FR-1.2)",
+    "closure: a member that is binary, unreadable, not a regular file, or past the size bound is in the closure and is not read, so references inside it are not followed",
+    "closure: a citation in prose outside a declared entry point does not get its own ledger record — the paths one file names and the target does not contain are grouped into one record for that file, listing them all. Evidence of loading is not grouped: a reference from code or a manifest, a path leaving the tree, and a URL in a file an agent loads verbatim each keep their own record. **The residual cost**: a non-root member loaded on demand gets one record listing every URL it names, where a root file would get one each — the full read FR-3.15 requires of prose in the closure is what covers those individually",
+    "closure: a lockfile is a member and is not read for references — its content is resolved dependency metadata, and FR-0.3 puts dependency behaviour out of scope by default. What a package manager will install is pinned there and is not reviewed here: Cargo.lock, Gemfile.lock, composer.lock, package-lock.json, pnpm-lock.yaml, poetry.lock, uv.lock, yarn.lock",
+    "closure: an import specifier that does not start with `.` or `/` is read as a package rather than a path, because it resolves out of a dependency directory the walk excludes — so a dependency the artifact declares is not reported as a file it is missing, and equally is not reviewed",
+    "closure: a token followed by `(` is read as a call rather than a path, so a method whose name is spelled like an extension — `response.json()` — is not a reference. A file genuinely named in a call's argument is still found, because the argument is a separate token",
+    "closure: a reference is resolved relative to the referring file, then relative to the target root, then by filename when it names no directory — so a name matching one file somewhere in the target is reported as that file even where the line meant another, which over-reports a member rather than missing one (P4, P6)"
+  ]
+}
