@@ -172,23 +172,31 @@ prevent, and M4's F2 found three documents asserting mechanisms that had been re
       silence (FR-3.8).
 - [x] **E2 — `secrev closure` honours the exit-code contract**: 0 success, 2 usage or config error
       including a malformed pack, 3 internal error. Evidence: one case each.
-- [ ] **F1 — The tool runs on itself and the result is read, not assumed.** `secrev closure .` over
+- [x] **F1 — The tool runs on itself and the result is read, not assumed.** `secrev closure .` over
       this repository, and every candidate the two new packs raise against `.claude/` resolved under
       P4 — this repository *is* an agentic artifact, and the instruction layer is the one place
       where that is not a cute observation.
 
-      **Half done, and held open deliberately.** The reading happened and changed the work: 373
-      candidates, 202 in `.claude/`, and two of M5's own patterns were corrected because of what
-      the output showed — `manifest.hook_rewrite_event`'s precision and
-      `manifest.wildcard_grant`'s `deny` key. The closure was run on this repository four times
-      and the roots were rewritten because of the fourth. All of that is in
-      `.claude/TASKS_M5.md` and `.claude/receipts.md`.
+      **The reading changed the work**, which is the half that cannot be faked: two of M5's own
+      patterns were corrected because of what the output showed, and the closure's roots were
+      rewritten because of the fourth run over this repository.
 
-      What is *not* done is the second clause: the 202 were resolved as five classes, not
-      individually. P4 says every candidate, and 202 individual resolutions need the triage
-      mechanism `verify_ledger` provides — which is M7. Ticking this on the class resolution
-      would be reading the box as it is convenient rather than as it is written. The open
-      question it depends on is recorded: whether P4 admits resolving a class in one paragraph.
+      **Every committed `.claude/` candidate is resolved per candidate**, in
+      `tests/golden/f1_resolutions.md` — one row each, seven classes, and every row carrying one
+      instance-level fact. The owner's reading of P4 is what made that admissible and it is
+      recorded as the answer to the M7 question: **P4 forbids unexamined membership, not shared
+      reasoning.** `tests/test_f1_resolutions.py` asserts row count equals candidate count both
+      ways, so a class resolution cannot quietly cover all but one. No count is pinned here: the
+      table is content-keyed and the generated file is where the number is current.
+
+      Two things worth carrying out of it. **Closure membership could not do the classifying** —
+      when measured, 159 of 175 sat in files that *are* closure members, including the receipts
+      and the guard sources, so the discriminator had to be what the *client* loads. And the
+      computed fact for
+      `executed-not-loaded` found its own negative cases: three records are not in comments but in
+      a docstring or in `hook_ask.py`'s `"hookEventName": "PreToolUse"`, which is the protocol's
+      own field in the code that emits it. A fact that is checked rather than asserted is what
+      surfaced them.
 - [ ] **F2 — Every document claim this milestone makes is true or gone**, searched with
       `git grep -n "<old name>"` from the root, **no pathspec**, with the candidate names derived
       from `git log -p` rather than recalled. Every hit sorted into false, true-for-the-old-reason,

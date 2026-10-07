@@ -145,13 +145,63 @@ owner; each is noted because a later reader would otherwise have to re-derive it
       the target declares. Each fix was right and none of them made the number
       small, which is what the roots entry above is about.
 
-      The question that remains for M7 either way: FR-4.3 refuses to render a
-      report while any hit is unresolved, so **does P4's "every candidate is
-      resolved" admit resolving a *class* in one paragraph?** The bulk of these
-      are documentation naming example files, which is honest low precision
-      under P4 — a false positive costs a paragraph and a miss is a silent gap —
-      but a thousand paragraphs is not a review. Not M5's to answer: the answer
-      is a triage rule.
+      The question that remains: FR-4.3 refuses to render a report while any hit
+      is unresolved, so what does P4's "every candidate is resolved" permit? The
+      bulk of these are documentation naming example files, which is honest low
+      precision under P4 — a false positive costs a paragraph and a miss is a
+      silent gap — but a thousand paragraphs is not a review.
+
+## The answer to that question, given by the owner (2026-10-07)
+
+**P4 forbids unexamined membership, not shared reasoning.** A class resolution is
+admissible when the row for each candidate carries one *instance-level* fact
+showing the class condition holds for that candidate. A paragraph standing in for
+175 reads is not; 175 rows sharing seven paragraphs and each carrying its own
+evidence is.
+
+It is implemented rather than only written down, in `tests/f1_resolutions.py` and
+`tests/golden/f1_resolutions.md`, which resolve every committed `.claude/`
+candidate that way — and `tests/test_f1_resolutions.py` asserts row count equals
+candidate count **in both directions**, because the failure a class resolution
+actually has is looking complete while covering all but one.
+
+**No count is written in this file either, and that is the demonstration rather
+than an omission.** This ledger is under `.claude/`, so its own prose produces
+candidates: writing "there are N" here is writing a figure that the act of
+writing it invalidates. The count lives in the generated table. Adding the
+entries below moved the table by 13 new rows and 10 re-identified ones, every one
+of them in this file and `receipts.md`.
+
+Three things came out of building it that M7 will need:
+
+- **Closure membership cannot do the classifying, measured.** The first idea was
+  to let the closure resolve these: a candidate in a file no declared entry point
+  reaches is a record about the repository rather than content a client loads,
+  which would be P9 doing exactly what it is for. When measured, **159 of 175
+  sat in files that *are* closure members** — the receipts, the ledgers, the guard sources —
+  because of the prose-citation chains above. So the discriminator is a property
+  of the *host*: which paths it reads into a context window, which it executes,
+  which it never opens. That is written down as a fact about the host, and it
+  will be wrong for a client that behaves differently.
+- **The gap the table crosses is `is_prose` answering the wrong question.**
+  `is_prose` says whether a format holds prose; the resolution turns on whether
+  anything *loads* the file. An instruction-layer pattern can only ask the first.
+  If the closure's over-breadth is ever settled, applying the instruction pack to
+  prose **in the closure** rather than to prose by format is the shape to try,
+  and it needs the phase ordering M6 owns — the closure would have to run before
+  the sweep.
+- **A fact that is computed finds its own negative cases.** The
+  `executed-not-loaded` rows carry where in the source the match sits, computed
+  rather than asserted, and three came back as not-a-comment: two module
+  docstrings and `hook_ask.py`'s `"hookEventName": "PreToolUse"`, which is the
+  hook protocol's own field name in the code that emits it. A phrase from a table
+  would have labelled all 22 identically and hidden them.
+
+The table is content-keyed and will go stale: a candidate id derives from
+`(path, rule_id, window_sha256, ordinal)`, so editing any file under `.claude/`
+re-identifies the candidates in it. The test names the ids that gained or lost a
+row, which is FR-4.6 arriving by hand — and the two failures are different jobs,
+one regenerating a table and one re-reading content whose resolution expired.
 
 ## The roots were wrong, and what fixing them did and did not fix
 
