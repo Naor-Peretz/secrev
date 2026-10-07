@@ -20,6 +20,22 @@ class resolution can get wrong:
 This module skips entirely when `.claude/` is absent. A contributor without
 Claude Code should not have their build fail on a layer they never run, which is
 the same boundary `scripts/check.sh` keeps by not mentioning `.claude` at all.
+
+**If this is red and you were editing the harness, that is the expected order of
+operations and not a defect.** The table is keyed on candidate ids, which are
+keyed on content, so *any* write under `.claude/` makes it stale until it is
+regenerated — and the background gate fires on the write rather than at the end
+of the job, so it will go red mid-edit and green again after the regeneration.
+This was observed on the commit that introduced the table: a run between the
+ledger edit and the regeneration reported exactly this.
+
+Every golden here has that property — editing a fixture reddens `hits.jsonl`
+until it is regenerated — and the only thing special about this one is that
+`.claude/` is edited far more often than `tests/fixtures/`. So the rule is an
+ordering rule rather than a code change: **regenerate this table after the last
+`.claude/` write of a change, not before.** Weakening the comparison to the row
+*set* would hide a moved line number, which is a real change: a window is ±20
+lines, so an insertion further out shifts the line and leaves the id alone.
 """
 
 from __future__ import annotations
