@@ -72,6 +72,21 @@ SEEDS = {
     "deser.unsafe": "yaml.load(",
     "tls.verify_off": "verify=False ",
     "path.traversal": "Path(",
+    # The M5 instruction pack. Every one of these rules is a verb alternation
+    # followed by a bounded `[^\n]{0,N}` gap and a second alternation, which is
+    # precisely the shape the four quadratic patterns had before M3.5 bounded
+    # them — so the seed for each is its *verb*, repeated, which offers a start
+    # position every few characters and never satisfies the second half. That is
+    # the worst case: the engine scans the whole gap from every start and finds
+    # nothing.
+    "instruction.approval_bypass": "skip ",
+    "instruction.authority_claim": "you are ",
+    "instruction.override_prior": "ignore ",
+    "instruction.conceal_action": "do not ",
+    "instruction.write_outside": "write ",
+    # The widest gap in the pack at `{0,64}`, and the one worth watching.
+    "instruction.exfiltrate": "token ",
+    "instruction.install_component": "install ",
     # Surface kinds. Most are `^`-anchored, which allows one start per line and
     # so is linear by construction — measured anyway rather than reasoned about,
     # because "anchored so it must be fine" is the argument that let four

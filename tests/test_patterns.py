@@ -64,7 +64,10 @@ def test_the_shipped_catalog_loads_and_is_the_expected_size() -> None:
     §7's last DoD item requires flagging a path-validation region and no
     original seed pattern touched path handling (§6)."""
     loaded = load(PACKS)
-    assert len(loaded.patterns) == 9
+    # Nine until M5, which is the first milestone since M1 permitted to write
+    # `patterns/` — and permitted by filename, not by directory. Seven
+    # instruction-layer patterns, one per FR-3.13 class.
+    assert len(loaded.patterns) == 16
     # **Per pack since M5** (owner decision, 2026-10-07). This asserted one
     # `loaded.version`, which is gone: a pack's version is what its own records
     # carry, because one derived version hides a bump in every pack but the
@@ -77,9 +80,19 @@ def test_the_shipped_catalog_loads_and_is_the_expected_size() -> None:
     # to a test rather than pass unnoticed.
     assert dict(loaded.versions) == {
         "_base.yaml": "2026.09.3",
+        "_instruction.yaml": "2026.10.1",
         "python.yaml": "2026.09.3",
     }
-    assert {pattern.pack_version for pattern in loaded.patterns} == {"2026.09.3"}
+    # **The point of the whole change, asserted:** M1's packs keep 2026.09.3
+    # while the new pack carries its own version, so adding a pack did not
+    # re-version a single existing record and the ledger golden did not move.
+    assert {pattern.pack_version for pattern in loaded.patterns} == {
+        "2026.09.3",
+        "2026.10.1",
+    }
+    assert {pattern.pack_version for pattern in loaded.patterns if pattern.layer == ("code",)} == {
+        "2026.09.3"
+    }
 
 
 def test_every_pattern_has_a_fixture_directory(catalog: Catalog) -> None:
@@ -131,9 +144,28 @@ def test_precision_low_is_present_and_is_not_a_defect(catalog: Catalog) -> None:
     """§4 calls `precision: low` first-class and expected. Asserted so that a
     later tidy toward "high precision everywhere" fails loudly — under P4 every
     candidate is resolved anyway, so a false positive costs a paragraph while a
-    miss is a silent gap."""
+    miss is a silent gap.
+
+    **Widened in M5, deliberately rather than by regenerating a set.** The
+    assertion used to pin two code patterns. Every instruction-layer pattern is
+    `low` and must be: FR-3.15 says natural language has no fixed syntax and
+    paraphrase defeats regex, so the attacker's cheapest move against this pack
+    is a rewording, and recall is the only thing worth optimising. A tidy that
+    raised one of them would be claiming a precision the layer cannot have.
+    """
     low = {pattern.id for pattern in catalog.patterns if pattern.precision == "low"}
-    assert low == {"log.sensitive", "path.traversal"}
+    code_low = {
+        pattern.id
+        for pattern in catalog.patterns
+        if pattern.precision == "low" and pattern.layer == ("code",)
+    }
+    assert code_low == {"log.sensitive", "path.traversal"}
+
+    instruction = {pattern.id for pattern in catalog.patterns if pattern.layer == ("instruction",)}
+    assert instruction <= low, (
+        "an instruction-layer pattern claiming better than low precision: "
+        f"{sorted(instruction - low)}. FR-3.15 is a permanent constraint"
+    )
 
 
 def test_agent_config_rule_is_case_insensitive(catalog: Catalog) -> None:

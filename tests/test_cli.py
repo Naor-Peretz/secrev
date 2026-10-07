@@ -401,6 +401,7 @@ def test_run_json_keeps_one_entry_per_command(tmp_path: Path) -> None:
     # its records carry, so a run has to record every pack it ran against.
     assert document["sweep"]["pack_versions"] == {
         "_base.yaml": "2026.09.3",
+        "_instruction.yaml": "2026.10.1",
         "python.yaml": "2026.09.3",
     }
     assert document["surfaces"]["window_spec"] == "decl-20"

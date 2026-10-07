@@ -26,6 +26,20 @@
       "rules/exec.shell_true/positive.py",
       "rules/fs.agent_config_write/negative.txt",
       "rules/fs.agent_config_write/positive.txt",
+      "rules/instruction.approval_bypass/negative.md",
+      "rules/instruction.approval_bypass/positive.md",
+      "rules/instruction.authority_claim/negative.md",
+      "rules/instruction.authority_claim/positive.md",
+      "rules/instruction.conceal_action/negative.md",
+      "rules/instruction.conceal_action/positive.md",
+      "rules/instruction.exfiltrate/negative.md",
+      "rules/instruction.exfiltrate/positive.md",
+      "rules/instruction.install_component/negative.md",
+      "rules/instruction.install_component/positive.md",
+      "rules/instruction.override_prior/negative.md",
+      "rules/instruction.override_prior/positive.md",
+      "rules/instruction.write_outside/negative.md",
+      "rules/instruction.write_outside/positive.md",
       "rules/log.sensitive/negative.txt",
       "rules/log.sensitive/positive.txt",
       "rules/net.bind_all/negative.txt",
@@ -283,6 +297,118 @@
       "referenced_from": []
     },
     {
+      "path": "rules/instruction.approval_bypass/negative.md",
+      "kind": "data",
+      "load": "direct",
+      "size": 388,
+      "sha256": "055e7131e28dbd11b387ac4fbfc0098a55b2ea4a6b3bca60b8f93a07d7413ac7",
+      "referenced_from": []
+    },
+    {
+      "path": "rules/instruction.approval_bypass/positive.md",
+      "kind": "data",
+      "load": "direct",
+      "size": 313,
+      "sha256": "60f7aed422c4ccc7fd8e3044e1cb5c506c29fa1b23d934cb371ee28b64305cec",
+      "referenced_from": []
+    },
+    {
+      "path": "rules/instruction.authority_claim/negative.md",
+      "kind": "data",
+      "load": "direct",
+      "size": 427,
+      "sha256": "00efe3ff79273ce801f15c8cf642fdd7ef4e43f3a3e135adebedfe6e93f68aa4",
+      "referenced_from": []
+    },
+    {
+      "path": "rules/instruction.authority_claim/positive.md",
+      "kind": "data",
+      "load": "direct",
+      "size": 323,
+      "sha256": "209a91b1b9acef9ce9433b080fe0ff716982abd793994a88696b9357f49edd38",
+      "referenced_from": []
+    },
+    {
+      "path": "rules/instruction.conceal_action/negative.md",
+      "kind": "data",
+      "load": "direct",
+      "size": 362,
+      "sha256": "2152a2168dba17debe20ec9f3d0919d0aa29e306b28de548e2e4672d3f8f96be",
+      "referenced_from": []
+    },
+    {
+      "path": "rules/instruction.conceal_action/positive.md",
+      "kind": "data",
+      "load": "direct",
+      "size": 253,
+      "sha256": "cb8b17b03a2aaaa0631d78bafa0b969993e52509f86f4a8d8d725e29af291870",
+      "referenced_from": []
+    },
+    {
+      "path": "rules/instruction.exfiltrate/negative.md",
+      "kind": "data",
+      "load": "direct",
+      "size": 401,
+      "sha256": "e6440ffc44b69760af3b36ec384bb3a48cac2983938007b158c6d0d3c8bfabeb",
+      "referenced_from": []
+    },
+    {
+      "path": "rules/instruction.exfiltrate/positive.md",
+      "kind": "data",
+      "load": "direct",
+      "size": 323,
+      "sha256": "4d65f8f24fdea192168596eb0453f889c41952b13201e1e5dc9c8f04278e831c",
+      "referenced_from": []
+    },
+    {
+      "path": "rules/instruction.install_component/negative.md",
+      "kind": "data",
+      "load": "direct",
+      "size": 375,
+      "sha256": "df448b913e9144932797a79cc16ffd7045617ab2b2adebd1d31582abb49e8bd2",
+      "referenced_from": []
+    },
+    {
+      "path": "rules/instruction.install_component/positive.md",
+      "kind": "data",
+      "load": "direct",
+      "size": 263,
+      "sha256": "9bdfc5a79cc58a9443664d5f51efa9225f3246f962e274e6da1490962d393d1e",
+      "referenced_from": []
+    },
+    {
+      "path": "rules/instruction.override_prior/negative.md",
+      "kind": "data",
+      "load": "direct",
+      "size": 457,
+      "sha256": "a8014892d8827a04cefec660158c5f9a51575743711087da02c48c40b8006236",
+      "referenced_from": []
+    },
+    {
+      "path": "rules/instruction.override_prior/positive.md",
+      "kind": "data",
+      "load": "direct",
+      "size": 270,
+      "sha256": "e40e1cc4785623a1bf77d5edf0ac1507661cc75652d39d279c8cfc0fdd4b9257",
+      "referenced_from": []
+    },
+    {
+      "path": "rules/instruction.write_outside/negative.md",
+      "kind": "data",
+      "load": "direct",
+      "size": 375,
+      "sha256": "bc87abc09596295af180983d5c5ec1e45952e556cb03a32520f9c1c9d3df74d2",
+      "referenced_from": []
+    },
+    {
+      "path": "rules/instruction.write_outside/positive.md",
+      "kind": "data",
+      "load": "direct",
+      "size": 290,
+      "sha256": "ac4a35c8c2deaadb9bc4c7e7793b45379065932212aa03b3b856acfa00c378c1",
+      "referenced_from": []
+    },
+    {
       "path": "rules/log.sensitive/negative.txt",
       "kind": "data",
       "load": "direct",
@@ -466,6 +592,15 @@
       ]
     },
     {
+      "reference": ".claude/settings.json",
+      "load": "direct",
+      "rule_id": "closure.missing_reference",
+      "reason": "no file at that path in the target",
+      "referenced_from": [
+        "rules/instruction.write_outside/positive.md:5"
+      ]
+    },
+    {
       "reference": "STACK.md",
       "load": "direct",
       "rule_id": "closure.missing_reference",
@@ -506,6 +641,15 @@
       "reason": "no file at that path in the target",
       "referenced_from": [
         "closure/entry.md:32"
+      ]
+    },
+    {
+      "reference": "https://collect.example.invalid/v1/events",
+      "load": "fetch",
+      "rule_id": "closure.remote_resource",
+      "reason": "names a https resource; nothing here fetches it (STACK.md §2.1 forbids runtime network calls)",
+      "referenced_from": [
+        "rules/instruction.exfiltrate/positive.md:3"
       ]
     },
     {
@@ -552,6 +696,24 @@
       "reason": "names a https resource; nothing here fetches it (STACK.md §2.1 forbids runtime network calls)",
       "referenced_from": [
         "mcp/.mcp.json:10"
+      ]
+    },
+    {
+      "reference": "https://metrics.example.invalid/ingest",
+      "load": "fetch",
+      "rule_id": "closure.remote_resource",
+      "reason": "names a https resource; nothing here fetches it (STACK.md §2.1 forbids runtime network calls)",
+      "referenced_from": [
+        "rules/instruction.exfiltrate/positive.md:10"
+      ]
+    },
+    {
+      "reference": "https://spec.example.invalid/format",
+      "load": "fetch",
+      "rule_id": "closure.remote_resource",
+      "reason": "names a https resource; nothing here fetches it (STACK.md §2.1 forbids runtime network calls)",
+      "referenced_from": [
+        "rules/instruction.exfiltrate/negative.md:4"
       ]
     },
     {
