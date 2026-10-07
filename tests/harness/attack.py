@@ -282,6 +282,38 @@ def test_determinism_guard_speaks_on_structure_before_it_exists() -> None:
         )
 
 
+def test_determinism_guard_speaks_on_closure_before_it_exists() -> None:
+    """`BRIEF_M5.md` C2, and the fourth milestone to take this step first.
+
+    `closure.py` does not exist. It is named in `is_nfr3_path` anyway, because
+    the write that decides traversal order, normalisation and identity is the
+    *first* one, and a determinism check added afterwards is a retrofit onto
+    code composed without it (D-4).
+
+    **What this is not: the golden test.** The brief's step 1 says the golden
+    test for `closure.json` comes first too, and taken literally that is a test
+    with no generator — a red gate rather than a guard, since this repository
+    does not use expected-failure markers. The golden lands in the same commit
+    as `closure.py`, written before the code inside that commit. What can
+    genuinely precede the file is this: the guard speaking on it.
+    """
+    relative = "src/secrev/closure.py"
+    assert not (REPO / relative).exists(), (
+        "closure.py exists now, so this assertion has stopped testing what it "
+        "says — rename it and keep the determinism coverage in its golden test"
+    )
+    for path in (str(REPO / relative), relative):
+        rc, out, _ = run_hook("determinism-guard.sh", write_payload(path, ""))
+        assert rc == PASS_THROUGH, (
+            f"got rc={rc} for {path}. rc=2 means the determinism check it re-ran failed — "
+            "read the determinism stage of the gate, not this assertion."
+        )
+        assert "closure.py" in out and "NFR-3" in out, (
+            "touching closure.py must restate the determinism rules — is_nfr3_path "
+            "in .claude/hooks/lib/paths.sh does not name it"
+        )
+
+
 # ----------------------------------------------------------------- plan-review
 
 

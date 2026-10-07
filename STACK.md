@@ -94,7 +94,7 @@ Binding consequences:
   `.github/requirements/audit.txt`.
 - **`gitleaks` is installed from a pinned, hash-verified release tarball.** Not
   `curl … | sh`, and not `gitleaks/gitleaks-action`: the first is
-  `net.fetch_exec`, one of the eight seed patterns this project ships, and the
+  `net.fetch_exec`, one of the nine patterns this project ships, and the
   second is a third-party action with access to the checkout when a checksum
   achieves the same thing. It is an external binary rather than a Python
   dependency, so it is not in `pyproject.toml` and absent it the gate exits 2.
@@ -126,7 +126,7 @@ Binding consequences:
 
   This reverses an earlier decision in this file, and the reason is the tool's own subject matter.
   `uv`'s advertised install is `curl … | sh` — a fetched script piped straight into a shell, which
-  is `net.fetch_exec`, one of the eight seed patterns this project ships. A scanner that flags that
+  is `net.fetch_exec`, one of the nine patterns this project ships. A scanner that flags that
   construct and then installs itself with it cannot defend the finding. The objection is to the
   *method*, not the tool: `pipx install uv` or a distribution package carry none of it. But with
   four dev dependencies `uv` buys nothing over stdlib `venv`, so the tie goes to the option with no
@@ -139,9 +139,22 @@ Binding consequences:
   secrev sweep    <target>            → hits.jsonl   (M1)
   secrev surfaces <target>            → hits.jsonl   (M2)
   secrev structure <target>           → hits.jsonl   (M4)
+  secrev closure  <target>            → closure.json + hits.jsonl   (M5)
   secrev verify   <workspace>         → gate         (M7)
   secrev report   <workspace>         → report.md    (M9)
   ```
+
+  **`closure` is its own command** (M5, owner decision; `BRIEF_M5.md` §6 Q5), for four reasons and
+  not by preference. The PRD defines `closure.json` as an artifact in its own right. `recon`
+  defines itself as declared metadata only and says deeper enumeration is not to be attempted
+  there, while a closure is exactly the resolution of references. After Q1 the closure writes
+  ledger records, so folding it into `recon` would make `recon` a candidate source and break the
+  boundary P11 exists to keep. And every other thing that writes to the ledger has its own command
+  and its own block.
+
+  *The list above said six commands and the brief that raised Q5 said it listed five.* Both were
+  read rather than counted; the brief's claim is the kind of error F2 exists to catch, found by the
+  owner in review.
 
 - **Exit codes** — fixed now so the gate is scriptable and hooks can rely on it:
 

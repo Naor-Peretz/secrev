@@ -182,6 +182,14 @@ is_nfr3_path() {
       src/secrev/ledger.py|*/src/secrev/ledger.py) return 0 ;;
       src/secrev/structure.py|*/src/secrev/structure.py) return 0 ;;
       src/secrev/parser.py|*/src/secrev/parser.py) return 0 ;;
+      # closure.py (M5), named **before the file exists** — the step M1, M2 and
+      # M4 each took first. A new generator of deterministic output is silent
+      # under `determinism-guard.sh` until it is listed here, and the one write
+      # that decides traversal order, normalisation and identity is the first
+      # one. A determinism check added afterwards is a retrofit onto code
+      # composed without it, which is the one requirement that does not survive
+      # being retrofitted (D-4).
+      src/secrev/closure.py|*/src/secrev/closure.py) return 0 ;;
       *) return 1 ;;
     esac
 }

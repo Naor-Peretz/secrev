@@ -362,14 +362,16 @@ case "$MILESTONE" in
   # no existing question changes — and the positive/negative fixture pair every
   # pattern ships is what catches that.
   #
-  # **And `patterns/` is permitted on the assumption §6 Q2 resolves that way.**
-  # Q2 is open: the PRD §7 tree puts both packs in `patterns/`, while M2 and M4
-  # set the opposite precedent by giving data with different semantics a
-  # directory of its own — and FR-3.15 gives these packs different semantics, in
-  # that they may never auto-classify. If the owner resolves Q2 toward separate
-  # directories, this case changes with it, and those directories join H-4 in the
-  # change that creates them. Permitting both silently would answer a question
-  # the owner has not.
+  # **§6 Q2 is answered (owner, 2026-10-07): the packs live in `patterns/`**, so
+  # this case rests on a decision rather than on an assumption, as an earlier
+  # draft of this comment said it did. The M2/M4 precedent — a directory for data
+  # with a different schema and engine — does not apply: these are the same
+  # schema and the same `sweep`, and what differs is the *resolution* semantics
+  # (FR-3.15, never auto-classify), which M7 reads off `layer`. `layer` has been
+  # a validated field since M1 (`ledger.LAYERS`), so the distinction is already
+  # in the data and needs no directory. The loader additionally enforces that a
+  # pack's filename and its patterns' `layer` agree, so the name this case
+  # checks and the semantics the loader checks cannot come apart.
   #
   # Every scoped directory is answered by name, including `.claude/`, which is
   # answered before this dispatch is reached.

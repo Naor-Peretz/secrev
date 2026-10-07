@@ -40,6 +40,14 @@ spent three milestones accumulating the evidence.
 | The `subagent.md`, `hook.md`, `agent-config.md` overlays | AC-4 says adding an archetype is cheap; proving it with three more overlays inside one milestone proves nothing about the seam | M8 |
 | Harness hardening of any kind | Not a source milestone's business. `BRIEF_M4.md` §6 Q5 said so and M4 did it anyway, which cost that milestone eighteen of its twenty-two commits. HARNESS-FS and HARNESS-CI in `.claude/TASKS_M2.md` own what is left | their own milestone |
 
+**The harness rule, set in advance by owner decision (2026-10-07) rather than discovered under
+pressure.** A harness finding that arises during M5 is **recorded in `.claude/TASKS_M5.md` and not
+fixed**, unless it is a defect in something M5 itself adds. The reasoning is M3.5's, which the owner
+and I agreed on at the end of PR #16: M4 took eighteen of twenty-two commits on the harness because
+each finding was fixed "before `main`", and five review rounds became eight. The exception is
+deliberately narrow and testable — *did this milestone introduce it?* — because a milestone that
+breaks a guard and leaves it broken is worse than one that stops to fix it.
+
 ---
 
 ## 2. Deliverables
@@ -47,8 +55,10 @@ spent three milestones accumulating the evidence.
 | File | Owns | Must not know about |
 |---|---|---|
 | `src/secrev/closure.py` *(new)* | The reachable artifact set from a declared entry point: files referenced, progressively or conditionally loaded resources, bundled scripts and binaries, and resources fetched at load or run time — the last recorded as **unresolved**, never followed | `sweep`, `surfaces`, `structure`. Its unresolved members reach `hits.jsonl` through `ledger.py` under `source: closure` (§6 Q1, answered), exactly as the three detection sources do — never by importing one of them |
-| `patterns/_instruction.yaml` *(new, see §6 Q2)* | FR-3.13's seven classes as prose patterns, each with the question it raises | Anything that concludes. FR-3.15 is a permanent constraint, not a gap |
-| `patterns/_manifest.yaml` *(new, see §6 Q2)* | FR-3.14's five classes over capability grants and configuration | The archetype. A wildcard grant is a question about *this* manifest, not about what kind of artifact it is |
+| `patterns/_instruction.yaml` *(new, §6 Q2 answered)* | FR-3.13's seven classes as prose patterns, each with the question it raises. Holds `layer: [instruction]` patterns and only those | Anything that concludes. FR-3.15 is a permanent constraint, not a gap |
+| `patterns/_manifest.yaml` *(new, §6 Q2 answered)* | FR-3.14's five classes over capability grants and configuration. Holds `layer: [manifest]` patterns and only those | The archetype. A wildcard grant is a question about *this* manifest, not about what kind of artifact it is |
+| `src/secrev/catalog.py` | The Q2 rule: a pack's filename and its patterns' `layer` must agree, exit 2 naming the offending id | Which milestone added which pack |
+| `src/secrev/inventory.py` | `is_prose(path)` beside `language_of` — one definition of what reaches an agent's context (§6 Q3) | The packs, and the closure |
 | `src/secrev/cli.py` | `secrev closure <target>` → `closure.json`, and the `run.json` that records it | The closure algorithm |
 | `src/secrev/recon.py` | A `coverage_gaps` line for every closure member in a language with no coverage, and for every unresolved member | `closure` — recon is a peer (P11) |
 | `tests/test_closure.py`, goldens, fixtures | Byte-identical `closure.json`, a non-ASCII filename in the fixture tree, and a positive **and** negative fixture per new pattern | — |
@@ -69,20 +79,32 @@ what a file is.
 
 **Order, and the reason — not alphabetical.**
 
-1. **`is_nfr3_path` gains `closure.py`, and the golden test for `closure.json` is written, before
-   `closure.py` exists.** A determinism check written after the generator is a retrofit onto code
-   composed without it, and NFR-3 is the one requirement that does not survive being retrofitted
-   (D-4). This is the same first step M1 and M2 took, and M4 took it for `structure.py`.
-2. **`closure.py`, on a fixture tree with a deliberate cycle.** A skill that references a file that
-   references the skill is not exotic; it is how progressive disclosure is written. The walk must
-   terminate and the output must not depend on where the cycle was entered.
-3. **`_instruction.yaml` and `_manifest.yaml`, from the recorded coverage gaps**, with the M1
-   conventions unchanged: `id` is `namespace.name`, `layer` is always a list, `flags` is a fixed
-   subset, line-oriented matching only, strict validation, exit 2 naming the offending pattern id.
-   `precision: low` is a first-class expected value here more than anywhere — paraphrase defeats
-   regex, and under P4 every candidate is resolved anyway, so a false positive costs a paragraph
-   while a miss is a silent gap.
-4. **The CLI subcommand last**, as in every previous milestone.
+1. **`is_nfr3_path` gains `closure.py` before `closure.py` exists**, so the determinism guard
+   speaks on the first write. A determinism check written after the generator is a retrofit onto
+   code composed without it, and NFR-3 is the one requirement that does not survive being
+   retrofitted (D-4). The same first step M1, M2 and M4 each took. **`cli.SOURCES` does *not* gain
+   `closure` yet** — the determinism stage derives its required blocks from `SOURCES`, so adding
+   the entry before anything emits that block turns the stage red for a block that does not exist.
+   It lands with the emitter, in step 2.
+   *What cannot precede the file, against this brief's first draft: the golden test.* A golden with
+   no generator is a red gate rather than a guard, since nothing here uses expected-failure
+   markers. It lands in the same commit as `closure.py`, written before the code inside it.
+2. **`closure.py`, its command, and the fourth ledger block — before the packs.** It changes the
+   ledger's shape, and everything after it leans on that; a structural change is cheapest to review
+   while the diff is still small. The fixture tree carries **a deliberate cycle**: a skill that
+   references a file that references the skill is not exotic, it is how progressive disclosure is
+   written. The walk must terminate and the output must not depend on where the cycle was entered.
+3. **`_instruction.yaml` and `_manifest.yaml`, as data-only commits, from the recorded coverage
+   gaps** — each pattern with a positive and a negative fixture, and Q2's loader rule
+   (filename agrees with `layer`) in the first of them. M1's conventions unchanged: `id` is
+   `namespace.name`, `layer` is always a list, `flags` is a fixed subset, line-oriented matching
+   only, strict validation, exit 2 naming the offending pattern id. `precision: low` is a
+   first-class expected value here more than anywhere — paraphrase defeats regex, and under P4
+   every candidate is resolved anyway, so a false positive costs a paragraph while a miss is a
+   silent gap.
+4. **The prose inventory and `is_prose` last**, because it depends on both of the above: the
+   inventory in `closure.json` and the pack's applicability must come from the same function (Q3,
+   Q4).
 
 **Two things the catalog conventions already settle, restated because they will be tempting here.**
 No `multiline` field: anything needing cross-line reasoning is a structural rule by definition, and
@@ -107,10 +129,20 @@ prevent, and M4's F2 found three documents asserting mechanisms that had been re
       resolved; and nothing in `closure.py` attempts the fetch — asserted by the self-application
       check, which forbids runtime network calls. A `coverage_gaps` line instead of a ledger record
       would leave it through a *passing* gate, which is the omission FR-1.2 forbids.
-- [ ] **A4 — `cli.SOURCES` gains `closure`, and every check deriving its block list from it covers
-      the fourth block without being told.** Evidence: the determinism stage's artifact half, which
-      derives the blocks it requires from `cli.SOURCES` precisely so that a new source is covered
-      by adding it in one place — remove the entry and that stage must go red.
+- [ ] **A4 — `cli.SOURCES` gains `closure`, in the same commit as the emitter and not before.**
+      Evidence: the determinism stage's artifact half derives the blocks it requires from
+      `cli.SOURCES`, precisely so a new source is covered by adding it in one place — so removing
+      the entry must turn that stage red, and adding it *ahead* of the emitter would turn it red for
+      a block nothing produces. The owner caught that order in review of this brief's first draft.
+- [ ] **A5 — A pattern's file and its `layer` cannot disagree** (§6 Q2). Evidence: a pattern with
+      `layer: [instruction]` in `_manifest.yaml` is exit 2 naming the offending id, and the reverse
+      too; plus the permit, since a rule that only refuses passes by refusing everything.
+- [ ] **A6 — `is_prose` is one function and both consumers use it** (§6 Q3, Q4). Evidence: the
+      instruction pack's applicability and `closure.json`'s prose inventory are derived from the
+      same call, and `.mdc` is covered — a pattern restricted to `languages: [markdown]` would have
+      skipped Cursor's rules files in silence, because `language_of` does not map that suffix.
+      Comments and docstrings are an explicit `coverage_gaps` line stating why the gap is
+      deliberate, not an omission.
 - [ ] **B1 — Every FR-3.13 class has a pattern, and every pattern has a positive and a negative
       fixture.** Evidence: the seven classes listed against the pattern ids that cover them, with
       the gaps named where a class has no regex worth shipping.
@@ -175,11 +207,15 @@ finding candidate and not a shrug.
 
 ---
 
-## 6. Questions — Q1 answered, four open
+## 6. Questions — all five answered
 
-Raised rather than resolved, each naming what would be lost by deciding it the wrong way. Q1 is
-answered and kept in place with the reasoning, because the reasoning is the part that will matter
-when the next conflict of this shape appears.
+Each is kept in place with its reasoning rather than collapsed into the decision, because the
+reasoning is what will matter when the next question of the same shape appears. **Two of the five
+rested on premises that were false, and the owner corrected both from the code**: that nothing in
+the data distinguishes a pattern's kind (`layer` has been a validated field since M1), and that
+`STACK.md` §3 lists five commands (it lists six). Both were written from memory of the code rather
+than from the code, which is the error F2 exists to catch, occurring in the document that raises
+the questions.
 
 **Q1 — ANSWERED by the owner (2026-10-07): the ledger, and D-11's wording is corrected rather than
 FR-1.2 bent.** The question was whether an unresolvable closure member is a fourth `source:` value
@@ -206,29 +242,78 @@ emits ledger records through `ledger.py` for unresolved members, `cli.SOURCES` g
 every check that derives its block list from `cli.SOURCES` — the determinism stage's artifact half
 among them — covers the fourth block by construction rather than by someone remembering.
 
-**Q2 — Do the two new packs live in `patterns/`?** The PRD §7 tree says yes. But M2 set the opposite
-precedent for data read by a different mechanism — surface kinds went to `surfaces/`, structural
-rules to `structure/` (M4 Q1) — and FR-3.15 gives instruction patterns different *semantics*: they
-may never auto-classify. If they sit beside the code patterns, nothing in the data says which kind a
-pattern is. Options: `patterns/` with a mandatory field distinguishing them; `instruction/` and
-`manifest/` directories on the M2 precedent; or `patterns/` and a `layer` value that the loader
-enforces.
+**Q2 — ANSWERED (2026-10-07): `patterns/`, and the loader enforces filename-to-`layer` agreement.**
 
-**Q3 — What counts as "prose in the closure"?** FR-3.13 says *all prose*. Markdown is obvious. A
-tool description inside a JSON manifest, a YAML `description:` field, a docstring, a comment —
-each is prose that reaches an agent's context, and each needs a different extractor. Deciding this
-narrowly makes M5 shippable; deciding it narrowly *by accident* is how the instruction layer ends up
-covering only `.md` files while the real payload sits in a manifest field.
+**The question's premise was wrong, and the owner corrected it from the code.** I wrote that if the
+packs sit beside the code patterns "nothing in the data says which kind a pattern is". `layer` is a
+mandatory field: `catalog.py` validates it against `ledger.LAYERS`, which is
+`frozenset({"code", "instruction", "manifest"})`, `kinds.py` and `structure_rules.py` validate the
+same set, and the value is written onto every ledger record. FR-3.11 defines `layer[]` as a field of
+a *pattern* — the PRD planned one catalog with this field separating it from the inside. Verified:
+`LAYERS` is at `ledger.py:31` and checked at `catalog.py:164`.
 
-**Q4 — Does M5 emit the prose inventory FR-3.15's Phase 4 obligation needs?** FR-3.15 requires a
-full read of the prose closure where the instruction layer is substantial. That read happens in M7,
-but it needs to know *what* the prose closure is and how large it is. Emitting that here is cheap;
-discovering in M7 that nothing produces it is not.
+**The M2/M4 precedent does not apply**, and seeing why is the useful part. `surfaces/` and
+`structure/` got directories because they have a different **schema and engine** — `files` and
+`declaration` for a kind, `shape` for a structural rule. Instruction and manifest patterns are the
+*same* schema (a regex and a question), load through the same loader, and run in the same `sweep`.
+What differs is the **resolution** semantics (FR-3.15: never auto-classify), which is an M7 rule
+reading `layer` off the record. That needs no directory.
 
-**Q5 — Is `secrev closure` its own command, or part of `recon`?** `STACK.md` §3 lists five commands
-and `closure` is not among them, while FR-1.2 names `closure.py` as its own module in Phase 1. A
-sixth command is a `STACK.md` amendment; folding it into `recon` makes `recon.json` the artifact and
-leaves `closure.json` unproduced, against the PRD's §7 tree.
+**One rule added by the decision:** a pattern with `layer: [instruction]` may live only in
+`_instruction.yaml`, and that file holds only such patterns; the same for manifest. So the filename
+— which `scope-guard.sh` now checks — and the semantics — which the loader checks — cannot come
+apart. That is the same shape as the catalog permit correction: where a boundary can be checked
+mechanically, check it.
+
+**Q3 — ANSWERED (2026-10-07): by what reaches an agent's context, not by file format, and through
+one function rather than a `languages` list.**
+
+**The accident the question warned about is already loaded and aimed.** `sweep.applies_to` keys on
+`inventory.language_of`, and `.mdc` — Cursor's rules files, prose that an agent reads as
+instruction — is **not** in `LANGUAGE_BY_SUFFIX`, so `language_of` returns `None` for it. A pattern
+shipped with `languages: [markdown]` would skip every one of them in silence. Verified: the map is
+at `inventory.py:118` and the filter at `sweep.py:73`; `tests/test_recon.py` already parametrises
+over `notes.mdc` for a neighbouring reason.
+
+**In M5:** the instruction pack applies to markdown (including `.mdc`), text, JSON, YAML and TOML.
+No extractors — `sweep` is line-oriented, so a `description:` line in YAML or a `"description":` line
+in JSON is examined like any other, which covers MCP tool descriptions, skill frontmatter and plugin
+manifests with no new code. The cost is false positives on strings that are not descriptions, and
+that cost is acceptable precisely because FR-3.15 already requires a human read: a pattern that may
+never auto-classify loses much less to a false positive than to a miss.
+
+**Outside M5, as an explicit `coverage_gaps` line:** comments and docstrings in code. The line must
+say what makes the gap deliberate rather than forgotten — in FastMCP a tool's **docstring is the
+description sent to the model**, and it already falls inside the `surface.mcp_tool` window, so it
+reaches the manual read rather than vanishing.
+
+**The decision is one function, `is_prose(path)`, beside `language_of`** — not a `languages` list in
+the YAML. One place to correct when the next format appears, and Q4 derives from the same function.
+
+**Q4 — ANSWERED (2026-10-07): yes, in `closure.json`, derived from the same `is_prose`.**
+
+`closure.json` carries the closure members that are prose, with a line count each. Cheap here, and
+M7 needs it to decide what "substantial" means. **M5 does not set that threshold** — that is M7's
+call, and choosing it here would be this milestone deciding a later one's rule.
+
+The inventory and the pack must come from the *same* `is_prose`, or the inventory lists files the
+instruction pack never ran on, or the reverse — a discrepancy nothing would report. That is the
+reason `language_of` and `split_lines` live in `inventory.py` rather than in each consumer.
+
+**Q5 — ANSWERED (2026-10-07): its own command, with `STACK.md` §3 amended.**
+
+**And the question's own arithmetic was wrong**, which the owner caught: §3 lists **six** commands,
+not five, so `closure` is the seventh. That sentence was written from memory of the table rather
+than from the table — the error class F2 exists to catch, in the document raising the question.
+
+Four reasons, none of them preference. The PRD defines `closure.json` as an artifact in its own
+right. `recon` defines itself as declared metadata only and says deeper enumeration is not to be
+attempted there, while a closure is exactly the resolution of references. After Q1 the closure
+writes ledger records, so folding it into `recon` would make `recon` a candidate source and break
+the boundary P11 exists to keep. And everything else that writes to the ledger has its own command
+and its own block.
+
+`STACK.md` §3 gains one row: `secrev closure <target> → closure.json + hits.jsonl (M5)`.
 
 ---
 
