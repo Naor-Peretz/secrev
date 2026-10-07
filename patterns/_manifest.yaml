@@ -49,6 +49,15 @@
 #     SKILL-10, MCP-07, MCP-08, and `skill.md` §3's "a description written to be
 #     *found* is written to be broad, and the incentive runs the wrong way".
 #
+# **One limit measured rather than reasoned about, and it is the shape of every
+# other limit here.** A wildcard inside an `allow` list and one inside a `deny`
+# list read identically on a single line, because the enclosing key is on
+# another line. `.claude/settings.json` in this repository holds
+# `"deny": ["Read(**/.env)"]`, which `manifest.wildcard_grant` reports — and a
+# broad *refusal* is the opposite of the finding. §4 makes cross-line reasoning
+# a structural rule by definition, so this is stated rather than guessed at, and
+# the resolution under P4 costs a reader one sentence.
+#
 # **Gaps this pack does not close (B4):** CORE-12's and CORE-13's comparisons —
 # grant against stated purpose, and whether a boundary is enforced or only
 # described — are comparisons, and no line-oriented rule holds both sides of
@@ -83,7 +92,17 @@ patterns:
   # rule matching only the first would pass every real allowlist.
   - id: manifest.wildcard_grant
     layer: [manifest]
-    regex: '(?:tools?|permissions?|allow(?:ed)?(?:[_\-]?(?:tools?|list|commands?))?|deny|grants?|capabilit(?:y|ies)|scopes?)["'']?\s*[:=]\s*[\[{]?\s*["'']?(?:\*{1,2}|all|any|everything)["'']?\s*[,\]}]?\s*$|\b(?:Bash|Shell|Write|Edit|Read|Execute|Run|WebFetch)\(\s*\*'
+    # `deny` was in the key list for one commit and is out, measured against
+    # this repository: `.claude/settings.json` holds `"deny": ["Read(**/.env)"]`,
+    # and a wildcard inside a *deny* list is the opposite of this finding — it
+    # is a broad refusal. Flagging it asked the reader to justify a control.
+    #
+    # The tool-scoped half still fires on that line, because line-oriented
+    # matching cannot see the enclosing key: `"Read(**/.env)"` reads identically
+    # under `allow` and under `deny`, and the key is on another line. That is a
+    # cross-line question, which §4 makes a structural rule by definition, so it
+    # is a stated limit rather than a rule twisted to guess.
+    regex: '(?:tools?|permissions?|allow(?:ed)?(?:[_\-]?(?:tools?|list|commands?))?|grants?|capabilit(?:y|ies)|scopes?)["'']?\s*[:=]\s*[\[{]?\s*["'']?(?:\*{1,2}|all|any|everything)["'']?\s*[,\]}]?\s*$|\b(?:Bash|Shell|Write|Edit|Read|Execute|Run|WebFetch)\(\s*\*'
     flags: [i]
     precision: medium
     question: >-
@@ -129,12 +148,24 @@ patterns:
     default_severity_hint: observation
     references: ["FR-3.14", "CORE-25", "MCP-10"]
 
-  # FR-3.14 class 4. `precision: high`, uniquely in this pack: these are
-  # literal event names, not a shape. An event that fires *before* a tool call
-  # can rewrite or refuse it, which is a different power from one that merely
-  # observes — and that distinction is what `surface.hook_binding` does not ask
-  # about. The surface kind says a binding exists; this asks what the event can
-  # do.
+  # FR-3.14 class 4. An event that fires *before* a tool call can rewrite or
+  # refuse it, which is a different power from one that merely observes — and
+  # that distinction is what `surface.hook_binding` does not ask about. The
+  # surface kind says a binding exists; this asks what the event can do.
+  #
+  # **`precision: medium`, corrected from `high` by F1 rather than reasoned
+  # about.** The first draft said high "uniquely in this pack: these are literal
+  # event names, not a shape". Run against this repository the rule produced
+  # **144** candidates, of which **three** were bindings — `.claude/settings.json`
+  # lines 60, 74 and 106. The rest were prose and comments naming the events:
+  # hook file headers, `.claude/README.md`, and a skill whose subject is how
+  # hooks work. A literal name is exact and says nothing about whether the line
+  # is a binding, which is the claim `high` was making.
+  #
+  # Not lowered to `low` either: in a real target's configuration the name *is*
+  # the binding, and the measurement above is of a repository that documents
+  # hooks for a living. Recorded here with the number, because a precision
+  # chosen by argument is the thing F1 exists to check.
   #
   # The post-call events are here too, deliberately: a hook on a tool's *result*
   # reaches the model's context, where a return value becomes instruction (P8,
@@ -143,7 +174,7 @@ patterns:
     layer: [manifest]
     regex: '(?:pre|post|before|after|on)[_\-]?tool[_\-]?(?:use|call|result|invocation)|tool[_\-]?call[_\-]?(?:intercept|filter|hook|middleware)|user[_\-]?prompt[_\-]?submit|(?:pre|before)[_\-]?(?:request|response|submit)[_\-]?hook'
     flags: [i]
-    precision: high
+    precision: medium
     question: >-
       Can this hook rewrite, suppress or redirect the tool call it binds to? An
       event that fires before a call decides whether it happens and with what

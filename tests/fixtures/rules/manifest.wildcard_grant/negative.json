@@ -3,8 +3,9 @@
   "tools": ["Read", "Grep"],
   "permissions": {
     "allow": ["Bash(git diff:*)", "Bash(git log:*)"],
-    "deny": ["Write"]
+    "deny": "*"
   },
   "capabilities": ["read-only"],
-  "scopes": ["./docs"]
+  "scopes": ["./docs"],
+  "note": "The wildcard deny is the case F1 corrected: a broad refusal is the opposite of an unbounded grant, so `deny` is not in the key list. A tool-scoped wildcard under `deny` would still match, and that limit is stated in the pack rather than guessed at."
 }

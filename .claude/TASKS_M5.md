@@ -155,6 +155,75 @@ owner; each is noted because a later reader would otherwise have to re-derive it
       because those are the three conventions that actually exist. A signal that
       is always on is H-1's habit in a new place.
 
+## F1 — the tool run on itself, and what reading the result changed
+
+`secrev sweep .` with both new packs over this repository: **373 candidates**,
+**202** of them in `.claude/`, which is F1's own question. The distribution:
+`manifest.hook_rewrite_event` 144, `instruction.write_outside` 71,
+`instruction.install_component` 40, `instruction.approval_bypass` 39,
+`manifest.wildcard_grant` 28, `instruction.conceal_action` 11,
+`manifest.broad_activation` 10, `instruction.authority_claim` 9,
+`instruction.override_prior` 6, `instruction.exfiltrate` 6,
+`manifest.filesystem_scope` 5, `manifest.network_permission` 4.
+
+**Two of the rules were wrong about themselves, and reading the output is the
+only thing that could have shown it.** Both are corrected:
+
+1. `manifest.hook_rewrite_event` claimed `precision: high`, on the argument that
+   "these are literal event names, not a shape". It produced **144** candidates
+   here and **three** of them are bindings — `.claude/settings.json` lines 60, 74
+   and 106. The rest are prose and comments naming the events: every hook file's
+   header, `.claude/README.md`, and a vendored skill whose entire subject is how
+   hooks work. A literal name is exact and says nothing about whether the line is
+   a binding, which is the claim `high` was making. Now `medium`, with the
+   measurement in the pack beside it. Not `low`: in a real target's
+   configuration the name *is* the binding, and this repository documents hooks
+   for a living.
+2. `manifest.wildcard_grant` had `deny` in its key list, so
+   `.claude/settings.json`'s `"deny": ["Read(**/.env)"]` was reported as an
+   unbounded grant. A wildcard inside a *deny* list is the opposite of the
+   finding — it is a broad refusal, and flagging it asks a reader to justify a
+   control. `deny` is out of the key list. The tool-scoped half still fires on
+   that line, because `"Read(**/.env)"` reads identically under `allow` and
+   under `deny` and the key is on another line; §4 makes cross-line reasoning a
+   structural rule by definition, so the limit is stated in the pack rather than
+   guessed at.
+
+   The goldens net to zero on this one, because the fixture that holds the case
+   and the regex change landed together — so the negative fixture plus
+   `test_negative_fixture_does_not_match` is the assertion, and it was
+   defeat-verified by putting `deny` back and watching it go red.
+
+- [ ] **The one real finding about this checkout, for the owner rather than for
+      the tool.** `instruction.write_outside` fires 38 times on
+      `.claude/settings.local.json`, which grants this session `Write` and
+      `Edit` on `~/.claude/**` — including `~/.claude/.credentials.json` — and on
+      `~/.bashrc`, `~/.zshrc`, `~/.profile`, `~/.cursor/**`, `~/.codex/**`,
+      `~/.gemini/**` and `~/.agents/**`.
+
+      That is exactly FR-3.13 class 5 and `fs.agent_config_write` asking their
+      question, and the answer is "yes, deliberately, by the owner" — which is a
+      P4 resolution rather than a defect. It is recorded because the file is
+      gitignored, so nothing in the repository states it and no reviewer reading
+      the committed harness would know: the guards in `.claude/hooks/` are
+      written as though agent-configuration directories were out of reach, and
+      on this machine they are not. The resolution belongs to the owner, not to
+      M5.
+
+**The rest is P8 working as `BRIEF_M5.md` §5 predicted**, and none of it is
+tuned away. `instruction.approval_bypass`'s 39 are mostly `TASKS_M3.5.md` and
+`receipts.md` *arguing for removing* auto-approved rules; `install_component`'s
+40 are mostly a skill whose subject is creating skills. Documents that discuss a
+finding produce the finding — including the three this milestone added by writing
+the corrections above down, which moved `manifest.wildcard_grant` from 25 to 28.
+A pattern that did not fire on them would be one that cannot read prose.
+
+One hit is worth keeping as the example of the pack earning its place:
+`instruction.conceal_action` on `.claude/agents/python-reviewer.md:85`, "Do not
+report what these already caught". A genuine instruction not to report
+something, legitimate in context, and resolvable in one sentence — which is what
+a low-precision prose rule is supposed to cost.
+
 ## Raised during implementation and not fixed here
 
 - [ ] **Three overlay sections now say a pack "does not exist; M5" and both

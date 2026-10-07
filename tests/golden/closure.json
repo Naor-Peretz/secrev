@@ -504,8 +504,8 @@
       "path": "rules/manifest.wildcard_grant/negative.json",
       "kind": "data",
       "load": "direct",
-      "size": 216,
-      "sha256": "6c3560852254d2d618050cf4a9ef0e3bada23d807a36125911cd9b75b32cc8f6",
+      "size": 472,
+      "sha256": "5c427473a675f46d773b3f33a647e302271841cd1b55b0c22868413ff5a29bbe",
       "referenced_from": []
     },
     {
@@ -1097,7 +1097,7 @@
     },
     {
       "path": "rules/manifest.wildcard_grant/negative.json",
-      "lines": 10
+      "lines": 11
     },
     {
       "path": "rules/manifest.wildcard_grant/positive.json",

@@ -16,7 +16,7 @@
       "toml": 1,
       "yaml": 4
     },
-    "loc_total": 700,
+    "loc_total": 701,
     "binary": [
       "assets/blob.bin",
       "closure/helpers/payload.bin"
