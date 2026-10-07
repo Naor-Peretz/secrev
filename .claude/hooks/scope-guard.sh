@@ -49,7 +49,18 @@ read_field() {
 # unknown milestone exit 2; with the milestone checked first, that refusal
 # would land on every write in the repository rather than on the scoped ones.
 # A guard that refuses everything is as useless as one that refuses nothing.
+# Normalised before any case below looks at it. An unnormalised `..` did not
+# merely over-match here: the harness case answers *before* the milestone
+# dispatch, so `…/.claude/../src/secrev/x.py` was asked about and permitted
+# where the milestone would have refused it — the precedence inverted.
+# Two statements, never `normalise_path "$(read_field …)"`. Nested, the inner
+# substitution's `exit 2` ends only the subshell, the outer command succeeds, and
+# `set -e` sees nothing — a malformed payload then returned 0 from a guard whose
+# whole contract is to refuse when it cannot read the state it gates on. Two
+# assertions caught it immediately, which is the third time this repository has
+# paid for the same shape (`out=$(cmd)` followed by `status=$?`).
 path=$(read_field file_path)
+path=$(normalise_path "$path")
 is_scoped_path "$path" || exit 0
 
 # The harness is answered HERE, ahead of the milestone dispatch, and never in a
@@ -87,7 +98,7 @@ Nothing is refused: repairing a guard from inside a session is deliberate
 (STACK.md §8, and bash-guard.sh points here for it). This is the look. Read the
 diff as a change to the rules, not to the code: does it narrow what a guard
 refuses, remove a check, or widen an allowlist?"
-    printf '%s' "$harness_reason" | "$SYSPY" -I -S "$ROOT/.claude/hooks/lib/hook_ask.py"
+    syspy_ask "$harness_reason" "$ROOT/.claude/hooks/lib/hook_ask.py" scope-guard
     exit 0
     ;;
 esac
@@ -332,6 +343,109 @@ case "$MILESTONE" in
     esac
     ;;
 
+  # M5 is the closure and the two layers that make the review agentic
+  # (BRIEF_M5.md): `closure.py` for the reachable artifact set (FR-1.2), and
+  # `_instruction.yaml` plus `_manifest.yaml` for FR-3.13 and FR-3.14. Its remit
+  # is src/ for the closure walker, recon's gap lines and the CLI subcommand;
+  # scripts/ for the determinism comparison; and patterns/ — which every
+  # milestone since M1 has refused by name.
+  #
+  # **That widening is the one thing to read carefully here, and it is narrow.**
+  # M2, M3, M3.5 and M4 each refused `patterns/`, because a milestone adding a
+  # *source* has no business editing the questions. M5 is the milestone the
+  # catalog packs were deferred *to*, so refusing them here would refuse the
+  # work — but the permit is **the two filenames the brief names**, not the
+  # directory. The first draft permitted the directory and said the bound was
+  # the brief because "a guard cannot check that"; the owner's correction is
+  # that `BRIEF_M5.md` §1 names two *files*, and a filename is exactly what a
+  # guard checks. What a guard still cannot check is the *content* rule — that
+  # no existing question changes — and the positive/negative fixture pair every
+  # pattern ships is what catches that.
+  #
+  # **§6 Q2 is answered (owner, 2026-10-07): the packs live in `patterns/`**, so
+  # this case rests on a decision rather than on an assumption, as an earlier
+  # draft of this comment said it did. The M2/M4 precedent — a directory for data
+  # with a different schema and engine — does not apply: these are the same
+  # schema and the same `sweep`, and what differs is the *resolution* semantics
+  # (FR-3.15, never auto-classify), which M7 reads off `layer`. `layer` has been
+  # a validated field since M1 (`ledger.LAYERS`), so the distinction is already
+  # in the data and needs no directory. The loader additionally enforces that a
+  # pack's filename and its patterns' `layer` agree, so the name this case
+  # checks and the semantics the loader checks cannot come apart.
+  #
+  # Every scoped directory is answered by name, including `.claude/`, which is
+  # answered before this dispatch is reached.
+  M5)
+    case "$path" in
+      *surfaces/*)
+        {
+          echo "BLOCKED — M5 maps the closure; it adds no reachability classes."
+          echo "$path is in surfaces/, and a kind decides which entry points enter"
+          echo "the ledger at all (P11, NFR-6). New kinds are M8."
+          echo
+          echo "A closure member that no surface kind reaches is a coverage gap to"
+          echo "record (FR-3.8), not a kind to add here."
+        } >&2
+        exit 2
+        ;;
+      *structure/*)
+        {
+          echo "BLOCKED — the structural rules are M4's, and closed."
+          echo "$path is in structure/, whose parameters decide which calls count"
+          echo "as sinks (STACK.md §8 H-4)."
+          echo
+          echo "If the closure reveals a structural rule that is wrong or missing,"
+          echo "that is an M4 correction in its own commit — or a recorded coverage"
+          echo "gap, which is what BRIEF_M3.md did for the patterns M3 wanted."
+        } >&2
+        exit 2
+        ;;
+      *threat-models/*)
+        {
+          echo "BLOCKED — the threat models are M3's, and closed."
+          echo "$path is in threat-models/, whose overlays decide which questions"
+          echo "every later review of an archetype asks (BRIEF_M3.md §1)."
+          echo
+          echo "M5 writes the packs that answer some of those questions. Editing the"
+          echo "questions to suit the answers is P11 in the small."
+        } >&2
+        exit 2
+        ;;
+      # **The two packs by name, and nothing else in the catalog.**
+      #
+      # This was `*patterns/*) exit 0` for one round, on the stated grounds that
+      # "the bound is the brief, not the guard, which cannot check that". That
+      # was false, and the owner said so: the brief names two *filenames*, and a
+      # filename is precisely what a guard can check. Measured before the fix —
+      # `_base.yaml` and `python.yaml` were permitted with no question, so M5
+      # could rewrite M1's closed catalog, while this same case refuses
+      # `structure/` and `threat-models/` on the grounds that they are closed
+      # and a correction belongs in its own commit. `_base.yaml` is in that
+      # category. Weakening a pattern deletes candidates from every later review
+      # with nothing reporting it, which is the P11 argument this case already
+      # makes about the threat models, applied to the tool's oldest input.
+      #
+      # A new pack of either kind is a brief edit first: the name appears here,
+      # which is a `.claude/` write that asks, so the widening cannot happen by
+      # accident.
+      *patterns/_instruction.yaml|*patterns/_manifest.yaml) exit 0 ;;
+      *patterns/*)
+        {
+          echo "BLOCKED — M1's catalog is closed, and M5 adds packs rather than editing it."
+          echo "$path is in patterns/, and M5's remit there is exactly two files:"
+          echo "_instruction.yaml (FR-3.13) and _manifest.yaml (FR-3.14)."
+          echo
+          echo "A seed pattern that is genuinely wrong is an M1 correction in its own"
+          echo "commit. Weakening one deletes candidates from every later review with"
+          echo "nothing reporting it — the same reason this case refuses the threat"
+          echo "models (P11, BRIEF_M5.md §1)."
+        } >&2
+        exit 2
+        ;;
+      *) exit 0 ;;
+    esac
+    ;;
+
   # M0 is harness repair (BRIEF_M0.md). Its own §2 edits scripts/check.sh, so
   # scripts/ is inside its remit; src/ and patterns/ are the tool and its
   # catalog, which M0 has no business touching. H-6 asks a guard to know what
@@ -414,5 +528,5 @@ Building it now is not merely early — the brief says each of these gets design
 prerequisite lands. If it is genuinely needed, that is a conflict with the brief and should be
 raised (BRIEF_M1.md §8 states the rule), not resolved here."
 
-printf '%s' "$reason" | "$SYSPY" -I -S "$ROOT/.claude/hooks/lib/hook_ask.py"
+syspy_ask "$reason" "$ROOT/.claude/hooks/lib/hook_ask.py" scope-guard
 exit 0

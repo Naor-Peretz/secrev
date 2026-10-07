@@ -605,25 +605,47 @@ Still open, and each is named here so it is not mistaken for settled:
   closes when the test run is confined**, which is HARNESS-FS in `.claude/TASKS_M2.md`, accepted
   and unbuilt. Nothing here claims otherwise.
 
-  **Three further findings from the same internal review are recorded here and deliberately not
-  fixed**, under the owner's scope freeze for this branch: what enters it is the one class — code
-  planted by test code reaching the guards — and F2. Each is a nuisance or a conflation, none is a
-  route past a guard. (i) *Denial of the gate*: a test that makes a watched file unreadable
-  (`chmod 000`) turns the snapshot into `CannotCheck`, exit 2. That is the correct direction — it
-  refuses rather than passing — but a test can stop the gate from running, and the operator sees a
-  broken harness rather than a hostile test. (ii) *pytest's exit codes 3 and 4 collapse into 1*:
-  the wrapper reports "the command failed", so "tests failed" and "pytest could not run" arrive as
-  one signal. H-1's shape, in the mild direction. (iii) *System git configuration is off for the
-  child* (`GIT_CONFIG_NOSYSTEM`), which also drops a system-level `safe.directory` — in a
-  container where the checkout is owned by another uid, tests that shell out to git would fail.
-  Not the case in this CI, and the gate would say so loudly rather than quietly. (iv) *Neither
-  `is_scoped_path` nor `scope-guard.sh` normalises a path*, so `…/.claude/../src/secrev/x.py`
-  matches the harness case and is asked about rather than dispatched to the milestone that would
-  refuse it, and `tests/fixtures/.claude/…` produces a question it need not. The missing
-  normalisation is pre-existing and shared by every glob in `paths.sh`; what round 5 added is a
-  case that *permits* ahead of every refusal, so the precedence inverts rather than merely
-  over-matching. Fixing it means normalising `$path` once for all branches, which is a change to
-  every guard's input and not to this class. (v) Same file: if `hook_ask.py` fails, `set -e` exits
-  1, which `PreToolUse` treats as a non-blocking error — the write proceeds. H-9 asks for exit 2.
-  The pattern is pre-existing at the file's other `ask` site, so it is consistency rather than a
-  regression, and it is recorded here rather than fixed one call site at a time.
+  **Five further findings were recorded here and deliberately not fixed** under the owner's scope
+  freeze for that branch, which admitted one class — code planted by test code reaching the guards —
+  plus F2. **All five are closed now, in `m4/close`, which is where the freeze stopped applying.**
+  They are kept in full rather than struck through, because what each one was is the reason the fix
+  is shaped the way it is.
+
+  (i) *Denial of the gate*: a test that makes a watched file unreadable (`chmod 000`) turned the
+  snapshot into `CannotCheck`, exit 2 — the correct direction, since refusing beats passing, and
+  still a way for any test to **stop the gate**, leaving the operator looking at a broken harness
+  rather than at a hostile test. **Closed:** the mode is observable when the content is not, so this
+  was never a check that could not run. `unreadable` is a value like `absent`; a file that becomes
+  unreadable during the run is reported as `locked` — named apart from `changed`, because the remedy
+  is a file mode and not an edit — and a file already unreadable when the baseline was taken reads
+  the same in both snapshots and says nothing, which is what keeps the honest case quiet.
+
+  (ii) *pytest's exit codes 3 and 4 collapse into 1*: the wrapper reported "the command failed", so
+  "tests failed" and "pytest could not run" arrived as one signal. **Closed:** the child's status
+  passes through untouched — a wrapper running an arbitrary command has no business reinterpreting
+  another program's exit codes, which is precisely why it must not overwrite them — and `check.sh`
+  maps anything outside {0, 1, 2} to exit 2, where pytest is known to be the command.
+
+  (iii) *System git configuration was off for the child* (`GIT_CONFIG_NOSYSTEM`), which also drops a
+  system-level `safe.directory` — in a container whose checkout is owned by another uid, every test
+  that shells out to git would fail there. **Closed by removing the variable**, which was not earning
+  its cost: the vector is a test writing the *global* config, which `GIT_CONFIG_GLOBAL` already
+  redirects, and `/etc/gitconfig` is not writable by the user whose tests these are. If it were, that
+  test could do anything regardless.
+
+  (iv) *Nothing normalised a path*, so `…/.claude/../src/secrev/x.py` matched the harness case and was
+  asked about rather than dispatched to the milestone that would refuse it — and because the harness
+  case answers *ahead* of the dispatch, the precedence inverted rather than merely over-matching.
+  **Closed** with a lexical `normalise_path` in `paths.sh`, applied by the three guards that read a
+  path. Lexical and not `realpath`: resolving symlinks costs a process per tool call and a utility
+  whose flags differ between GNU and BSD. The two are not equivalent and the difference is stated —
+  with a symlinked component the lexical answer can differ, and only in the direction that
+  over-matches, since these globs fire on a segment appearing anywhere. `spec-guard.sh` needs none:
+  its patterns are suffix-anchored, which `..` cannot defeat. **And the fix cost two assertions
+  immediately:** written as `normalise_path "$(read_field …)"`, the reader's `exit 2` ended only the
+  subshell, the outer command succeeded, `set -e` saw nothing, and a malformed payload returned 0
+  from two guards. Third time this repository has paid for that shape.
+
+  (v) *A failed `hook_ask.py` exited 1*, which `PreToolUse` treats as a non-blocking error, so a
+  write proceeded with nobody asked — on the two guards whose entire purpose is that somebody looks.
+  **Closed:** every ask goes through `syspy_ask`, which exits 2 when the question cannot be put.

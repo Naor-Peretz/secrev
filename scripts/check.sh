@@ -212,6 +212,17 @@ _gate_script() {
     if [ "$status" = 2 ]; then
         exit 2
     fi
+    # Anything outside {0, 1, 2} is "could not run", not "ran and found
+    # something". The protected-path stage passes pytest's own status through
+    # rather than flattening it, so 3 (internal error), 4 (usage error) and 5
+    # (nothing collected) arrive here intact — and each of those is a stage that
+    # did not happen. Treating them as a finding would report a conclusion no
+    # check reached, which is H-1 read backwards.
+    if [ "$status" -gt 2 ]; then
+        printf '\n\033[31m── exit %s: the check did not run, so this is not a result\033[0m\n' \
+            "$status" >&2
+        exit 2
+    fi
     [ "$status" = 0 ] || fail=1
     return 0
 }

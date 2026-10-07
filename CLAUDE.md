@@ -133,15 +133,34 @@ exits 0 on its placeholder path by design — a green conclusion alone would hav
 advertised install pipes a fetched script into a shell, which is `net.fetch_exec`, one of the nine
 patterns this tool ships.
 
-### The current milestone is M4
+### The current milestone is M5
 
-`.claude/MILESTONE` reads `M4` — the structural source, `BRIEF_M4.md`. **M0, M1, M2, M3 and M3.5 are
-closed**, the last merged as PR #15. Every box in the Definition of
+`.claude/MILESTONE` reads `M5` — the closure and the instruction and manifest layers,
+`BRIEF_M5.md`. **M0, M1, M2, M3, M3.5 and M4 are closed**, the last merged as PR #16, merge commit
+`ac571bc`; the marker moved after `BRIEF_M5.md` and M5's `scope-guard.sh` case existed and had a
+permit and a refusal asserted against them. M5 is where the catalog packs deferred since M1 land,
+so it is the first milestone in four for which `patterns/` is permitted — and permitted by
+**filename**: `_instruction.yaml` and `_manifest.yaml` pass, every other file in the catalog is
+refused with M1's-catalog-is-closed as the reason. The first draft permitted the directory and
+argued that only the brief could bound it; a brief that names two files names something a guard
+checks, and leaving it at the directory let M5 rewrite the seed patterns with no question. What a
+guard still cannot check is the content rule — that no existing question changes — which is the
+fixture pair's job. Every box in the
+Definition of
 done of `BRIEF_M0.md`, `BRIEF_M1.md` and `BRIEF_M2.md` is ticked, with per-task receipts in
 `.claude/receipts.md` and the ledgers in `.claude/TASKS_M0.md`, `.claude/TASKS_M1.md` and
 `.claude/TASKS_M2.md`. One obligation was carried across a milestone boundary rather than done, by
 owner decision — TASK-M1-010's macOS run, which lived as a box in `BRIEF_M2.md` §4 because a
 carried obligation that lives only in a commit message stops being one, and which M2's push closed.
+
+**M5's ledger is `.claude/TASKS_M5.md`, and it holds what is carried as well as what is decided.**
+There is deliberately no `TASKS_M4.md`: M4 kept its decisions and its carried obligations in
+`BRIEF_M4.md` §6, which worked while M4 was open and stopped working when it closed — a closed brief
+is the rule above with a longer shelf life. Writing one retroactively was declined (owner decision,
+2026-10-07) because a ledger for a closed milestone is archaeology; the obligations moved to M5's
+ledger instead, where they are live. Six are carried, and the one that touches M5 directly is the
+single-read TOCTOU window: `closure.py` is the fifth consumer to re-read a file `inventory` has
+already read.
 
 That marker is the harness's only notion of where the project is, and it has been wrong in both
 directions: it read `M1` through the whole of M0, so `scope-guard.sh` policed a boundary the project
@@ -155,7 +174,10 @@ Moving it forward write-locks the scoped tree until the next brief exists. `scop
 was refused (H-6). **The remedy is to write the next brief and give the guard its rules — never to
 move the marker back to buy write access.** Under M3 the guard permits `threat-models/` and refuses
 everything else in the scoped tree: M3 writes prose, and `structure.py` is M4, the instruction and
-manifest packs M5, `SKILL.md` and the Phase 2 gate M6. It refuses with M3's own reason rather than
+manifest packs M5, `SKILL.md` and the Phase 2 gate M6. **Under M5 the shape inverts once:**
+`patterns/` is permitted — it is the milestone those packs were deferred *to* — while `surfaces/`,
+`structure/` and `threat-models/` are each refused by name, since the data that decides what later
+reviews ask belongs to the milestone that wrote it. It refuses with M3's own reason rather than
 falling through to `refuse_no_rules`, whose message ("this milestone needs its own rules added
 here") is false once they exist — a refusal giving a reason it no longer holds teaches a reader to
 stop believing the message (H-9). An assertion in `attack.py` refuses any unticked
@@ -526,7 +548,9 @@ the last checkpoint before work becomes history.
 | `BRIEF_M1.md` | The pattern sweep — the first milestone that produced `src/secrev/`. Closed. |
 | `BRIEF_M2.md` | The surface source. Closed. |
 | `BRIEF_M3.md` | The threat-model layer. Closed. |
-| `BRIEF_M3.5.md` | Hardening the reviewer against a hostile target. **Current.** Written against a review that ran the tool, not from the PRD — where a finding contradicts binding text, the text is corrected through spec-guard. |
+| `BRIEF_M3.5.md` | Hardening the reviewer against a hostile target. Closed. Written against a review that ran the tool, not from the PRD — where a finding contradicts binding text, the text is corrected through spec-guard. |
+| `BRIEF_M4.md` | The structural source. Closed as PR #16. Four of its twenty-two commits were the source; the rest were the harness, after review found that the layer verifying the project could be defeated. |
+| `BRIEF_M5.md` | The closure (FR-1.2) and the instruction and manifest layers (FR-3.13, FR-3.14). **Current.** Five questions in its §6 are open for the owner, and the first is a PRD/D-11 conflict rather than a preference: whether an unresolvable closure member is a fourth ledger source. |
 
 Resolution order: **a brief loses to `STACK.md`; `STACK.md` loses to the PRD on intent and wins on
 mechanism.** Where a brief and the PRD conflict, raise it rather than silently resolving — a
@@ -706,17 +730,27 @@ unnoticed.
 
 ## Scope discipline
 
-`BRIEF_M3.md` §1 lists what must *not* be built yet, each with the reason it would be got wrong
-early: `structure.py` and `_structure.yaml` (M4 — the overlays name sinks that want AST reasoning,
-and writing the analysis beside the questions shapes the rules around what is easy to detect, which
-is P11 in the small); `closure.py` and the `_instruction.yaml` / `_manifest.yaml` packs (M5);
-`SKILL.md`, phase ordering and the Phase 2 gate (M6 — writing the enforcement before the thing
-enforced is a procedure written against a guess); the `subagent.md`, `hook.md` and
-`agent-config.md` overlays (M8 — AC-4 says adding an archetype is cheap, and proving that with
-three more overlays inside the same milestone proves nothing about the seam).
+Each brief's §1 lists what must *not* be built yet, with the reason it would be got wrong early.
+`BRIEF_M3.md`'s list deferred `structure.py` and `_structure.yaml` to M4 (the overlays name sinks
+that want AST reasoning, and writing the analysis beside the questions shapes the rules around what
+is easy to detect, which is P11 in the small) and `closure.py` with the `_instruction.yaml` /
+`_manifest.yaml` packs to M5 — **both of which have now arrived**, M4 closed and M5 current, so
+that half of the list is history rather than instruction. Still deferred: `SKILL.md`, phase
+ordering and the Phase 2 gate (M6 — writing the enforcement before the thing enforced is a
+procedure written against a guess); the `subagent.md`, `hook.md` and `agent-config.md` overlays
+(M8 — AC-4 says adding an archetype is cheap, and proving that with three more overlays inside the
+same milestone proves nothing about the seam).
 
-**M3 writes prose: no new patterns and no new surface kinds.** An overlay wanting a pattern that
-does not exist is a finding about the catalog, recorded as a coverage gap — not a pack added here.
+**M5 is the first milestone since M1 that may write `patterns/`**, and the three before it refused
+it by name. The bound is `BRIEF_M5.md` §1 naming the two packs, not the guard: a change to
+`_base.yaml` or `python.yaml` is an M1 correction in its own commit. The coverage gaps M2, M3 and
+M4 recorded instead of adding patterns are this milestone's input — **read them before writing a
+rule**, because a pack written from the FR list alone is a pack written against a guess while three
+milestones of evidence sits in the ledger.
+
+**The rule that produced those gaps still holds everywhere else.** A milestone that wants a pattern
+which does not exist records a finding about the catalog; it does not add a pack. That is why nine
+patterns have shipped since M1 and nothing has been added since.
 
 HTTP routes and IPC handlers are named in FR-1.3 and are enumerated by no source: they are recorded
 as coverage gaps in `recon.json` rather than approximated. Denylist detection and

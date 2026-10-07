@@ -52,5 +52,5 @@ Before writing, confirm which of these this is:
 Adding a runtime dependency, changing an exit code, or weakening a determinism rule are all
 STACK.md amendments with a written reason, never local exceptions."
 
-printf '%s' "$reason" | "$SYSPY" -I -S "$ROOT/.claude/hooks/lib/hook_ask.py"
+syspy_ask "$reason" "$ROOT/.claude/hooks/lib/hook_ask.py" spec-guard
 exit 0

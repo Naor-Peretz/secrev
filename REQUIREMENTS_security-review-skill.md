@@ -900,7 +900,8 @@ inherit no core and are the cheapest overlays to write.
   weak signal beats a confident wrong one. The alternative — treating instruction review as solved
   by regex — would produce exactly the false assurance this document exists to prevent.
 
-- **D-11 — Three peer candidate sources, not a regex scanner.** Patterns, structural AST rules,
+- **D-11 — Three peer *detection* sources, not a regex scanner; and the closure contributes to the
+  same ledger without being one.** Patterns, structural AST rules,
   and triggerable surfaces feed one ledger as equals (Phase 3). *Rationale:* the three checks with
   the highest value in this domain — denylist shape, permission-after-creation, writes reaching
   agent-loaded locations — are questions about structure and order, not about the presence of a
@@ -910,6 +911,20 @@ inherit no core and are the cheapest overlays to write.
   work. The surface source exists for a distinct reason (P11): without it, the detection mechanism
   silently determines the review's scope, and logic with no syntactic signature is never read at
   all.
+
+  *Amended (M5, owner decision) — the word* **detection** *is load-bearing and was added here.*
+  FR-1.2 says an unresolvable closure member "is itself a finding candidate, **not an omission**",
+  and in this system exactly one mechanism makes skipping something impossible: the ledger, with
+  FR-4.3 refusing to render a report while any hit is `unresolved`. Recorded only in `closure.json`
+  or as a `coverage_gaps` line, a remote fetch nobody assessed would leave through a *passing*
+  gate — which is the omission FR-1.2 forbids, arriving by the back door. So such a member enters
+  `hits.jsonl` under `source: closure`, and FR-4.4's `deferred` status with its mandatory reason is
+  what it is normally resolved as: a genuine blocker, surfaced under "Not conclusively assessed",
+  never silently dropped. **Nothing in the rationale above changes**: it is entirely about
+  detection mechanisms, and three remains the right number of those. A closure member that could
+  not be resolved is not a detection at all — it is a hole in the set that was examined, which is
+  the one thing P4 and P6 exist to make impossible to pass over. `cli.SOURCES` therefore holds four
+  values with the fourth documented as a different kind, rather than three with a gap beside them.
 
 - **D-12 — Build alongside the field, not on top of it.** D-2 is reaffirmed after reviewing prior
   art (§2): no third-party engine in the pipeline, but published rule taxonomies are read and used

@@ -494,6 +494,49 @@ def test_a_failing_suite_is_exit_one_even_with_nothing_changed(repo: Path) -> No
     assert result.returncode == 1
 
 
+def test_the_childs_own_status_reaches_the_caller(repo: Path) -> None:
+    """A suite saying no and a suite that could not run are different facts.
+
+    This returned `1` for every non-zero child, so pytest's 3 (internal error),
+    4 (usage error) and 5 (nothing collected) all arrived as "tests failed".
+    The number passes through now, and `check.sh` maps it — a wrapper that runs
+    an arbitrary command has no business reinterpreting another program's exit
+    codes, which is exactly why it must not overwrite them.
+    """
+    for status in (1, 3, 4, 5):
+        result = suite(repo, f"raise SystemExit({status})")
+        assert result.returncode == status, (
+            f"child exited {status}, wrapper said {result.returncode}"
+        )
+
+
+def test_a_test_that_locks_a_watched_file_cannot_stop_the_gate(repo: Path) -> None:
+    """Denial of the gate, closed. `chmod 000` on a watched file raised
+    `CannotCheck` — exit 2, the right direction and still a way for any test to
+    stop the gate running, leaving the operator looking at a broken harness
+    rather than at a hostile test.
+
+    The mode is observable when the content is not, so this is not a check that
+    could not run: the file *changed*, and it is reported as `locked` rather
+    than folded into `changed`, because the remedy is a file mode and not an
+    edit.
+    """
+    result = suite(repo, "import os\nos.chmod('src/x.py', 0o000)\n")
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert "locked    src/x.py" in result.stderr
+
+
+def test_a_file_already_unreadable_is_not_a_change(repo: Path) -> None:
+    """The control for the rule above, and the reason it is safe: a file nobody
+    can read reads the same way in both snapshots. Without this, locking a file
+    before the run would fail every later gate."""
+    locked = repo / "src" / "locked.py"
+    locked.write_text("x = 1\n", encoding="utf-8")
+    locked.chmod(0o000)
+    result = suite(repo, "pass")
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
 def test_a_command_that_cannot_start_is_exit_two(repo: Path) -> None:
     """H-1: "the tests never ran" must not print as a clean run."""
     result = guarded(repo, "run", "--", str(repo / "no-such-binary"))

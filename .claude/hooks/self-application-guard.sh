@@ -46,7 +46,9 @@ read_field() {
     }
 }
 
+# Two statements; see scope-guard.sh for why nesting these loses the refusal.
 path=$(read_field file_path)
+path=$(normalise_path "$path")
 is_self_application_path "$path" || exit 0
 
 body=$(read_field body)

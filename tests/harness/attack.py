@@ -282,6 +282,38 @@ def test_determinism_guard_speaks_on_structure_before_it_exists() -> None:
         )
 
 
+def test_determinism_guard_speaks_on_closure_before_it_exists() -> None:
+    """`BRIEF_M5.md` C2, and the fourth milestone to take this step first.
+
+    `closure.py` does not exist. It is named in `is_nfr3_path` anyway, because
+    the write that decides traversal order, normalisation and identity is the
+    *first* one, and a determinism check added afterwards is a retrofit onto
+    code composed without it (D-4).
+
+    **What this is not: the golden test.** The brief's step 1 says the golden
+    test for `closure.json` comes first too, and taken literally that is a test
+    with no generator — a red gate rather than a guard, since this repository
+    does not use expected-failure markers. The golden lands in the same commit
+    as `closure.py`, written before the code inside that commit. What can
+    genuinely precede the file is this: the guard speaking on it.
+    """
+    relative = "src/secrev/closure.py"
+    assert not (REPO / relative).exists(), (
+        "closure.py exists now, so this assertion has stopped testing what it "
+        "says — rename it and keep the determinism coverage in its golden test"
+    )
+    for path in (str(REPO / relative), relative):
+        rc, out, _ = run_hook("determinism-guard.sh", write_payload(path, ""))
+        assert rc == PASS_THROUGH, (
+            f"got rc={rc} for {path}. rc=2 means the determinism check it re-ran failed — "
+            "read the determinism stage of the gate, not this assertion."
+        )
+        assert "closure.py" in out and "NFR-3" in out, (
+            "touching closure.py must restate the determinism rules — is_nfr3_path "
+            "in .claude/hooks/lib/paths.sh does not name it"
+        )
+
+
 # ----------------------------------------------------------------- plan-review
 
 
@@ -1287,12 +1319,14 @@ def test_documentation_architect_still_points_at_stack_md() -> None:
 # ------------------------------------------------------------ current milestone
 
 
-def test_milestone_marker_is_m4() -> None:
-    """M3.5 is closed and merged as PR #15, so the marker moves to `M4`.
+def test_milestone_marker_is_m5() -> None:
+    """M4 is closed and merged as PR #16, so the marker moves to `M5`.
 
     **Moved last, and that order is the whole content of this assertion.**
-    `BRIEF_M4.md` and the M4 case in `scope-guard.sh` landed first, with three
-    assertions above exercising that case, and only then this file. Moving the
+    `BRIEF_M5.md` and the M5 case in `scope-guard.sh` landed first, with two
+    assertions above exercising that case — one permit, one refusal, because a
+    case that only refuses can pass by refusing everything — and only then this
+    file. The same order M4 used, for the same reason. Moving the
     marker first write-locks the scoped tree against a milestone nobody has
     scoped — `scope-guard.sh` ends in `refuse_no_rules`, so every write to
     `src/` would be refused until the brief existed (H-6). That is not a
@@ -1315,12 +1349,12 @@ def test_milestone_marker_is_m4() -> None:
     Both orders have now been tried. The M2 move was made before
     `scope-guard.sh` had M2 rules, and H-6 correctly refused every write to the
     scoped tree until `BRIEF_M2.md` existed — the guard saying the project
-    claimed a milestone nobody had scoped. M3, M3.5 and this one were made the
-    other way round: brief and rules first, marker last. Either order is
+    claimed a milestone nobody had scoped. M3, M3.5, M4 and this one were made
+    the other way round: brief and rules first, marker last. Either order is
     survivable; only one is survivable without a window in which nothing can be
     written.
     """
-    assert (REPO / ".claude" / "MILESTONE").read_text(encoding="utf-8").strip() == "M4"
+    assert (REPO / ".claude" / "MILESTONE").read_text(encoding="utf-8").strip() == "M5"
 
 
 def _unticked(brief: str) -> list[str]:
@@ -2110,6 +2144,73 @@ def test_m4_does_not_object_to_the_ast_it_owns() -> None:
     )
 
 
+def test_m5_permits_the_closure_and_the_two_packs_it_owns() -> None:
+    """M5 is the milestone the catalog packs were deferred to.
+
+    Every milestone since M1 refused `patterns/` by name, because a milestone
+    adding a *source* has no business editing the questions. M5 is where
+    `_instruction.yaml` and `_manifest.yaml` were sent, so refusing them here
+    would refuse the work. What bounds the widening is `BRIEF_M5.md` §1 naming
+    the two packs, not this guard — and the positive/negative fixture pair every
+    pattern ships is what catches a rule altered quietly.
+    """
+    rc, out = scope_at("M5", "src/secrev/closure.py", "def closure(root):\n    return []\n")
+    assert rc == PASS_THROUGH and not asks(out), "src/ is M5's remit"
+
+    for pack in ("patterns/_instruction.yaml", "patterns/_manifest.yaml"):
+        rc, out = scope_at("M5", pack, 'version: "2026.10.1"\n')
+        assert rc == PASS_THROUGH and not asks(out), (
+            f"M5 owns {pack}; refusing it refuses the milestone"
+        )
+
+
+def test_m5_may_add_packs_but_not_edit_the_catalog_it_was_given() -> None:
+    """The boundary the brief states, which the guard can check and did not.
+
+    The rule was `*patterns/*) exit 0` for one round, justified in my own prose
+    as "the bound is the brief, not the guard, which cannot check that". The
+    owner's correction: the brief names two *filenames*, and a filename is
+    exactly what a guard checks. Measured before the fix — `_base.yaml` and
+    `python.yaml` were permitted with no question, so M5 could rewrite M1's
+    closed catalog while this same case refuses `structure/` and
+    `threat-models/` for being closed.
+
+    Weakening a seed pattern deletes candidates from every later review with
+    nothing reporting it. That is the P11 argument the case already makes about
+    the threat models, pointed at the tool's oldest input.
+    """
+    for seed in ("patterns/_base.yaml", "patterns/python.yaml"):
+        rc, _ = scope_at("M5", seed, "patterns: []\n")
+        assert rc == BLOCK, f"M5 may not edit {seed}, got rc={rc}"
+
+    # And the refusal says where the boundary is, since a reader who cannot tell
+    # a scoped refusal from a bug clicks through the next one. `scope_at` keeps
+    # stdout only, so this one goes through `run_hook` for the message.
+    with milestone_tree("M5") as tmp:
+        path = str(Path(tmp) / "patterns" / "_base.yaml")
+        rc, _, err = run_hook(
+            "scope-guard.sh", write_payload(path, "patterns: []\n"), project_dir=Path(tmp)
+        )
+    assert rc == BLOCK
+    assert "_instruction.yaml" in err and "_manifest.yaml" in err, (
+        f"the refusal does not name what M5 may write instead: {err!r}"
+    )
+
+
+def test_m5_refuses_the_layers_it_does_not_own() -> None:
+    """The other half: a milestone that can write anything has no scope. Each
+    directory is answered by name rather than by falling through, which is the
+    D-1 lesson M3 paid a failed assertion to learn — and these three are exactly
+    the directories whose data decides what later reviews ask."""
+    for relative in (
+        "surfaces/_surfaces.yaml",
+        "structure/_structure.yaml",
+        "threat-models/_agentic-core.md",
+    ):
+        rc, _ = scope_at("M5", relative, "x: 1\n")
+        assert rc == BLOCK, f"{relative} is outside M5's remit, got rc={rc}"
+
+
 def test_scope_guard_refuses_on_unknown_milestone() -> None:
     """Inverted from a known-open assertion in TASK-001."""
     rc, _ = scope_at("M9", "src/secrev/sweep.py", "severity = 1\n")
@@ -2215,6 +2316,32 @@ def test_a_write_to_the_harness_is_asked_about_under_every_milestone() -> None:
         assert rc == PASS_THROUGH, f"a harness write must ask, not refuse ({where}, rc={rc})"
         assert asks(out), f"a harness write went unremarked ({where})"
         assert "bash-guard.sh" in out, f"the question must name the file ({where})"
+
+
+def test_a_dot_dot_path_does_not_buy_the_harness_answer() -> None:
+    """Recorded as open in `BRIEF_M4.md` §6, closed here.
+
+    None of the globs normalised, and for the harness case that was worse than
+    an over-match: it is answered *before* the milestone dispatch, so
+    `…/.claude/../src/secrev/x.py` was asked about and permitted where M3 would
+    have refused it. The precedence inverted rather than merely widening.
+
+    Normalisation is lexical — `realpath` would cost a process per tool call and
+    a utility whose flags differ between GNU and BSD. With a symlinked component
+    the lexical answer can differ from the real one, and only in the direction
+    that over-matches, since these globs fire on a segment appearing anywhere:
+    collapsing `x/..` can remove a segment that would have matched, never invent
+    one. A question nobody needed beats a write nobody saw.
+    """
+    rc, out = scope_at("M3", ".claude/../src/secrev/x.py", "x = 1\n")
+    assert rc == BLOCK, (
+        f"a `..` path reached the harness case and was permitted under M3 (rc={rc}): {out}"
+    )
+
+    # The control: the real harness path still asks, so normalisation has not
+    # quietly removed the case it was added beside.
+    rc, out = scope_at("M3", ".claude/hooks/bash-guard.sh", "exit 0\n")
+    assert rc == PASS_THROUGH and asks(out)
 
 
 def test_the_harness_question_does_not_fire_on_the_rest_of_the_tree() -> None:

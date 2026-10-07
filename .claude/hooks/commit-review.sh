@@ -50,4 +50,4 @@ fi
 
 # Not a commit: no opinion, no output.
 [ -n "$reason" ] || exit 0
-printf '%s' "$reason" | "$SYSPY" -I -S "$ASKER"
+syspy_ask "$reason" "$ASKER" commit-review
