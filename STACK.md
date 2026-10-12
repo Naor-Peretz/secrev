@@ -175,9 +175,14 @@ Binding consequences:
   This is a contract rather than an implementation choice, because FR-4.3 gates report rendering on
   unresolved hits — so it decides what a reviewer is obliged to answer, and M7's triage inherits it.
 
-  **Evidence of loading gets its own record.** A reference from code or from a manifest; a path that
-  resolves outside the target root; and a URL in a file an agent loads *verbatim* — a declared entry
-  point, so `SKILL.md`, `CLAUDE.md`, `AGENTS.md` and the rest of `closure._ROOT_BASENAMES`.
+  **Evidence of loading gets its own record.** A reference from code or from a manifest; and, in a
+  file an agent loads *verbatim* — a declared entry point, so `SKILL.md`, `CLAUDE.md`, `AGENTS.md`
+  and the rest of `closure._ROOT_BASENAMES` — a URL or a path leaving the target.
+
+  **A path leaving the target follows the same rule as a URL** (owner decision, 2026-10-12,
+  amending the above). It was unconditionally per-instance, on the argument that an escape is a
+  fact about the review rather than a citation. That holds for a code file and fails for
+  documentation, which the measurement below shows: it is where the volume of the shape went.
 
   **A citation in prose does not.** The paths one non-root prose file names and the target does not
   contain are grouped into **one record for that file**, listing them, windowed on the set of paths
@@ -188,8 +193,16 @@ Binding consequences:
   **Why, with the measurement.** Run on three real targets the source produced 1,597, 1,175 and 409
   records, between 58% and 86% of them prose citing paths it does not load — and a reviewer facing a
   thousand paragraphs reads none of them, which is H-1 arriving as volume rather than as a false
-  green. The same three now produce 218, 242 and 50. The root exception is the one place where
+  green. The same three then produced 218, 242 and 50. The root exception is the one place where
   "prose" and "what the agent acts on" come apart: a URL in a skill body is usually an instruction.
+
+  **Re-measured when the escape rule changed, because the earlier figures stopped being true.**
+  Recognising absolute, home-relative and variable-rooted references added a shape the source had
+  never seen, and with escapes per-instance it cost 387, 401 and 384 records on those targets.
+  Following the URL rule instead gives **273, 315 and 381**, and this repository 1,293 → **1,227**.
+  The last column is the one that shows the rule is not a discount: `servers` barely moves, because
+  its escaping references are in shell scripts and TypeScript — code, which keeps every record.
+  What the grouping removes is API routes and placeholders quoted in documentation.
 
   **The residual cost, stated rather than discovered:** a non-root member loaded on demand gets one
   record listing every URL it names, where a root file would get one each. FR-3.15's full read of

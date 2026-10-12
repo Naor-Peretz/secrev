@@ -334,6 +334,14 @@ extension naming no language".
 | `modelcontextprotocol/servers` | 409 | **50** | predicted 96 — the ESM fix is the difference |
 | this repository | 1,210 | **913** | code-heavy; see below |
 
+**Superseded on 2026-10-12 and kept because it is the comparison.** The figures
+above are the contract's effect alone. Recognising absolute, home-relative and
+variable-rooted references then added a shape this source had never seen, so
+they stopped describing the tool — the current four-target table is at the end
+of this section. `modelcontextprotocol/servers` is additionally no longer
+comparable: it was re-cloned at a later head, 143 members against the 56 of the
+run above, so its column is a fresh baseline rather than a delta.
+
 By rule, after:
 
 | target | records | missing | remote | citations | ambiguous | escaping |
@@ -828,12 +836,96 @@ are M5's by the standing rule rather than carried.
       than noise: a shebang names the interpreter a bundled script runs under,
       which is a real question about an artifact and one no source asked before.
 
+      **This repository was the wrong place to measure it, and the owner's four
+      targets showed why.** The shape cost 158 and 159 extra records on two real
+      targets — far more than here — because what it mostly finds in
+      documentation is API routes and placeholders: `/v1/organizations/api_keys`,
+      `/path/to/jwt`, `~/Downloads`. The few that matter were in a root or in
+      code. That is what the grouping decision below answers, and it is a
+      reminder that a tool measured only against its own repository is measured
+      against the one target whose shape it was written for.
+
       The fixture gained `helpers/absolute.md`, one shape per paragraph including
       the agent-config path, and it earned its place immediately: `/bin/sh` from
       the fixture's own existing `run.sh` shebang had been outside the closure
       for as long as the fixture has existed, and the new agent-config line fires
       M1's `fs.agent_config_write` — the pattern catalog already treats that path
       as the high-precision case.
+
+## The same two defects again, as classes — third round
+
+The owner re-ran the probes on `6e463b2`: "Both demonstrated cases are fixed. The
+class is not." Three items, and the shape of the first is the one this project
+keeps finding — a fix applied where the example was rather than where the
+mechanism is.
+
+- [x] **Double extraction, and it reproduced a credential in a form no redactor
+      can see.** `_PATH`'s character class holds `@` and its left guard does not
+      hold `:`, so `https://bob:<secret>@git.example/repo.md` yielded the URL
+      *and* `<secret>@git.example/repo.md` — reported as a file the target is
+      missing, written to `closure.json`, and carried into the grouped record's
+      excerpt in `hits.jsonl`. **Redaction could never have fixed it:** there is
+      no scheme for the userinfo rule to anchor on and the dots and slashes break
+      the long-opaque run, so `redact` sees an ordinary path. The owner's second
+      shape, a URL in a manifest's argument list, fails the same way without any
+      Markdown involved.
+
+      **The mechanism existed for one pattern instead of all of them.** A
+      URL-span skip was added to `_ABSOLUTE` last round, when the example was an
+      `_ABSOLUTE` match; `_PATH` was left alone. There is now one `claimed` list
+      that a URL, a Markdown target and a foreign-rooted path all add to and that
+      both bare-token patterns consult — so the answer does not depend on which
+      pattern the next example happens to involve. On the owner's second
+      instruction — pass every composed excerpt through `redact` as defence in
+      depth — every one already does, through `excerpt`; the gap was the
+      extraction, and saying so is more useful than adding a second call that
+      changes nothing.
+
+- [x] **`escaping_reference` now follows the URL rule** (owner's model, taken as
+      decided). It was per-instance everywhere on the argument that an escape is
+      a fact about the review rather than a citation — right for code, wrong for
+      documentation. Measured both ways on four targets:
+
+      | target | per-instance | grouped | escaping records | citation sets |
+      |---|---|---|---|---|
+      | `gemini-notebook-mcp-cli` | 387 | **273** | 55 | 22 |
+      | `anthropics/skills` | 401 | **315** | 73 | 67 |
+      | `modelcontextprotocol/servers` | 384 | **381** | 84 | 34 |
+      | this repository | 1,293 | **1,227** | 244 | 37 |
+
+      `anthropics/skills` reproduces the owner's 401 exactly; `gemini` is 387
+      against their 376, the difference being the variable-rooted shapes this
+      round added. **`servers` is the column that shows the rule is not a
+      discount** — it moves by three, because its escaping references are in
+      shell scripts and TypeScript, and code keeps every record. What the
+      grouping removes is documentation quoting API routes.
+      `STACK.md` §3 is amended and the superseded figures there and above are
+      marked rather than deleted.
+
+- [x] **Variable-rooted and Windows paths are recognised rather than recorded,
+      because the alternative was a wrong record and not a missing one.**
+      `C:\Users\me\notes.md` carries no forward slash, so the absolute shape
+      could not see it and `_PATH` matched its *last segment* — after which the
+      artifact claimed the target was missing a file by that name. `$HOME/...`,
+      `${XDG_CONFIG_HOME}/...` and `%APPDATA%\...` join it, and all of them
+      resolve through one predicate rather than a literal repeated at each call
+      site, which is how `~/` came to be handled in one of the two places that
+      needed it.
+
+      **The variable name is an allowlist, and that correction came from
+      measuring.** Any `$VAR/path` matched at first, and on
+      `modelcontextprotocol/servers` 42 of 67 escaping references were then a
+      script's own locals — `$BOARD_TMP/blank.json`, `$D/i.json` — which are
+      paths *constructed inside* the target, not reads outside it. The same shape
+      is worse in TypeScript, where `${baseUrl}/api/x` is everywhere. Nothing
+      syntactic separates `${HOME}` from `${baseUrl}`, so the discriminator is
+      the name: fourteen variables that denote a user or machine directory, as a
+      list of what is recognised rather than of what to skip (H-2). The limit —
+      any other variable — is in `coverage_gaps`.
+
+      That round took `servers` from 451 records to 381, and it is the reason
+      this item is not simply "recognised": the first version of it was a 9x
+      increase on one target, found by measuring four rather than one.
 
 ## Harness findings raised during M5
 

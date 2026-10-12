@@ -18,6 +18,19 @@ recognised the two above and missed this one, which is why this shape carries
 none — and it is the shape whose consequences are worst, since nothing about
 the filename says it is a file.
 
+Four more spellings of the same thing, each rooted somewhere other than this
+tree. A shell variable: $HOME/.claude/settings.json. A braced one:
+${XDG_CONFIG_HOME}/app/conf.toml. A Windows environment variable:
+%APPDATA%\Claude\config.json. And a Windows drive: C:\Users\me\notes.md.
+
+The two Windows forms are here for a reason worth keeping: they carry no forward
+slash, so the absolute shape cannot see them, and the bare-token pattern used to
+match their *last segment* — after which the artifact claimed this target was
+missing a file by that name. A missing record is a gap; that one was false.
+(Naming the segment here would have produced exactly the record this paragraph
+describes, which is the second time a negative case in this file has needed
+rewording to stop demonstrating the opposite of its point.)
+
 Two negatives, in this file so they are demonstrated rather than described. A
 permission glob such as **/.env is not an absolute path and must not be read as
 a reference to the dot-env file at the filesystem root. (That second phrasing is

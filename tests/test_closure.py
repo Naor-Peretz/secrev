@@ -177,7 +177,7 @@ def test_the_closure_of_the_fixture_is_exactly_this(from_entry: Closure) -> None
         "helpers/widget.tsx",
         "uv.lock",
     ]
-    # **Eight unresolved, and no more**, which is the extractor-precision work
+    # **Twelve unresolved, and no more**, which is the extractor-precision work
     # stated as a count: `calls.py`, `imports.ts`, `esm.ts` and `uv.lock` are
     # each read (or deliberately not read) and contribute nothing false between
     # them. `SKILL.md`'s own URL is absent because this fixture enters at
@@ -185,14 +185,20 @@ def test_the_closure_of_the_fixture_is_exactly_this(from_entry: Closure) -> None
     # whole-tree run, where `SKILL.md` is a *detected* root, and that is where
     # the ledger contract's root exception is asserted.
     #
-    # Five of the eight arrived with the absolute and home-relative shape, and
-    # one of those five — `/bin/sh` — is the shebang of this fixture's own
+    # Nine of the twelve leave the tree, across every spelling of "somewhere
+    # else" this source recognises: above the root, absolute, home-relative, a
+    # shell variable, a braced one, a Windows environment variable and a Windows
+    # drive. One of them — `/bin/sh` — is the shebang of this fixture's own
     # bundled script, which no test had ever asserted on because no shape could
     # see it.
     assert [(item.rule_id, item.reference) for item in from_entry.unresolved] == [
+        (RULE_ESCAPING, "$HOME/.claude/settings.json"),
+        (RULE_ESCAPING, "${XDG_CONFIG_HOME}/app/conf.toml"),
+        (RULE_ESCAPING, "%APPDATA%\\Claude\\config.json"),
         (RULE_ESCAPING, "../../../outside/notes.md"),
         (RULE_ESCAPING, "/bin/sh"),
         (RULE_ESCAPING, "/etc/app/config.yaml"),
+        (RULE_ESCAPING, "C:\\Users\\me\\notes.md"),
         (RULE_MISSING, "helpers/absent.md"),
         (RULE_REMOTE, "https://example.invalid/closure/rules.json"),
         (RULE_REMOTE, "https://example.invalid/etc/app/config.yaml"),
@@ -273,8 +279,24 @@ def test_evidence_of_loading_keeps_its_own_record(whole_tree: Closure) -> None:
         "a URL in a declared entry point was grouped — that is the one place "
         "where prose and what the agent acts on come apart"
     )
-    # A path leaving the tree is never a citation, wherever it is written.
-    assert (RULE_ESCAPING, "closure/entry.md") in own
+    # **A path leaving the tree follows the URL rule, by owner decision of
+    # 2026-10-12.** It was unconditionally per-instance, on the argument that an
+    # escape is a fact about the review rather than a citation — which is right
+    # about a code file and wrong about documentation. The owner measured the
+    # difference: making the shape visible took two real targets from 218 to 376
+    # and from 242 to 401 records, and almost all of the increase was API routes
+    # and placeholders quoted in prose.
+    #
+    # The code case keeps its own record, and this fixture's is a shebang:
+    # `/bin/sh` is the interpreter a bundled script runs under, which is evidence
+    # of loading rather than a mention of a path.
+    assert (RULE_ESCAPING, "closure/helpers/run.sh") in own
+    # The prose case joins its file's grouped record instead — `entry.md`'s path
+    # above the root is a document citing a location, and the grouped record
+    # still carries it, so FR-4.3 still forces a decision about it.
+    assert (RULE_ESCAPING, "closure/entry.md") not in own
+    grouped = {hit.file for hit in whole_tree.hits if hit.rule_id == RULE_CITATIONS}
+    assert "closure/entry.md" in grouped
     # And a manifest's references stand alone, root or not.
     assert (RULE_REMOTE, "mcp/.mcp.json") in own
 
@@ -798,11 +820,16 @@ def test_the_fixed_gaps_name_each_limit(from_entry: Closure) -> None:
     regex. Each is checked by a phrase a reader would search for."""
     text = "\n".join(from_entry.coverage_gaps)
     for phrase in (
-        "built from variables",
+        "built from a variable",
         "file suffix",
         "paraphrase defeats",
         "never fetched",
         "is not read",
+        # The two limits this round added, named here so neither can be dropped
+        # without a test going red: which variables root a path, and the one
+        # field in this artifact that is deliberately not redacted.
+        "user or machine directory",
+        "unredacted",
     ):
         assert phrase in text, f"no gap line mentions {phrase!r}"
 
@@ -1057,21 +1084,26 @@ def test_a_mis_resolution_is_a_stated_limit(from_entry: Closure) -> None:
 def test_a_reference_is_not_followed_outside_the_root(from_entry: Closure) -> None:
     """P9 and G-4. The reference is recorded; nothing opens it.
 
-    Five shapes now, one per way out of the tree: a relative path climbing past
-    the root, an absolute path, a home-relative path with a suffix, one without
-    — and `/bin/sh`, which nobody wrote for this test. It is the shebang of the
-    fixture's own bundled script, and it had been invisible for as long as the
-    fixture has existed: which interpreter a bundled script invokes is a real
-    question about an artifact, and the answer was absent from the closure of a
-    tree that contains the line. Asserted as a sorted set rather than on a
+    Nine shapes now, one per way out of the tree: a relative path climbing past
+    the root, an absolute path, a home-relative path with a suffix, one without,
+    a shell variable, a braced one, a Windows environment variable, a Windows
+    drive — and `/bin/sh`, which nobody wrote for this test. It is the shebang
+    of the fixture's own bundled script, and it had been invisible for as long
+    as the fixture has existed: which interpreter a bundled script invokes is a
+    real question about an artifact, and the answer was absent from the closure
+    of a tree that contains the line. Asserted as a sorted set rather than on a
     count, for `entry.md`'s own reason — a count keeps passing while what it
     counted changed.
     """
     escaping = [item for item in from_entry.unresolved if item.rule_id == RULE_ESCAPING]
     assert sorted(item.reference for item in escaping) == [
+        "$HOME/.claude/settings.json",
+        "${XDG_CONFIG_HOME}/app/conf.toml",
+        "%APPDATA%\\Claude\\config.json",
         "../../../outside/notes.md",
         "/bin/sh",
         "/etc/app/config.yaml",
+        "C:\\Users\\me\\notes.md",
         "~/.claude/settings.json",
         "~/.ssh/id_rsa",
     ]
@@ -1128,6 +1160,115 @@ def test_a_glob_is_not_an_absolute_reference(tmp_path: Path) -> None:
     )
     result = closure(tree, ["SKILL.md"])
     assert [item.reference for item in result.unresolved] == []
+
+
+def test_no_reference_is_extracted_from_inside_another(tmp_path: Path) -> None:
+    """**The double-extraction class, and it carried a credential `redact`
+    cannot see.**
+
+    `_PATH`'s character class holds `@` and its left guard does not hold `:`, so
+    `https://bob:<secret>@git.example/repo.md` yielded the URL *and*
+    `<secret>@git.example/repo.md` — a second reference that is not a path, is
+    reported as a file the target is missing, and reproduces the credential in a
+    form no redactor can recognise: there is no scheme for the userinfo rule to
+    anchor on, and the dots and slashes break the long-opaque run. Redaction was
+    never going to fix this one; not extracting it is the fix.
+
+    Both of the owner's shapes, because they fail through different patterns: a
+    Markdown link in prose, and a URL in a manifest's argument list where no
+    Markdown is involved. Asserted over the whole of both artifacts rather than
+    over the field that was wrong — the defect was a field nobody had checked.
+
+    The last assertion is the one that keeps this honest: `server.js` is a real
+    reference on the same manifest line, so the masking must take the URL's span
+    and not the line.
+    """
+    secret = "pa55w0rd" + "pa55"
+    url = f"https://bob:{secret}@git.example/repo.md"
+    tree = _tree(
+        tmp_path,
+        {
+            "SKILL.md": f"See [cfg]({url}) for the configuration.\n",
+            ".mcp.json": json.dumps(
+                {"mcpServers": {"repo": {"command": "node", "args": ["server.js", url]}}}
+            ),
+        },
+    )
+    result = closure(tree, ["SKILL.md", ".mcp.json"])
+
+    assert secret not in to_json(result)
+    assert secret not in to_jsonl(result.hits)
+    assert "server.js" in {item.reference for item in result.unresolved}
+
+
+def test_a_path_rooted_elsewhere_is_recognised_not_reduced(tmp_path: Path) -> None:
+    """**Four spellings of "somewhere else", and the Windows ones were worse
+    than unrecognised.**
+
+    `C:\\Users\\me\\notes.md` has no forward slash, so `_ABSOLUTE` cannot see it
+    and `_PATH` matched its *last segment* — after which the artifact said the
+    target was missing a file called `notes.md`. A missing record is a gap; that
+    is a false one, drawn from a line naming a path on another machine
+    altogether. The owner offered the choice between recognising these and
+    recording them as a gap, and a wrong record is the argument for recognising.
+
+    `$HOME/...` is `~/...` by another spelling, and `${XDG_CONFIG_HOME}` and
+    `%APPDATA%` are the same again, so all four resolve through one predicate.
+
+    The final assertion is the negative that matters: no basename survives as a
+    separate reference, which is what the masking buys.
+    """
+    line = (
+        "Config lives at $HOME/.claude/settings.json or "
+        "${XDG_CONFIG_HOME}/app/conf.toml.\n"
+        "On Windows it is %APPDATA%\\Claude\\config.json or "
+        "C:\\Users\\me\\notes.md instead.\n"
+    )
+    tree = _tree(tmp_path, {"SKILL.md": line})
+    result = closure(tree, ["SKILL.md"])
+
+    assert sorted((item.rule_id, item.reference) for item in result.unresolved) == [
+        (RULE_ESCAPING, "$HOME/.claude/settings.json"),
+        (RULE_ESCAPING, "${XDG_CONFIG_HOME}/app/conf.toml"),
+        (RULE_ESCAPING, "%APPDATA%\\Claude\\config.json"),
+        (RULE_ESCAPING, "C:\\Users\\me\\notes.md"),
+    ]
+    reduced = {"notes.md", "config.json", "conf.toml", "settings.json"}
+    assert not reduced & {item.reference for item in result.unresolved}
+
+
+def test_only_a_rooting_variable_roots_a_path(tmp_path: Path) -> None:
+    """**The allowlist, and the measurement that forced it.**
+
+    Any `$VAR/path` was recognised at first. On one real target 42 of 67
+    escaping references were then a script's own locals — a temp directory it
+    had just created, a loop variable — which are paths *constructed inside* the
+    target, not reads outside it. Reporting them as resolving outside the root is
+    wrong twice: they are not outside, and they are not resolvable at all. In
+    TypeScript the same shape is worse, because a template literal interpolating
+    a base URL looks identical.
+
+    Nothing syntactic separates the two, so the discriminator is the name: the
+    variables that denote a user or machine directory. H-2's polarity, a list of
+    what is recognised — and the cost, a path built from any other variable, is
+    named in `coverage_gaps` rather than left to be discovered.
+
+    The second half of the assertion is what makes this a test rather than a
+    restatement: the unrecognised forms must not come back as *something else*
+    either, and the bare-token pattern is perfectly capable of taking
+    `blank.json` out of `$BOARD_TMP/blank.json` and reporting it as a file the
+    target is missing.
+    """
+    line = (
+        "Writes go to $BOARD_TMP/blank.json and $D/i.json, and the client\n"
+        "builds `${baseUrl}/api/games` at run time. Config is $HOME/.gitconfig.\n"
+    )
+    tree = _tree(tmp_path, {"SKILL.md": line})
+    result = closure(tree, ["SKILL.md"])
+
+    assert [(item.rule_id, item.reference) for item in result.unresolved] == [
+        (RULE_ESCAPING, "$HOME/.gitconfig")
+    ]
 
 
 def test_a_single_segment_absolute_is_not_a_reference(tmp_path: Path) -> None:
@@ -1344,8 +1485,9 @@ def test_the_closure_of_the_whole_fixture_tree_is_small_and_explained(
     reachable from one of the four declared entry points, and every unresolved
     reference is one a reviewer can act on: two scripts a hook configuration
     names and the tree does not contain, a remote MCP endpoint, two remote rule
-    sets, a path above the root, one missing helper, and the four that leave the
-    machine's own filesystem — an interpreter, a system configuration file, an
+    sets, one missing helper, and the nine that name a location outside the
+    target — above the root, absolute, home-relative, variable-rooted and
+    Windows-rooted, including an interpreter, a system configuration file, an
     agent configuration file and a private key.
     """
     assert [item.path for item in whole_tree.members] == [
@@ -1372,11 +1514,15 @@ def test_the_closure_of_the_whole_fixture_tree_is_small_and_explained(
         "skills/quiet/SKILL.md",
     ]
     assert [(item.rule_id, item.reference) for item in whole_tree.unresolved] == [
+        (RULE_ESCAPING, "$HOME/.claude/settings.json"),
+        (RULE_ESCAPING, "${XDG_CONFIG_HOME}/app/conf.toml"),
+        (RULE_ESCAPING, "%APPDATA%\\Claude\\config.json"),
         (RULE_ESCAPING, "../../../outside/notes.md"),
         (RULE_MISSING, "./guard.sh"),
         (RULE_MISSING, "./hello.sh"),
         (RULE_ESCAPING, "/bin/sh"),
         (RULE_ESCAPING, "/etc/app/config.yaml"),
+        (RULE_ESCAPING, "C:\\Users\\me\\notes.md"),
         (RULE_MISSING, "helpers/absent.md"),
         (RULE_REMOTE, "https://example.invalid/closure/rules.json"),
         (RULE_REMOTE, "https://example.invalid/etc/app/config.yaml"),

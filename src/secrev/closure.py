@@ -341,9 +341,87 @@ _ABSOLUTE = re.compile(
     """
 )
 
+# A path rooted somewhere other than the target, written in a form no other
+# pattern here can see: a shell or environment variable, a Windows environment
+# variable, or a Windows drive.
+#
+# **Recognised rather than recorded as a gap, because the alternative was a
+# wrong record and not a missing one.** `C:\Users\me\config.yaml` has no `/`, so
+# `_ABSOLUTE` cannot see it and `_PATH` matched its last segment — the artifact
+# then said the target was missing a file called `config.yaml`, which is a claim
+# about the target drawn from a line that names a path on someone else's
+# machine. A missing record is a gap; that is a false one, and the owner offered
+# the choice between the two.
+#
+# `$HOME/...` is the same class as `~/...` by a different spelling, and `${HOME}`
+# and `%APPDATA%` are the same again. The tail accepts either separator, because
+# a Windows path mixes them freely and a reference is not the place to be strict
+# about a slash.
+#
+# **Detection and reporting are two decisions here, and conflating them left two
+# further leaks.** The shape is recognised for *any* variable name, because the
+# span has to be claimed either way — a token this function declines to report is
+# not thereby available for another pattern to re-read in pieces. What the name
+# decides is only whether a reference is emitted.
+#
+# Measured, which is why it is a list rather than "any variable": on one real
+# target 42 of 67 escaping references were a script's own locals —
+# `$BOARD_TMP/blank.json`, `$D/i.json` — paths *constructed inside* the target,
+# not reads outside it, and neither outside nor resolvable. In TypeScript the
+# same shape is worse, since `${baseUrl}/api/x` in a template literal is
+# everywhere. Nothing syntactic separates `${HOME}` from `${baseUrl}`, so the
+# discriminator is the name: the variables that denote a *user or machine*
+# directory, as a list of what is recognised rather than of what to skip (H-2).
+#
+# Not claiming those spans cost two records per occurrence and both were the
+# double-extraction class again: `${baseUrl}/api/games` left `/api/games` for the
+# absolute shape, and `$BOARD_TMP/blank.json` left `BOARD_TMP/blank.json` for the
+# bare-token one. A test asserts the unrecognised forms produce nothing at all,
+# rather than producing something else.
+_ROOTING_VARIABLES = frozenset(
+    {
+        "appdata",
+        "home",
+        "homepath",
+        "localappdata",
+        "programdata",
+        "programfiles",
+        "systemroot",
+        "temp",
+        "tmp",
+        "tmpdir",
+        "userprofile",
+        "xdg_cache_home",
+        "xdg_config_home",
+        "xdg_data_home",
+    }
+)
+
+_FOREIGN = re.compile(
+    r"""(?x)
+    (?<![\w./@+~*:-])
+    (?P<path>
+        (?: \$ \{? (?P<posix>[A-Za-z_]\w{0,63}) \}?
+          | % (?P<windows>[A-Za-z_][\w()]{0,63}) %
+          | [A-Za-z] : )
+        [/\\]
+        (?: [\w@.+-]{1,128} [/\\] ){0,16}
+        [\w@.+-]{0,127} [\w@+-]
+    )
+    (?![\w/\\-])
+    """
+)
+
 # A Markdown link or image target, which needs no suffix to be a reference:
 # `[the playbook](references/playbook)` names a file and `_PATH` cannot see it.
 _MD_TARGET = re.compile(r"!?\]\(\s*(?P<target>[^)\s]{1,512})\s*\)")
+
+# The reference forms that name a location outside the target by construction,
+# for `_lexical_join`. One predicate rather than a condition repeated at each
+# call: the list grew from `/` to `~/` to three more spellings in two rounds, and
+# each round found the previous condition in only one of the places that needed
+# it.
+_ROOTED_ELSEWHERE = re.compile(r"(?: / | ~/ | \$ | % | [A-Za-z]:[/\\] )", re.VERBOSE)
 
 # A line that resolves a module through a package manager rather than through the
 # filesystem: an `import`, an `export … from`, or a `require(`. A token on such a
@@ -479,13 +557,26 @@ def _referrer_kind(path: str, roots: frozenset[str]) -> str:
 
 
 def _is_per_instance(rule_id: str, kind: str) -> bool:
-    """Whether this record stands alone or joins its file's grouped record."""
-    if rule_id in (RULE_ESCAPING, RULE_CHANGED):
-        # A path climbing out of the tree, and a file whose bytes changed under
-        # the review, are never citations. Both are facts about the review
-        # itself rather than about what a document mentions.
+    """Whether this record stands alone or joins its file's grouped record.
+
+    **`RULE_ESCAPING` followed the URL rule by owner decision (2026-10-12), and
+    the reason is a measurement rather than a symmetry.** It was unconditionally
+    per-instance on the argument that a path leaving the tree is a fact about
+    the review rather than a citation. That argument is right about a code file
+    and wrong about documentation: making the shape visible took two real
+    targets from 218 to 376 and 242 to 401 records, and almost all of the
+    increase was API routes and placeholders quoted in prose — `/v1/organizations`,
+    `/path/to/jwt`, `~/Downloads`. The ones that matter kept turning out to be in
+    a root or in code: `~/.claude.json`, `~/.bashrc`, a shebang.
+
+    So the same three-way split the URL rule already had: evidence of loading
+    stands alone, a mention in a document joins its file's record. `RULE_CHANGED`
+    stays unconditional, because a file whose bytes moved under the review is not
+    something a document mentioned — it is something that happened.
+    """
+    if rule_id == RULE_CHANGED:
         return True
-    if rule_id == RULE_REMOTE:
+    if rule_id in (RULE_REMOTE, RULE_ESCAPING):
         return kind in _PER_INSTANCE_KINDS or kind == "root"
     return kind in _PER_INSTANCE_KINDS
 
@@ -550,20 +641,28 @@ _PRECISIONS = {
 # rather than inferring it from a regex (FR-3.8). Fixed text; the per-member
 # lines are derived below and sit beside these.
 _CLOSURE_GAPS = (
-    "closure: references are read line by line, so a path built from variables, "
-    "concatenated, or split across lines is not seen",
+    "closure: references are read line by line, so a path concatenated from "
+    "pieces or split across lines is not seen — and one built from a variable "
+    "only where the variable names a user or machine directory, which the entry "
+    "below lists",
     "closure: a reference is recognised by its file suffix, by a Markdown link "
     "target, or by a leading `/` or `~/`, so a directory, an extensionless "
     "script, or a bare module name named in prose is not followed",
-    "closure: an absolute or home-relative reference is recognised by a leading "
-    "`/` or `~/` only, and an absolute one needs at least two segments — so "
-    "another user's home (`~someone/.ssh/id_rsa`), a path built from a variable "
-    "(`$HOME/...`, `%APPDATA%\\...`), a Windows path (`C:\\Users\\...`) and a "
-    "file directly at the filesystem root (`/Makefile`) are not seen. The "
-    "two-segment rule is measured rather than assumed: every single-segment "
-    "match over this tool's own repository was a slash command, a closing XML "
-    "tag, a bare directory named in prose, or a fragment of a templated path, "
-    "and none was a file",
+    "closure: a reference leaving the target is recognised as a leading `/` or "
+    "`~/`, a Windows drive (`C:\\...`), or one of a fixed set of variables that "
+    "name a user or machine directory — "
+    f"{', '.join(sorted(_ROOTING_VARIABLES))} — in `$VAR/`, `${{VAR}}/` or "
+    "`%VAR%\\` form, matched without regard to case. An absolute one needs at "
+    "least two segments. So another user's home (`~someone/.ssh/id_rsa`) and a "
+    "file directly at the filesystem root (`/Makefile`) are not seen, and a path "
+    "built from any *other* variable is seen and deliberately not reported: it "
+    "is a path constructed inside the target rather than a read outside it, and "
+    "where it finally points is not decidable from the line. Both limits are "
+    "measured rather than assumed: every single-segment match over this tool's "
+    "own repository was a slash command, a closing XML tag, a bare directory "
+    "named in prose or a fragment of a templated path and none was a file; and "
+    "accepting any variable name made 42 of 67 escaping references on one real "
+    "target a script's own locals",
     "closure: a path is written to this artifact unredacted, while a reference "
     "and a reason pass through G-3 redaction — a path is the locator a reviewer "
     "follows, and redaction would mask a digest-named file into something nobody "
@@ -779,9 +878,10 @@ def _lexical_join(from_path: str, reference: str) -> str | None:
     `recon`, where containment held for every file the walk discovered and
     failed for every file something went looking for by name.
 
-    An absolute or home-relative reference is not joined at all. It names a
+    A reference rooted outside the target is not joined at all. It names a
     location on the machine running the review rather than one in the artifact,
-    so it is a reference that leaves the root by definition.
+    so it is a reference that leaves the root by definition — `/etc/x`, `~/x`,
+    `$HOME/x`, `%APPDATA%\\x` and `C:\\x` alike.
 
     **Both halves of that sentence were unreachable until the owner measured
     it.** `_PATH` cannot produce a token starting with `/` or `~`, so the branch
@@ -789,10 +889,12 @@ def _lexical_join(from_path: str, reference: str) -> str | None:
     than unreachable: it does not start with `/`, so a reference that did arrive
     was joined *into* the root as `<root>/~/.ssh/id_rsa`, a path that exists
     nowhere and would have been reported as a file the target is missing rather
-    than as a read of the reviewer's home directory. `_ABSOLUTE` feeds this
-    branch now and `~/` is tested here.
+    than as a read of the reviewer's home directory. `_ABSOLUTE` and `_FOREIGN`
+    feed this branch now, and the test is one predicate rather than a literal
+    repeated here — the condition was `/` alone, then `("/", "~/")`, and each
+    widening was applied in one of the two places that needed it.
     """
-    if reference.startswith(("/", "~/")):
+    if _ROOTED_ELSEWHERE.match(reference):
         return None
     base = from_path.rsplit("/", 1)[0] if "/" in from_path else ""
     parts: list[str] = []
@@ -809,55 +911,43 @@ def _lexical_join(from_path: str, reference: str) -> str | None:
     return "/".join(parts) if parts else None
 
 
-def _references_on_line(from_path: str, number: int, line: str) -> list[_Reference]:
-    """Every reference on one line, in the order the line gives them.
+def _overlaps(span: tuple[int, int], claimed: list[tuple[int, int]]) -> bool:
+    """Does this match sit inside text another pattern has already taken?
 
-    Order inside a line is the match order of three regexes rather than the
-    textual order, which is deliberate: the output is sorted before any id is
-    assigned, so this order never reaches an artifact, and sorting here as well
-    would be a second ordering rule to keep in agreement with the first.
+    **The mechanism the double-extraction class needed, and it existed for one
+    pattern instead of all of them.** A URL-span skip was added to `_ABSOLUTE`
+    when the owner found `https://host/etc/x.conf` yielding two references; the
+    same line through `_PATH` was left alone, and `_PATH`'s character class
+    carries `@` while its left guard does not carry `:` — so
+    `https://bob:pa55w0rd@git.example/repo.md` yielded the URL *and*
+    `pa55w0rd@git.example/repo.md`, a reference that is not a path, is reported
+    as a file the target is missing, and **carries the credential in a form
+    `redact` cannot see**: there is no scheme for the userinfo rule to anchor on
+    and the dots and slashes break the long-opaque run. Redaction is not the fix
+    for that and could not be; not extracting it is.
     """
-    load = LOAD_CONDITIONAL if _CONDITIONAL.search(line) else LOAD_DIRECT
-    found: list[_Reference] = []
+    start, end = span
+    return any(start < other_end and other_start < end for other_start, other_end in claimed)
 
-    url_spans: list[tuple[int, int]] = []
-    for match in _URL.finditer(line):
-        url_spans.append(match.span())
-        found.append(
-            _Reference(from_path=from_path, line=number, raw=match.group(0), load=LOAD_FETCH)
-        )
 
-    # Absolute and home-relative references, skipping anything a URL has already
-    # claimed — `https://host/etc/x.conf` carries `/etc/x.conf` inside it, and
-    # the URL is the reference. Resolution then answers both the same way, since
-    # `_lexical_join` refuses a leading `/` or `~/`.
-    for match in _ABSOLUTE.finditer(line):
-        start, end = match.span("path")
-        if any(start < url_end and url_start < end for url_start, url_end in url_spans):
-            continue
-        found.append(
-            _Reference(from_path=from_path, line=number, raw=match.group("path"), load=load)
-        )
+def _bare_tokens(line: str, claimed: list[tuple[int, int]]) -> list[str]:
+    """`_PATH`'s tokens, minus the three shapes that are not references.
 
-    # A Markdown target first, then bare tokens. A target carrying a suffix is
-    # found by both and de-duplicated by the caller's mapping, which is keyed on
-    # the reference text — two sightings of one reference on one line are one
-    # reference, where D-6's "two hits stay two hits" is about two *questions*.
-    # A Markdown target first, then bare tokens. A target carrying a suffix is
-    # found by both and de-duplicated by the caller's mapping, which is keyed on
-    # the reference text — two sightings of one reference on one line are one
-    # reference, where D-6's "two hits stay two hits" is about two *questions*.
-    for match in _MD_TARGET.finditer(line):
-        target = match.group("target")
-        if _URL.match(target) or target.startswith("#"):
-            continue
-        found.append(_Reference(from_path=from_path, line=number, raw=target, load=load))
-
+    Split out of `_references_on_line` so that function reads as the four
+    patterns it runs rather than as their filters, and because this is where
+    every precision correction the owner has found has landed.
+    """
     specifier = _IMPORT.search(line) is not None
+    tokens: list[str] = []
     for match in _PATH.finditer(line):
         if match.group("suffix").lower() not in _REFERENCE_SUFFIXES:
             continue
         token = match.group("path")
+        # Inside a URL, a Markdown target or a foreign-rooted path: that pattern
+        # owns the reference, and a second one drawn from the same characters is
+        # a fact about this function rather than about the line.
+        if _overlaps(match.span("path"), claimed):
+            continue
         # **A token followed by `(` is a call, not a path.** `response.json()`
         # matched because `.json` is a real suffix, and the owner found it in a
         # sample from a live target. The same shape covers `loader.yaml()`,
@@ -876,7 +966,77 @@ def _references_on_line(from_path: str, number: int, line: str) -> list[_Referen
         # in an import is exactly the progressive-load shape the closure is for.
         if specifier and not token.startswith((".", "/")):
             continue
-        found.append(_Reference(from_path=from_path, line=number, raw=token, load=load))
+        tokens.append(token)
+    return tokens
+
+
+def _references_on_line(from_path: str, number: int, line: str) -> list[_Reference]:
+    """Every reference on one line, in the order the line gives them.
+
+    Order inside a line is the match order of the patterns rather than the
+    textual order, which is deliberate: the output is sorted before any id is
+    assigned, so this order never reaches an artifact, and sorting here as well
+    would be a second ordering rule to keep in agreement with the first.
+
+    **The order the patterns run in is not arbitrary.** A URL, a Markdown target
+    and a foreign-rooted path each claim their span first; the two bare-token
+    patterns then skip anything already claimed. Every one of the owner's
+    double-extraction findings is this ordering being absent for one pattern —
+    so it is one list that every later pattern consults, rather than a skip
+    added to whichever pattern the last example happened to involve.
+    """
+    load = LOAD_CONDITIONAL if _CONDITIONAL.search(line) else LOAD_DIRECT
+    found: list[_Reference] = []
+    claimed: list[tuple[int, int]] = []
+
+    for match in _URL.finditer(line):
+        claimed.append(match.span())
+        found.append(
+            _Reference(from_path=from_path, line=number, raw=match.group(0), load=LOAD_FETCH)
+        )
+
+    # A Markdown target needs no suffix, so it is a reference `_PATH` cannot see
+    # — and its span is claimed whether or not it becomes one, because a target
+    # this function declines to follow is still not available for re-reading as
+    # a bare token.
+    for match in _MD_TARGET.finditer(line):
+        target = match.group("target")
+        claimed.append(match.span("target"))
+        if _URL.match(target) or target.startswith("#"):
+            continue
+        found.append(_Reference(from_path=from_path, line=number, raw=target, load=load))
+
+    # `$HOME/...`, `%APPDATA%\...`, `C:\...`. Claimed before the bare tokens for
+    # the reason the class exists: `_PATH` matched the last segment of a Windows
+    # path and the artifact then said the target was missing a file by that name.
+    #
+    # **Claimed whether or not it is reported.** A variable this tool cannot
+    # resolve is a path built inside the target rather than a read outside it, so
+    # it earns no record — but its characters are still not a reference for some
+    # other pattern to find, which is what `${baseUrl}/api/games` and
+    # `$BOARD_TMP/blank.json` each cost before the claim moved above the test.
+    for match in _FOREIGN.finditer(line):
+        if _overlaps(match.span("path"), claimed):
+            continue
+        claimed.append(match.span("path"))
+        variable = match.group("posix") or match.group("windows")
+        if variable is not None and variable.lower() not in _ROOTING_VARIABLES:
+            continue
+        found.append(
+            _Reference(from_path=from_path, line=number, raw=match.group("path"), load=load)
+        )
+
+    for match in _ABSOLUTE.finditer(line):
+        if _overlaps(match.span("path"), claimed):
+            continue
+        found.append(
+            _Reference(from_path=from_path, line=number, raw=match.group("path"), load=load)
+        )
+
+    found += [
+        _Reference(from_path=from_path, line=number, raw=token, load=load)
+        for token in _bare_tokens(line, claimed)
+    ]
     return found
 
 

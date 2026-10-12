@@ -45,8 +45,8 @@
       "path": "closure/helpers/absolute.md",
       "kind": "data",
       "load": "direct",
-      "size": 1572,
-      "sha256": "8d2f73113ec9de10d744dd21560a35ec126ccb3c033e929596b4ea996d247f3b",
+      "size": 2390,
+      "sha256": "a5aca6f6e1de81a63a02b2de83df588fa7bd10e52a1420f982fa5bf9aa2e492b",
       "referenced_from": [
         "closure/entry.md:46"
       ]
@@ -233,6 +233,33 @@
   ],
   "unresolved": [
     {
+      "reference": "$HOME/.claude/settings.json",
+      "load": "direct",
+      "rule_id": "closure.escaping_reference",
+      "reason": "resolves outside the target root and was not read (P9)",
+      "referenced_from": [
+        "closure/helpers/absolute.md:22"
+      ]
+    },
+    {
+      "reference": "${XDG_CONFIG_HOME}/app/conf.toml",
+      "load": "direct",
+      "rule_id": "closure.escaping_reference",
+      "reason": "resolves outside the target root and was not read (P9)",
+      "referenced_from": [
+        "closure/helpers/absolute.md:23"
+      ]
+    },
+    {
+      "reference": "%APPDATA%\\Claude\\config.json",
+      "load": "direct",
+      "rule_id": "closure.escaping_reference",
+      "reason": "resolves outside the target root and was not read (P9)",
+      "referenced_from": [
+        "closure/helpers/absolute.md:24"
+      ]
+    },
+    {
       "reference": "../../../outside/notes.md",
       "load": "direct",
       "rule_id": "closure.escaping_reference",
@@ -278,6 +305,15 @@
       ]
     },
     {
+      "reference": "C:\\Users\\me\\notes.md",
+      "load": "direct",
+      "rule_id": "closure.escaping_reference",
+      "reason": "resolves outside the target root and was not read (P9)",
+      "referenced_from": [
+        "closure/helpers/absolute.md:24"
+      ]
+    },
+    {
       "reference": "helpers/absent.md",
       "load": "direct",
       "rule_id": "closure.missing_reference",
@@ -301,7 +337,7 @@
       "rule_id": "closure.remote_resource",
       "reason": "names a https resource; nothing here fetches it (STACK.md §2.1 forbids runtime network calls)",
       "referenced_from": [
-        "closure/helpers/absolute.md:27"
+        "closure/helpers/absolute.md:40"
       ]
     },
     {
@@ -352,7 +388,7 @@
     },
     {
       "path": "closure/helpers/absolute.md",
-      "lines": 28
+      "lines": 41
     },
     {
       "path": "closure/helpers/cyclé.md",
@@ -444,9 +480,9 @@
     "closure: members in a code language no rule set reads — structural rules are Python only, and the catalog's code patterns declare their own languages: closure/helpers/emitted.js, closure/helpers/esm.ts, closure/helpers/imports.ts, closure/helpers/legacy.cts, closure/helpers/local.ts, and 4 more — the full list is members[]",
     "closure: members in an extension naming no language this tool knows — so no rule set claims it and nothing decided whether it is code: closure/uv.lock",
     "closure: 59 inventoried file(s) are reached by no declared entry point and are therefore outside the closure: README.md, assets/blob.bin, cli/pyproject.toml, crlf_module.py, exports/__init__.py, and 54 more — the full list is unreachable[]. Each is either loaded by a mechanism this tool did not see or not loaded at all; which one is a question for the reader (P9)",
-    "closure: references are read line by line, so a path built from variables, concatenated, or split across lines is not seen",
+    "closure: references are read line by line, so a path concatenated from pieces or split across lines is not seen — and one built from a variable only where the variable names a user or machine directory, which the entry below lists",
     "closure: a reference is recognised by its file suffix, by a Markdown link target, or by a leading `/` or `~/`, so a directory, an extensionless script, or a bare module name named in prose is not followed",
-    "closure: an absolute or home-relative reference is recognised by a leading `/` or `~/` only, and an absolute one needs at least two segments — so another user's home (`~someone/.ssh/id_rsa`), a path built from a variable (`$HOME/...`, `%APPDATA%\\...`), a Windows path (`C:\\Users\\...`) and a file directly at the filesystem root (`/Makefile`) are not seen. The two-segment rule is measured rather than assumed: every single-segment match over this tool's own repository was a slash command, a closing XML tag, a bare directory named in prose, or a fragment of a templated path, and none was a file",
+    "closure: a reference leaving the target is recognised as a leading `/` or `~/`, a Windows drive (`C:\\...`), or one of a fixed set of variables that name a user or machine directory — appdata, home, homepath, localappdata, programdata, programfiles, systemroot, temp, tmp, tmpdir, userprofile, xdg_cache_home, xdg_config_home, xdg_data_home — in `$VAR/`, `${VAR}/` or `%VAR%\\` form, matched without regard to case. An absolute one needs at least two segments. So another user's home (`~someone/.ssh/id_rsa`) and a file directly at the filesystem root (`/Makefile`) are not seen, and a path built from any *other* variable is seen and deliberately not reported: it is a path constructed inside the target rather than a read outside it, and where it finally points is not decidable from the line. Both limits are measured rather than assumed: every single-segment match over this tool's own repository was a slash command, a closing XML tag, a bare directory named in prose or a fragment of a templated path and none was a file; and accepting any variable name made 42 of 67 escaping references on one real target a script's own locals",
     "closure: a path is written to this artifact unredacted, while a reference and a reason pass through G-3 redaction — a path is the locator a reviewer follows, and redaction would mask a digest-named file into something nobody can open. So a credential that is itself part of a *filename* reaches `members`, `unreachable`, `referenced_from` and the gap line above",
     "closure: whether a member is loaded conditionally is read from words on the referring line, which paraphrase defeats — the label never removes a member from the closure, so a wrong label costs a row and not a file",
     "closure: a resource named for fetching is recorded and never fetched (STACK.md §2.1 forbids runtime network calls), so what it would have contained is unreviewed by construction (FR-1.2)",
