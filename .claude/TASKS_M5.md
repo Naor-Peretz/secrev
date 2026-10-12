@@ -354,6 +354,21 @@ the contract is implemented as *stated*, the reading is written out in
 `STACK.md` §3 and in `closure._PER_INSTANCE_KINDS`, and the delta is here. One
 line from the owner closes it if the difference matters.
 
+**The clause is now named, from the owner's own key (2026-10-12), and still not
+tuned to.** Their model grouped "one record per prose file for the missing and
+ambiguous references together, and a separate record for the URLs". The
+implementation folds all three into **one** `RULE_CITATIONS` record per prose
+file: `_pending_records` keeps a single `citations` set per `from_path` and adds
+to it whichever rule reached it, so a document naming four dead paths and three
+URLs yields one record where the owner's model yields two. Their count therefore
+exceeds mine by the number of prose files carrying both kinds, which is the
+direction all three deltas run. **Unmeasured** — the target clones are gone and
+the owner closed the item ("my reading is fine, don't chase my number") — so it
+is recorded as a named fork rather than a mystery, which is the difference
+between an open question and a decision. The variant, if M7 ever wants the finer
+grouping, is a second `citations` dict keyed on `RULE_REMOTE`: one clause, in one
+function, with the goldens it would move.
+
 **This repository stays high (913) and that is not the contract failing.** 783 of
 its records are `missing_reference` from executable code — test expectations
 listing fixture paths, the gate scripts, `src/` naming artefacts — which the
@@ -564,11 +579,25 @@ a low-precision prose rule is supposed to cost.
 
 ## Raised during implementation and not fixed here
 
-- [ ] **Eight lines in two closed milestones' files are now false, and M5 may
-      not write either directory.** Found by F2's sweep — `git grep` from the
-      root with no pathspec, candidates derived from `git log -p main..HEAD`
-      rather than recalled. Sorted into CLAUDE.md's three categories, these are
-      all in the first: they state the superseded rule.
+- [ ] **Thirteen false claims in twelve passages of two closed milestones'
+      files, and M5 may write neither directory.** Ten were made false by M5 and
+      three by M4; MCP-05's evidence sentence carries one of each, which is why
+      the passages number one fewer than the claims. Found by F2's sweep —
+      `git grep` from the root with no pathspec. Sorted into CLAUDE.md's three
+      categories, these are all in the first: they state the superseded rule.
+
+      **The count was wrong three ways, and the method is why.** This heading
+      read "Eight lines" while the body below enumerated ten, `BRIEF_M5.md` §4
+      said nine, and I told the owner nine — three numbers for one list, caught
+      by the owner's review copy rather than by anything here. The three M4-era
+      claims were missed for a structural reason worth keeping: the candidates
+      were derived from `git log -p main..HEAD`, so a line **M4** made false is
+      not in that diff and could not surface however carefully the greps were
+      read. A derivation bounded by this branch's own changes can only find this
+      milestone's debt. The sweep that found them keys on the *claim* instead —
+      `git grep -n "until M4"` and `git grep -n "structural source"` from the
+      root — and those 22 and 28 hits reduce to exactly these three, everything
+      else being historical or still true.
 
       In `threat-models/`, seven lines say the packs do not exist:
       `skill.md:126` and `:186` and `:191`, `mcp-server.md:131` and `:191` and
@@ -585,6 +614,16 @@ a low-precision prose rule is supposed to cost.
       catalog_version — so the version belongs to the whole catalog", which is
       the superseded rule stated in a *product-code comment*, the second of
       CLAUDE.md's three priorities by who reads it.
+
+      **Three more in the same two files were made false by M4, not by M5:**
+      `_agentic-core.md:100` ("there is no structural source until M4") and
+      `:287` ("the structural source is M4"), and `mcp-server.md:132` ("no
+      structural source exists until M4"). The structural source shipped in M4
+      and `structure/_structure.yaml` carries four rules. They stood through a
+      whole milestone because M4's own F2 swept what M4 had changed, and nothing
+      in that sweep reached `threat-models/`: a closed directory stays stale by
+      default, and the next milestone's sweep is derived from a diff that cannot
+      see it.
 
       **None of it is fixed, because M5 may write neither directory.**
       `scope-guard.sh` refuses `threat-models/` by name, and its reason is that
@@ -620,6 +659,37 @@ a low-precision prose rule is supposed to cost.
       from *reading*, and FR-3.15 keeps it that way permanently — the ids are an
       addition to the evidence, not a replacement for it.
 
+      For the three M4-era claims the edit is **not** "the structural source
+      exists" but which question it answers: none of the four rules asks CORE-07's
+      or CORE-26's, and `structure.built_value_into_sink` covers interpolation
+      into a call that executes, queries or fetches — not into text the artifact
+      presents to a reader, which is exactly CORE-07's shape. Naming the source
+      as existing without naming that limit replaces a false claim with a
+      misleading one, which is the more expensive of the two.
+
+- [ ] **F2's fourteenth passage is in a file M5 owns, and it is a quotation
+      rather than a claim.** `patterns/_instruction.yaml:26-38` quotes three of
+      the passages above verbatim — `skill.md` §5's "does not exist; M5" bullet
+      and `_agentic-core.md`'s CORE-05 evidence line — under the heading "Where
+      these came from", as the pack's provenance. The quotes are **historical**
+      in CLAUDE.md's third category and must not be rewritten: they are the
+      evidence of the gap that justified the pack, and a pack whose stated reason
+      is edited to match the world after the fact has no stated reason. What they
+      need is one clause marking them as the pre-F2 wording, so a reader who
+      greps a quoted string and finds nothing knows why.
+
+      **Ordering, which is the whole of it:** until the owner's F2 commit lands
+      the quotations are accurate and the note is the false half. It goes in the
+      commit that ticks F2 and never before. `_instruction.yaml` is one of the
+      two files `scope-guard.sh` permits M5 to write, so unlike the thirteen
+      above this one is mine.
+
+      Not found by F2's sweep either, for the mirror of the M4 reason: the file
+      is *new on this branch*, so `git log -p main..HEAD` shows it added
+      wholesale, and a citation of text the same branch supersedes reads as
+      content rather than as a stale claim. Both halves are one lesson — derive
+      the candidates from the claim, not from the diff.
+
 - [ ] **`recon.py` had no `coverage_gaps` line about the catalog's own layers,
       and that asymmetry was the finding.** Every source states its limits
       there — `_SURFACE_GAPS`, `_STRUCTURE_GAPS`, `_CLOSURE_GAPS` — while the
@@ -630,6 +700,32 @@ a low-precision prose rule is supposed to cost.
       comparison no line-oriented rule can make). Listed here because the
       *class* is worth remembering: a gap recorded only where a human happens to
       look is half a gap.
+
+- [ ] **Two overlay evidence lines name a starting set that is now incomplete,
+      and neither is false** — so neither is F2's and neither is M5's (owner
+      decision, 2026-10-12: "not in this commit and not in M5 — record as a
+      separate non-F2 line for whoever next opens the overlays").
+      `_agentic-core.md:150` (CORE-11) says to answer by reading the manifests
+      "using `hits.jsonl → source: surface` records at `layer: manifest` as the
+      starting set", and `:217` (CORE-18) says `source: surface` "is the
+      enumerated set". Both are still true: FR-1.4's capability manifest is still
+      unimplemented and PRD §13 still assigns it to no milestone, and surface
+      records are still what *enumerates*. What changed is that `_manifest.yaml`
+      now adds pattern candidates over the same files —
+      `manifest.wildcard_grant`, `manifest.filesystem_scope` and
+      `manifest.network_permission` for CORE-11, `manifest.hook_rewrite_event`
+      for CORE-18 — so a reader following either instruction literally gets a
+      smaller starting set than the ledger holds.
+
+      The F2 entry above prescribed these two additions and the owner's patch
+      deliberately omitted them. That is the right call and the reason is the
+      rule: a claim that is **false** and a starting set that is **incomplete**
+      are different findings, and collapsing them turns F2 into a licence to
+      rewrite any sentence a milestone touched. Note when making them that
+      `manifest.hook_rewrite_event` is `precision: medium` because 144 of its 147
+      candidates over this repository are prose naming event names rather than
+      bindings — CORE-18's "enumerated set" sentence is the accurate one and the
+      pattern is the noisy addition to it, not the authority replacing it.
 
 ### Harness findings raised during M5
 
@@ -644,6 +740,23 @@ a low-precision prose rule is supposed to cost.
       brief's `.claude/TASKS_M*.md` references and asserting the targets exist is the same walk —
       and the stronger version also asserts a ledger exists for the milestone the marker names,
       which is the half that would have caught this one.
+
+- [ ] **Three tests fail as root on Python 3.13, and the suite has no root guard at all.**
+      Reported by the owner's review copy (2026-10-12): two symlink-loop tests and one that makes a
+      file unreadable. Both causes are environmental — `chmod 000` does not stop uid 0, and
+      `Path.resolve` no longer raises on a loop in 3.13 — and neither test is M5's, so under this
+      milestone's rule they are recorded rather than fixed. **Not reproduced here** (uid 1000,
+      Python 3.12.3): this line is the owner's measurement, not mine, and is marked as such rather
+      than restated as fact.
+
+      Two halves, and the second is the finding. CI runs 3.11 and 3.12, so **3.13 is outside the
+      matrix while NFR-5 says "Python 3.11+"** — a version the requirement supports and nothing
+      checks. And `git grep -n geteuid` over `tests/` returns exactly one hit,
+      `tests/harness/attack.py:1672`, where the harness already learned this and adapts its
+      assertion under root; the product suite never asks. A test whose premise is "this file cannot
+      be read" tests nothing as root. Here it fails loudly, which is the better of the two failures
+      and still not a check — the quiet version of the same gap is the one worth looking for when
+      someone adds 3.13.
 
 ---
 

@@ -202,18 +202,27 @@ prevent, and M4's F2 found three documents asserting mechanisms that had been re
       from `git log -p` rather than recalled. Every hit sorted into false, true-for-the-old-reason,
       or historical.
 
-      **The sweep is done; nine lines remain and this box is the owner's to close.** `git grep`
-      from the root with no pathspec, candidates derived from `git log -p main..HEAD`. Nine stale
-      lines found: seven in `threat-models/` saying the two packs do not exist, two saying every
-      pack declares the same `version`, and `patterns/python.yaml:19` stating the superseded
-      version rule in a product-code comment. Each is in `.claude/TASKS_M5.md` with the exact
-      edit and with what must *not* be written into them.
+      **The sweep is done; thirteen claims remain and this box is the owner's to close.**
+      `git grep` from the root with no pathspec. Ten were made false by M5: seven in
+      `threat-models/` saying the two packs do not exist, two saying every pack declares the same
+      `version`, and `patterns/python.yaml:19` stating the superseded version rule in a
+      product-code comment. **Three more were made false by M4** — `_agentic-core.md:100` and
+      `:287` and `mcp-server.md:132`, each saying the structural source does not exist yet. They
+      sit in twelve passages, because MCP-05's evidence sentence carries one of each. Each is in
+      `.claude/TASKS_M5.md` with the exact edit and with what must *not* be written into them.
+
+      **This box said "nine" and the ledger's heading said "eight", for a list of ten.** The
+      counting error and the three missed M4 claims have one cause: the candidates were derived
+      from `git log -p main..HEAD`, which cannot contain a line an *earlier* milestone made false.
+      Keying the sweep on the claim rather than on the diff is what found them, and the ledger
+      carries that as the lesson — a derivation bounded by this branch finds only this branch's
+      debt.
 
       I read this box as covering the claims *this milestone makes*, which would have closed it.
-      **The owner overruled that reading** (2026-10-07): M5 made those nine lines false, so they
-      are M5's to fix, on the precedent of `_base.yaml:147` in PR #16. `scope-guard.sh` refuses
-      both directories and both refusals are right, so the owner is making the nine edits. The
-      three claims M5 *could* fix — in `CLAUDE.md` and `STACK.md` — are in `2f48142`.
+      **The owner overruled that reading** (2026-10-07): M5 made those lines false, so they are
+      M5's to fix, on the precedent of `_base.yaml:147` in PR #16. `scope-guard.sh` refuses both
+      directories and both refusals are right, so the owner is making the edits. The three claims
+      M5 *could* fix — in `CLAUDE.md` and `STACK.md` — are in `2f48142`.
 - [x] **G1 — `scope-guard.sh` has M5 rules** answering every scoped directory by name, including the
       ones that did not exist when the case was written.
 - [x] **G2 — The marker moves to `M5` only after G1**, never before (H-6).
