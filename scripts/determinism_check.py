@@ -3,17 +3,20 @@
 Two checks, both from BRIEF_M1.md §7 and, since TASK-M2-009, over every block
 of the ledger (BRIEF_M2.md §4, BRIEF_M4.md C3):
 
-  1. Two runs over the same fixture tree produce byte-identical recon.json
-     and hits.jsonl — the pattern, surface and structural blocks alike. A ledger
-     missing any block fails: a block that was never produced was never
-     compared, and saying "identical" about it would be H-1.
+  1. Two runs over the same fixture tree produce byte-identical artifacts —
+     every named one and every block of the ledger. A ledger missing any block
+     fails: a block that was never produced was never compared, and saying
+     "identical" about it would be H-1.
   2. Adding an unrelated file to the tree renumbers no existing candidate id,
      whichever source produced it.
 
-The required blocks are derived from `cli.SOURCES` rather than listed here.
-They were listed until M4, so the structural block would have been absent from
-this check while the summary line said "both blocks" — a check that is complete
-by construction only until someone adds a third of something.
+The required blocks are derived from `cli.SOURCES` rather than listed here, the
+named artifacts from `cli.ARTIFACT_BY_COMMAND`, and the modules this check
+waits for from `cli.COMMANDS`. All three were written out once. The blocks were
+listed until M4, so the structural block would have been absent from this check
+while the summary line said "both blocks"; the artifacts were listed until M5,
+and `closure.json` would have been the same omission one milestone on — a list
+that is complete by construction only until someone adds a third of something.
 
 Both write to a throwaway workspace outside the tree (STACK.md §6, G-4) and
 never touch the fixtures. Exits 0 when there is nothing to check yet, so it is
@@ -31,12 +34,22 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 FIXTURES = ROOT / "tests" / "fixtures"
-ARTIFACTS = ("recon.json", "hits.jsonl")
 
 # Read from the tool rather than restated (H-7). A fourth source has to appear
 # here for the check to cover it, and the one place to add it is `cli.py`.
 sys.path.insert(0, str(ROOT / "src"))
-from secrev.cli import COMMANDS, SOURCES  # noqa: E402
+from secrev.cli import ARTIFACT_BY_COMMAND, COMMANDS, SOURCES  # noqa: E402
+
+# Derived, never listed (M5, `BRIEF_M5.md` C3). This was `("recon.json",
+# "hits.jsonl")` until `closure.json` existed, which is the same shape as the
+# block list being listed until M4: a tuple that is complete by construction
+# only until someone adds a third of something. `hits.jsonl` is appended rather
+# than mapped because every source writes into the one ledger, so it belongs to
+# no single command.
+ARTIFACTS = (
+    *(ARTIFACT_BY_COMMAND[name] for name in COMMANDS if name in ARTIFACT_BY_COMMAND),
+    "hits.jsonl",
+)
 
 
 def _python() -> str:
@@ -90,7 +103,7 @@ def check_byte_identical(tmp: Path) -> bool:
         runs.append(_collect(workspace))
 
     if not runs[0]:
-        sys.stderr.write("  no recon.json or hits.jsonl produced — nothing compared\n")
+        sys.stderr.write(f"  none of {', '.join(ARTIFACTS)} produced — nothing compared\n")
         return False
 
     missing = set(SOURCES) - {
@@ -107,6 +120,18 @@ def check_byte_identical(tmp: Path) -> bool:
     for name in ARTIFACTS:
         first, second = runs[0].get(name), runs[1].get(name)
         if first is None:
+            # **Not `continue`.** It was, and that is H-1: an artifact this
+            # check names and the run did not produce was skipped, and the
+            # summary line below still said every artifact was byte-identical.
+            # Found while defeat-verifying `BRIEF_M5.md` C3 — deriving the list
+            # from `cli.ARTIFACT_BY_COMMAND` means a new artifact is covered by
+            # one edit, and it does nothing about an artifact that stops being
+            # written. This is that direction.
+            sys.stderr.write(
+                f"  {name} is named in cli.ARTIFACT_BY_COMMAND and no run produced it — "
+                "nothing was compared for it (H-1)\n"
+            )
+            ok = False
             continue
         if first != second:
             sys.stderr.write(f"  {name} differs between two runs of the same input (NFR-3)\n")
@@ -210,13 +235,15 @@ def main() -> int:
     print("inventory: two walks byte-identical, sorted on the POSIX path")
 
     # The artifact comparison needs the CLI. Its absence is a real "nothing to
-    # check yet" and is named as such — but it is named, and it names the two
-    # files it is waiting for, so it cannot quietly outlive its own truth the
-    # way the src/secrev condition did.
+    # check yet" and is named as such — but it is named, and it names the files
+    # it is waiting for, so it cannot quietly outlive its own truth the way the
+    # src/secrev condition did.
+    #
+    # Derived from `COMMANDS` since M5: every subcommand is implemented by a
+    # module of its own name, and the list was written out until `closure` made
+    # it four names that had to be remembered rather than four that are read.
     pending = [
-        name
-        for name in ("recon.py", "sweep.py", "surfaces.py", "structure.py")
-        if not (ROOT / "src" / "secrev" / name).exists()
+        f"{name}.py" for name in COMMANDS if not (ROOT / "src" / "secrev" / f"{name}.py").exists()
     ]
     if pending:
         print(f"artifacts: not yet — waiting on {', '.join(pending)}")
@@ -227,7 +254,8 @@ def main() -> int:
         if not (check_byte_identical(tmp) and check_stable_ids(tmp)):
             return 1
     blocks = ", ".join(SOURCES)
-    print(f"artifacts: recon.json and every hits.jsonl block ({blocks}) byte-identical, ids stable")
+    named = ", ".join(name for name in ARTIFACTS if name != "hits.jsonl")
+    print(f"artifacts: {named} and every hits.jsonl block ({blocks}) byte-identical, ids stable")
     return 0
 
 

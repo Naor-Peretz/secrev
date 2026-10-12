@@ -123,8 +123,10 @@ produce it and does not exist yet.
 - **SKILL-04 — What does the body instruct the host agent to do?** Enumerate the imperatives that
   cause action, separately from the prose that explains. For each, name what it would reach if the
   host granted it — files, processes, network, credentials.
-  *Evidence:* read. No pattern covers the instruction layer: `patterns/_instruction.yaml` is M5
-  (§5 below), so the ledger's silence over the body is coverage that does not exist yet.
+  *Evidence:* read, plus `hits.jsonl → rule_id: instruction.approval_bypass`,
+  `instruction.authority_claim` and `instruction.override_prior` (§5 below). The patterns name
+  places to look; they do not answer the question, and their silence over the body does not mean
+  the body was checked (FR-3.15).
 
 - **SKILL-05 — Does any of it alter the host's policy rather than add to its knowledge?** Prose
   relaxing a check, suppressing a confirmation, widening a permission, or instructing the agent to
@@ -174,7 +176,7 @@ produce it and does not exist yet.
 
 **State of the mechanism, because naming packs implies one that does not exist.** The shipped
 catalog is the set of `*.yaml` files in `patterns/`, loaded together; `--catalog` takes a single
-file or a directory, and every pack loaded in one run must declare the same `version`. There is no
+file or a directory, and each pack declares its own `version`, which a record carries. There is no
 per-pack enable switch today, so what follows names the packs whose questions this archetype needs,
 and the selective enabling FR-2.3 implies is itself a gap.
 
@@ -183,13 +185,15 @@ and the selective enabling FR-2.3 implies is itself a gap.
   and `log.sensitive`.
 - **`patterns/python.yaml`** — exists; relevant only where the closure carries Python, which for a
   skill is a property of its referenced scripts rather than of `SKILL.md`.
-- **`patterns/_instruction.yaml`** — **does not exist; M5.** This is the pack this archetype needs
-  most, because a skill is mostly prose and its behaviour lives in the instruction layer. Until it
-  ships, SKILL-04 and SKILL-05 are answered by reading, and the absence of instruction-layer
-  candidates in the ledger means nothing was checked there — not that nothing was found. Recorded
-  here as a coverage gap, which `BRIEF_M3.md` §2 permits and requires.
-- **`patterns/_manifest.yaml`** — **does not exist; M5.** The frontmatter is the manifest layer, so
-  SKILL-08 is likewise read rather than matched.
+- **`patterns/_instruction.yaml`** — exists since M5, one pattern per FR-3.13 class. This is the
+  pack this archetype needs most, because a skill is mostly prose and its behaviour lives in the
+  instruction layer. `instruction.approval_bypass`, `instruction.authority_claim` and
+  `instruction.override_prior` bear on SKILL-04 and SKILL-05. Its candidates raise questions and
+  never classify (FR-3.15): SKILL-04 and SKILL-05 are still answered by reading, and an absence of
+  instruction-layer candidates does not mean nothing was there.
+- **`patterns/_manifest.yaml`** — exists since M5, one pattern per FR-3.14 class. The frontmatter
+  is the manifest layer: `manifest.wildcard_grant`, `manifest.filesystem_scope` and
+  `manifest.network_permission` bear on SKILL-08, which is still read as well as matched.
 
 ---
 

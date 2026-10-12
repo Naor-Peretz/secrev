@@ -15,10 +15,10 @@
 # gained a `{0,400}` bound in M3.5 and so matches differently on real targets,
 # which FR-4.6 makes an invalidation trigger.
 #
-# Not an independent decision. `catalog.load` refuses a mixed catalog — "one
-# run has one catalog_version" — so the version belongs to the whole catalog
-# rather than to a pack, and bumping only `_base.yaml` is not a valid state.
-# That check is what caught the half-change.
+# Not an independent decision at the time: until M5, `catalog.load` refused a
+# mixed catalog, so bumping only `_base.yaml` was not a valid state, and that
+# check is what caught the half-change. Since M5 a version is per pack and a
+# record carries its own pack's (FR-3.12).
 #
 # Bumped again to 2026.09.3 alongside `_base.yaml`, which carries the reason:
 # three of the four patterns that gained a `{0,400}` bound this time live here.

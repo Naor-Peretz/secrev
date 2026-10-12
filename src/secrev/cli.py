@@ -50,6 +50,8 @@ from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
 from secrev.catalog import Catalog, CatalogError, load
+from secrev.closure import CLOSURE_RULES_VERSION, closure
+from secrev.closure import to_json as closure_to_json
 from secrev.inventory import MAX_FILE_BYTES
 from secrev.kinds import Kinds, SurfaceKindError
 from secrev.kinds import load_file as load_kinds
@@ -70,10 +72,30 @@ DEFAULT_WORKSPACE = Path.home() / ".security-review"
 
 # The blocks of `hits.jsonl`, in file order (Q1). A record whose `source` is
 # not named here was not written by this tool.
-SOURCES = ("pattern", "surface", "structure")
+#
+# `closure` joined in M5, in the same commit as the emitter and not before
+# (`BRIEF_M5.md` A4): the determinism stage derives the blocks it requires from
+# this tuple precisely so a new source is covered by adding it in one place, so
+# an entry added ahead of the emitter turns that stage red for a block nothing
+# produces. It is not a fourth *detection* source — D-11 holds at three — and
+# the fourth block is the route FR-1.2 needs into FR-4.3's refusal.
+SOURCES = ("pattern", "surface", "structure", "closure")
 
 # The entries of `run.json`, in file order.
-COMMANDS = ("recon", "sweep", "surfaces", "structure")
+COMMANDS = ("recon", "sweep", "surfaces", "structure", "closure")
+
+# The non-ledger artifact each command writes. Derived lists read this rather
+# than naming files — `scripts/determinism_check.py` compares every artifact in
+# it, and `ci.yml` hashes every artifact in it across two platforms
+# (`BRIEF_M5.md` C3). A command absent from the mapping writes only its block of
+# `hits.jsonl`.
+#
+# A mapping rather than a bare tuple of filenames, because both derived lists
+# also need to know *which command produces* each artifact: a check that hashes
+# `closure.json` without running `secrev closure` hashes nothing and still
+# prints that the platforms agree, which is the H-1 collapse those checks exist
+# to prevent.
+ARTIFACT_BY_COMMAND = {"recon": "recon.json", "closure": "closure.json"}
 
 _ROOT = Path(__file__).resolve().parent.parent.parent
 
@@ -209,7 +231,9 @@ def merge_ledger(existing: str, source: str, block: str) -> str:
     wrote: a file it cannot read as its own ledger is damaged or someone
     else's, and replacing one block in it would silently discard the rest. A
     last line with no newline is refused too, since the next block would be
-    joined onto it.
+    joined onto it. And refused when `source` is not one of `SOURCES` — the
+    block would be written and then dropped by the join, which is the same
+    silent loss arriving from the configuration rather than from the file.
 
     Split on `\\n` alone, never `str.splitlines`, which also splits on U+0085,
     U+2028 and U+2029. `to_jsonl` writes those unescaped inside a record, so a
@@ -218,6 +242,24 @@ def merge_ledger(existing: str, source: str, block: str) -> str:
     surface source out of its workspace (P11). Found in review. The run's own
     block is never split at all.
     """
+    if source not in SOURCES:
+        # The block would otherwise be written and then silently dropped: the
+        # join below iterates `SOURCES`, so a source missing from it contributes
+        # nothing and the ledger is one whole block short with nothing saying
+        # so. Found by defeat-verifying `BRIEF_M5.md` A4 — removing `closure`
+        # from `SOURCES` left the determinism stage green, because that stage
+        # derives the blocks it *requires* from the same tuple, so shortening it
+        # removes the requirement as well as the block.
+        #
+        # Deriving the requirement is still right; what was missing is the other
+        # direction. This is it, and it is where the loss actually happens
+        # rather than in a check downstream of it (H-1: a block that was never
+        # written must not be reported as a ledger).
+        raise ValueError(
+            f"{source!r} is not one of this tool's ledger blocks ({', '.join(SOURCES)}), "
+            "so writing it would drop it. Add it to cli.SOURCES in the same change "
+            "as the source that emits it"
+        )
     if existing and not existing.endswith("\n"):
         raise ValueError(
             "hits.jsonl in the workspace does not end in a newline, so a block cannot "
@@ -500,7 +542,7 @@ def run_recon(
     directory, result = _prepare(target, workspace, excluded, max_bytes)
     _emit(directory, "recon.json", to_json(result))
     write_run_json(
-        directory, "recon", {"catalog_version": catalog.version, "window_spec": WINDOW_SPEC}
+        directory, "recon", {"pack_versions": dict(catalog.versions), "window_spec": WINDOW_SPEC}
     )
     return _incomplete(result)
 
@@ -517,7 +559,14 @@ def run_sweep(
     block = to_jsonl(hits)
     _write_block(directory, "pattern", block)
     write_run_json(
-        directory, "sweep", {"catalog_version": catalog.version, "window_spec": WINDOW_SPEC}
+        # `pack_versions`, a mapping, not one `catalog_version` (M5, owner
+        # decision). A pack's version is what its records carry, so the run has
+        # to record every pack it ran — one value would either be a lie about
+        # the packs that differ or a derived number that hides a bump in all but
+        # the highest (`catalog.Pattern.pack_version`).
+        directory,
+        "sweep",
+        {"pack_versions": dict(catalog.versions), "window_spec": WINDOW_SPEC},
     )
     sys.stdout.write(block)
     sys.stderr.write(f"{len(hits)} candidates, all unresolved\n")
@@ -597,6 +646,52 @@ def run_structure(
     return incomplete
 
 
+def run_closure(
+    target: Path,
+    workspace: Path,
+    entries: list[str] | None = None,
+    excluded: frozenset[str] | None = None,
+    max_bytes: int | None = None,
+) -> int:
+    """`closure.json`, and the fourth block of the ledger.
+
+    **`closure.json` goes to stdout and the block does not.** This is the first
+    command that produces two machine-readable payloads, and `STACK.md` §3 says
+    a redirect must yield a valid file — which it cannot if two payloads share
+    one stream. The artifact the command is named for wins; the block is written
+    into the workspace, where `verify` reads it, and stderr says how many
+    records it holds so the number is not something a reader has to go and
+    count.
+
+    Exit 0 even when there are unresolved members, which is every run with any:
+    `1` means the run worked and the answer is no, and nothing resolves a
+    candidate until triage exists (FR-3.2). The code a reader sees here is
+    `_incomplete`'s — a target this tool could not read in full — exactly as for
+    the other sources.
+    """
+    directory, result = _prepare(target, workspace, excluded, max_bytes)
+    produced = closure(target, entries, excluded, max_bytes)
+    block = to_jsonl(produced.hits)
+    _atomic_write(directory / "closure.json", closure_to_json(produced))
+    _write_block(directory, "closure", block)
+    write_run_json(
+        directory,
+        "closure",
+        {
+            "closure_version": CLOSURE_RULES_VERSION,
+            "roots_given": produced.roots_given,
+            "window_spec": WINDOW_SPEC,
+        },
+    )
+    sys.stdout.write(closure_to_json(produced))
+    sys.stderr.write(
+        f"{len(produced.members)} closure member(s), "
+        f"{len(produced.unresolved)} unresolved, "
+        f"{len(produced.hits)} ledger record(s) written to hits.jsonl\n"
+    )
+    return _incomplete(result)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="secrev", description="Security review of agentic artifacts."
@@ -608,6 +703,7 @@ def build_parser() -> argparse.ArgumentParser:
         ("sweep", "run the pattern catalog and emit its block of hits.jsonl"),
         ("surfaces", "enumerate reachable entry points and emit their block of hits.jsonl"),
         ("structure", "run the structural rules and emit their block of hits.jsonl"),
+        ("closure", "map the reachable artifact set and emit closure.json"),
     )
     for name, help_text in commands:
         sub = subparsers.add_parser(name, help=help_text)
@@ -651,6 +747,24 @@ def build_parser() -> argparse.ArgumentParser:
                 "--rules",
                 default=None,
                 help="structural rules file; default is the shipped structure/_structure.yaml",
+            )
+        elif name == "closure":
+            # No ruleset flag: this source's rules are code, not data, and its
+            # version is `closure.CLOSURE_RULES_VERSION`. `--entry` is the one
+            # input it takes, and it is repeatable rather than single because
+            # FR-1.2's "entry file" is singular only for the simplest artifact
+            # — a plugin bundle is a skill *and* a hook *and* an MCP server at
+            # once (FR-1.5), and picking one of its entry files would answer a
+            # narrower question than the one asked.
+            sub.add_argument(
+                "--entry",
+                action="append",
+                default=None,
+                metavar="PATH",
+                help=(
+                    "an entry point, relative to the target; repeatable. "
+                    "Default: every inventoried file that can be read as text"
+                ),
             )
         else:
             sub.add_argument(
@@ -742,6 +856,16 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.subcommand in _PEER_SOURCES:
         return _run_peer_source(args, target, workspace, excluded, max_bytes)
+
+    # Deliberately *not* in `_PEER_SOURCES`, and this is the one place the
+    # distinction D-11 was amended for becomes code. That table describes a
+    # peer *detection* source: a flag, a ruleset loader, a schema error type.
+    # The closure loads no ruleset — its rules are regexes in `closure.py` — and
+    # it is not a detection mechanism but the route FR-1.2 needs into the
+    # ledger. Giving it a row would make it look like a fourth peer, which is
+    # the reading the PRD's own correction rules out.
+    if args.subcommand == "closure":
+        return _run(lambda: run_closure(target, workspace, args.entry, excluded, max_bytes))
 
     try:
         catalog = resolve_catalog(args.catalog)

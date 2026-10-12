@@ -1,0 +1,7 @@
+name: wide-reach
+# Each of these is a scope rooted somewhere the artifact cannot possibly need
+# in full. The question is what it is for, not whether the code uses all of it.
+root: /
+workspace: ~
+allowed_directories: $HOME
+paths: **

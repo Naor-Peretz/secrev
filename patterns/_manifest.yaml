@@ -1,0 +1,207 @@
+# The manifest layer. PRD FR-3.14, FR-1.4, P10; BRIEF_M5.md §1, B2, B3.
+#
+# Five patterns, one per FR-3.14 class. `catalog.py` enforces that
+# `layer: [manifest]` lives only here and that this file holds only those
+# (§6 Q2), so the filename `scope-guard.sh` checks and the semantics M7 reads
+# off `layer` cannot come apart.
+#
+# **P10 is why this layer exists at all:** a capability grant is a claim about
+# authority, and an unbounded one "is a finding on its own terms, before a line
+# of implementation is read — the implementation can change under the same
+# grant, and the grant is what the user actually agreed to"
+# (`threat-models/_agentic-core.md` §4).
+#
+# **This is the closest thing this project has shipped to FR-1.4, and it is not
+# FR-1.4.** The capability manifest FR-1.4 requires — "declared tool grants,
+# permission entries, allow/deny lists, filesystem scopes, network scopes, and
+# any request for elevated access", extracted as a structure — is implemented
+# by no milestone, and PRD §13's build order assigns it to no row. That was
+# raised in `.claude/TASKS_M3.md` while writing `_agentic-core.md` §4 and is
+# still open. It is restated as a live gap in three places: CORE-11's evidence
+# line reads "**no phase produces this yet**", SKILL-08's and MCP-09's both say
+# the capability manifest "would extract this mechanically and is implemented
+# by no milestone".
+#
+# These five patterns *narrow* that gap and do not close it. A pattern adds a
+# candidate at a line; FR-1.4 wants the grants collected and compared against
+# the artifact's stated purpose, which is a structure and a comparison. Saying
+# otherwise here would be the kind of claim that makes a reader stop believing
+# gap lines.
+#
+# **Where each class's evidence is:**
+#
+#   * Wildcard and unbounded grants — CORE-11, CORE-22 ("adding a permission
+#     entry, widening an allowlist, disabling a check, installing a hook that
+#     suppresses something"), SKILL-08, MCP-09.
+#   * Filesystem scope beyond purpose — CORE-11, CORE-12 ("a grant wider than
+#     the purpose is not excused by the code currently using only part of it,
+#     because the code is what changes and the grant is what persists").
+#   * Network permission with no stated need — CORE-25, almost a restatement of
+#     the class: "does the artifact state a need for network access, and does
+#     its reach match… a mismatch in either direction is worth recording".
+#   * Hook bindings on rewriting or suppressing events — CORE-18, CORE-21,
+#     CORE-22, and `recon.py`'s own surface gap line, "hooks declared in agent
+#     or skill frontmatter, or in other clients' configs, are not enumerated".
+#     `surface.hook_binding` exists and asks whether a binding is *there*; it
+#     does not ask whether the event it binds can rewrite a tool call.
+#   * Activation breadth — the densest evidence of any class in the repository:
+#     SKILL-02, SKILL-03 (the only overlay question citing FR-3.14 by number),
+#     SKILL-10, MCP-07, MCP-08, and `skill.md` §3's "a description written to be
+#     *found* is written to be broad, and the incentive runs the wrong way".
+#
+# **One limit measured rather than reasoned about, and it is the shape of every
+# other limit here.** A wildcard inside an `allow` list and one inside a `deny`
+# list read identically on a single line, because the enclosing key is on
+# another line. `.claude/settings.json` in this repository holds
+# `"deny": ["Read(**/.env)"]`, which `manifest.wildcard_grant` reports — and a
+# broad *refusal* is the opposite of the finding. §4 makes cross-line reasoning
+# a structural rule by definition, so this is stated rather than guessed at, and
+# the resolution under P4 costs a reader one sentence.
+#
+# **Gaps this pack does not close (B4):** CORE-12's and CORE-13's comparisons —
+# grant against stated purpose, and whether a boundary is enforced or only
+# described — are comparisons, and no line-oriented rule holds both sides of
+# one. MCP-08's description-against-code is the same shape. SKILL-09's
+# inherited reach ("the skill carries no grant of its own; its reach is the
+# host agent's") has nothing in the artifact to match at all. SKILL-10 asks who
+# may change a description and whether that change is reviewed, which is a
+# process question.
+#
+# **`default_severity_hint: observation` throughout, like the instruction
+# pack**, and for the neighbouring reason rather than FR-3.15's: the hint is
+# read by the phase that decides severity, and every one of these classes is a
+# question about whether a grant exceeds a purpose — which is exactly the
+# comparison this pack cannot make. A pre-staged severity would be this
+# milestone deciding M7's rule.
+#
+# **Precision varies here, where the instruction pack's does not.** These match
+# structured configuration rather than prose, so the shapes are tighter: an
+# event name is exact, a `"*"` in a grant list is unambiguous, and a `url:` key
+# is extremely common. The per-pattern reason is on each.
+#
+# No `owasp` codes, for `_base.yaml`'s reason: mapping them is a research task
+# against the published taxonomy, not a guess made here.
+#
+# Every gap is bounded (`{0,N}`): an unbounded gap between two alternations is
+# quadratic on a crafted line, and the target picks the line.
+version: "2026.10.1"
+patterns:
+  # FR-3.14 class 1. Two shapes, because a wildcard is written two ways: as the
+  # whole value of a grant key, and inside a tool-scoped permission such as
+  # `Bash(*)`. The second is the spelling an agent client actually uses, and a
+  # rule matching only the first would pass every real allowlist.
+  - id: manifest.wildcard_grant
+    layer: [manifest]
+    # `deny` was in the key list for one commit and is out, measured against
+    # this repository: `.claude/settings.json` holds `"deny": ["Read(**/.env)"]`,
+    # and a wildcard inside a *deny* list is the opposite of this finding — it
+    # is a broad refusal. Flagging it asked the reader to justify a control.
+    #
+    # The tool-scoped half still fires on that line, because line-oriented
+    # matching cannot see the enclosing key: `"Read(**/.env)"` reads identically
+    # under `allow` and under `deny`, and the key is on another line. That is a
+    # cross-line question, which §4 makes a structural rule by definition, so it
+    # is a stated limit rather than a rule twisted to guess.
+    regex: '(?:tools?|permissions?|allow(?:ed)?(?:[_\-]?(?:tools?|list|commands?))?|grants?|capabilit(?:y|ies)|scopes?)["'']?\s*[:=]\s*[\[{]?\s*["'']?(?:\*{1,2}|all|any|everything)["'']?\s*[,\]}]?\s*$|\b(?:Bash|Shell|Write|Edit|Read|Execute|Run|WebFetch)\(\s*\*'
+    flags: [i]
+    precision: medium
+    question: >-
+      Is this grant bounded by what the artifact says it is for? A grant wider
+      than the purpose is not excused by the code currently using only part of
+      it: the code is what changes and the grant is what persists, and the grant
+      is what the user agreed to (P10, CORE-11, CORE-12).
+    default_severity_hint: observation
+    references: ["FR-3.14", "FR-1.4", "CORE-11", "CORE-12", "CORE-22"]
+
+  # FR-3.14 class 2. Anchored on the end of the value, because the finding is a
+  # scope that is a *root* — `/`, `~`, `$HOME`, `**` — rather than one that
+  # merely contains one. Without the anchor this matches every path in every
+  # configuration file.
+  - id: manifest.filesystem_scope
+    layer: [manifest]
+    regex: '(?:dir(?:ector(?:y|ies))?|path|paths|root|roots|workspace|folder|fs|filesystem|allowed[_\-]?(?:dir|path|director)[a-z_]{0,12})["'']?\s*[:=]\s*[\[{]?\s*["'']?(?:/|~|~/|\$HOME|\*\*|\$\{?HOME)["'']?\s*[,\]}]?\s*$'
+    flags: [i]
+    precision: medium
+    question: >-
+      Does this filesystem scope exceed what the artifact is for? A scope
+      rooted at `/`, `~` or `**` reaches every file the host can, so the
+      question is what the artifact actually needs and whether anything but
+      this line bounds it (FR-3.14, CORE-11).
+    default_severity_hint: observation
+    references: ["FR-3.14", "FR-1.4", "CORE-11"]
+
+  # FR-3.14 class 3. `precision: low` and that is honest: a `url:` key is one
+  # of the commonest lines in any configuration file, and this rule cannot see
+  # whether the artifact *states* a network need — which is the half CORE-25
+  # asks about and the half that makes it a finding. Under P4 the cost of the
+  # false positive is a paragraph.
+  - id: manifest.network_permission
+    layer: [manifest]
+    regex: '(?:network|net|outbound|egress|internet|allow[_\-]?(?:net|host|origin|domain)[a-z_]{0,12}|hosts?|origins?|domains?)["'']?\s*[:=]\s*[\[{]?\s*["'']?(?:true|yes|on|\*{1,2}|all|any|0\.0\.0\.0|enabled)["'']?\s*[,\]}]?\s*$'
+    flags: [i]
+    precision: low
+    question: >-
+      Does the artifact state a need for network access, and does this
+      permission match it? A mismatch in either direction is worth recording —
+      reach beyond the stated need, and a stated need with no visible use, are
+      different findings (CORE-25).
+    default_severity_hint: observation
+    references: ["FR-3.14", "CORE-25", "MCP-10"]
+
+  # FR-3.14 class 4. An event that fires *before* a tool call can rewrite or
+  # refuse it, which is a different power from one that merely observes — and
+  # that distinction is what `surface.hook_binding` does not ask about. The
+  # surface kind says a binding exists; this asks what the event can do.
+  #
+  # **`precision: medium`, corrected from `high` by F1 rather than reasoned
+  # about.** The first draft said high "uniquely in this pack: these are literal
+  # event names, not a shape". Run against this repository the rule produced
+  # **144** candidates, of which **three** were bindings — `.claude/settings.json`
+  # lines 60, 74 and 106. The rest were prose and comments naming the events:
+  # hook file headers, `.claude/README.md`, and a skill whose subject is how
+  # hooks work. A literal name is exact and says nothing about whether the line
+  # is a binding, which is the claim `high` was making.
+  #
+  # Not lowered to `low` either: in a real target's configuration the name *is*
+  # the binding, and the measurement above is of a repository that documents
+  # hooks for a living. Recorded here with the number, because a precision
+  # chosen by argument is the thing F1 exists to check.
+  #
+  # The post-call events are here too, deliberately: a hook on a tool's *result*
+  # reaches the model's context, where a return value becomes instruction (P8,
+  # and the MCP overlay's "the return path is an input path").
+  - id: manifest.hook_rewrite_event
+    layer: [manifest]
+    regex: '(?:pre|post|before|after|on)[_\-]?tool[_\-]?(?:use|call|result|invocation)|tool[_\-]?call[_\-]?(?:intercept|filter|hook|middleware)|user[_\-]?prompt[_\-]?submit|(?:pre|before)[_\-]?(?:request|response|submit)[_\-]?hook'
+    flags: [i]
+    precision: medium
+    question: >-
+      Can this hook rewrite, suppress or redirect the tool call it binds to? An
+      event that fires before a call decides whether it happens and with what
+      arguments; one that fires on the result reaches the model's context, where
+      a return value becomes instruction (FR-3.14, CORE-18, P8).
+    default_severity_hint: observation
+    references: ["FR-3.14", "CORE-18", "CORE-21", "CORE-22"]
+
+  # FR-3.14 class 5, and the class with the most evidence behind it.
+  # `skill.md` §3: "a description written to be *found* is written to be broad,
+  # and the incentive runs the wrong way. Read the trigger vocabulary, not the
+  # summary sentence."
+  #
+  # `precision: low`, because "any" and "all" appear in perfectly bounded
+  # descriptions. What the rule can see is the breadth word; whether it loads
+  # the artifact into unrelated contexts is SKILL-03's comparison, which needs
+  # the body.
+  - id: manifest.broad_activation
+    layer: [manifest]
+    regex: '(?:description|when[_\-]?to[_\-]?use|whenToUse|activation|activates?[_\-]?(?:on|when)?|triggers?|applies[_\-]?to|keywords?)["'']?\s*[:=][^\n]{0,96}\b(?:any|all|every|everything|anything|always|whenever|general[\s\-]?purpose|catch[\s\-]?all|all[\s\-]?purpose)\b'
+    flags: [i]
+    precision: low
+    question: >-
+      Is this activation description broad enough to load the artifact into
+      contexts unrelated to what it does? Breadth is not a finding by itself;
+      breadth that pulls the artifact into unrelated requests is the question
+      this class exists to ask. Read the trigger vocabulary rather than the
+      summary sentence (SKILL-02, SKILL-03).
+    default_severity_hint: observation
+    references: ["FR-3.14", "SKILL-02", "SKILL-03", "MCP-07"]

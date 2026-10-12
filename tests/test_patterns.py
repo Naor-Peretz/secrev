@@ -64,13 +64,37 @@ def test_the_shipped_catalog_loads_and_is_the_expected_size() -> None:
     §7's last DoD item requires flagging a path-validation region and no
     original seed pattern touched path handling (§6)."""
     loaded = load(PACKS)
-    assert len(loaded.patterns) == 9
-    # Bumped in M3.5 with `log.sensitive`'s `{0,400}` bound, and again when the
-    # four remaining quadratic patterns gained the same bound;
-    # `patterns/_base.yaml` carries both reasons. Pinning the literal here is
-    # deliberate: a catalog version change expires verifications (FR-4.6), so it
-    # should cost an edit to a test rather than pass unnoticed.
-    assert loaded.version == "2026.09.3"
+    # Nine until M5, which is the first milestone since M1 permitted to write
+    # `patterns/` — and permitted by filename, not by directory. Seven
+    # instruction-layer patterns, one per FR-3.13 class, and five
+    # manifest-layer, one per FR-3.14 class.
+    assert len(loaded.patterns) == 21
+    # **Per pack since M5** (owner decision, 2026-10-07). This asserted one
+    # `loaded.version`, which is gone: a pack's version is what its own records
+    # carry, because one derived version hides a bump in every pack but the
+    # highest. `catalog.Pattern.pack_version` has the reasoning.
+    #
+    # `_base.yaml` was bumped in M3.5 with `log.sensitive`'s `{0,400}` bound, and
+    # again when the four remaining quadratic patterns gained the same bound;
+    # the pack carries both reasons. Pinning the literals here is deliberate: a
+    # version change expires verifications (FR-4.6), so it should cost an edit
+    # to a test rather than pass unnoticed.
+    assert dict(loaded.versions) == {
+        "_base.yaml": "2026.09.3",
+        "_instruction.yaml": "2026.10.1",
+        "_manifest.yaml": "2026.10.1",
+        "python.yaml": "2026.09.3",
+    }
+    # **The point of the whole change, asserted:** M1's packs keep 2026.09.3
+    # while the new pack carries its own version, so adding a pack did not
+    # re-version a single existing record and the ledger golden did not move.
+    assert {pattern.pack_version for pattern in loaded.patterns} == {
+        "2026.09.3",
+        "2026.10.1",
+    }
+    assert {pattern.pack_version for pattern in loaded.patterns if pattern.layer == ("code",)} == {
+        "2026.09.3"
+    }
 
 
 def test_every_pattern_has_a_fixture_directory(catalog: Catalog) -> None:
@@ -118,13 +142,143 @@ def test_python_patterns_are_scoped_to_python(catalog: Catalog) -> None:
     }
 
 
+# --- B1 and B2: every FR class has a pattern, and the mapping is written down -
+
+
+# FR-3.13's seven classes, quoted from the PRD, against the pattern that covers
+# each. B1's evidence is "the seven classes listed against the pattern ids that
+# cover them", and a list in a commit message is a list nobody re-reads — so it
+# is here, where a pattern renamed or removed turns it red.
+FR_3_13 = {
+    "directions to bypass, suppress, or pre-approve confirmation prompts": (
+        "instruction.approval_bypass"
+    ),
+    "assertions of elevated authorization or special permissions": ("instruction.authority_claim"),
+    "instructions to disregard prior, system, or user instructions": ("instruction.override_prior"),
+    "directions to conceal actions from the user or to avoid mentioning them": (
+        "instruction.conceal_action"
+    ),
+    "instructions to write outside the working directory or into "
+    "agent-configuration locations": "instruction.write_outside",
+    "directions to transmit context, file contents, or credentials to a "
+    "network destination": "instruction.exfiltrate",
+    "instructions to install, register, or modify other agentic components": (
+        "instruction.install_component"
+    ),
+}
+
+# FR-3.14's five, on the same terms.
+FR_3_14 = {
+    "unbounded or wildcard tool grants": "manifest.wildcard_grant",
+    "filesystem scopes exceeding the artifact's stated purpose": ("manifest.filesystem_scope"),
+    "network permissions in artifacts with no stated network need": ("manifest.network_permission"),
+    "hook bindings on events that permit rewriting or suppressing tool calls": (
+        "manifest.hook_rewrite_event"
+    ),
+    "activation descriptions broad enough to load the artifact into unrelated "
+    "contexts": "manifest.broad_activation",
+}
+
+
+def test_every_fr_3_13_class_has_a_pattern(catalog: Catalog) -> None:
+    """B1, in both directions.
+
+    The forward direction is the obvious one. The reverse is what catches a
+    rename: an instruction-layer pattern covering no class in the table is
+    either a class this table forgot or a pattern nobody can trace to a
+    requirement, and both are worth a failure.
+    """
+    known = {pattern.id for pattern in catalog.patterns}
+    missing = sorted(rule_id for rule_id in FR_3_13.values() if rule_id not in known)
+    assert not missing, f"FR-3.13 classes whose pattern is gone: {missing}"
+
+    instruction = {pattern.id for pattern in catalog.patterns if pattern.layer == ("instruction",)}
+    assert instruction == set(FR_3_13.values()), (
+        "the instruction pack and FR-3.13's classes have come apart: "
+        f"{sorted(instruction.symmetric_difference(set(FR_3_13.values())))}"
+    )
+    assert len(FR_3_13) == 7, "FR-3.13 names seven classes"
+
+
+def test_every_fr_3_14_class_has_a_pattern(catalog: Catalog) -> None:
+    """B2, on the same terms as B1."""
+    known = {pattern.id for pattern in catalog.patterns}
+    missing = sorted(rule_id for rule_id in FR_3_14.values() if rule_id not in known)
+    assert not missing, f"FR-3.14 classes whose pattern is gone: {missing}"
+
+    manifest = {pattern.id for pattern in catalog.patterns if pattern.layer == ("manifest",)}
+    assert manifest == set(FR_3_14.values()), (
+        "the manifest pack and FR-3.14's classes have come apart: "
+        f"{sorted(manifest.symmetric_difference(set(FR_3_14.values())))}"
+    )
+    assert len(FR_3_14) == 5, "FR-3.14 names five classes"
+
+
+def test_the_fr_class_text_is_the_prd_s_own() -> None:
+    """The tables above are quotes, and this is what keeps them quotes.
+
+    A paraphrase drifts: the table would still read plausibly while naming a
+    class the PRD does not have, and the coverage claim would be against our own
+    wording rather than the requirement's. Each key has to appear in the PRD,
+    whitespace-collapsed because the source is wrapped prose.
+    """
+    prd = " ".join((ROOT / "REQUIREMENTS_security-review-skill.md").read_text().split())
+    for table, name in ((FR_3_13, "FR-3.13"), (FR_3_14, "FR-3.14")):
+        for text in table:
+            assert text in prd, f"{name}: {text!r} is not the PRD's wording"
+
+
+def test_no_new_pattern_concludes_anything(catalog: Catalog) -> None:
+    """B3. FR-3.15 is the citation for the instruction half, and P10's "a
+    question about *this* manifest" for the other.
+
+    Two things are asserted. Every question reads as a question — a `question`
+    field that states a verdict is a pattern that has decided, and nothing in
+    M1 or M5 concludes anything (FR-3.2). And no new pattern claims a severity:
+    `default_severity_hint` is read by the phase that decides severity, so a
+    pattern forbidden to auto-classify must not pre-stage one for it.
+    """
+    added = [
+        pattern
+        for pattern in catalog.patterns
+        if pattern.layer in (("instruction",), ("manifest",))
+    ]
+    assert added, "neither new pack loaded"
+    for pattern in added:
+        assert "?" in pattern.question, f"{pattern.id}: the question states rather than asks"
+        assert pattern.default_severity_hint == "observation", (
+            f"{pattern.id} hints {pattern.default_severity_hint!r}. These patterns raise "
+            "questions for manual review and never auto-classify (FR-3.15), so the hint "
+            "must not pre-stage a severity for the phase that decides it"
+        )
+
+
 def test_precision_low_is_present_and_is_not_a_defect(catalog: Catalog) -> None:
     """§4 calls `precision: low` first-class and expected. Asserted so that a
     later tidy toward "high precision everywhere" fails loudly — under P4 every
     candidate is resolved anyway, so a false positive costs a paragraph while a
-    miss is a silent gap."""
+    miss is a silent gap.
+
+    **Widened in M5, deliberately rather than by regenerating a set.** The
+    assertion used to pin two code patterns. Every instruction-layer pattern is
+    `low` and must be: FR-3.15 says natural language has no fixed syntax and
+    paraphrase defeats regex, so the attacker's cheapest move against this pack
+    is a rewording, and recall is the only thing worth optimising. A tidy that
+    raised one of them would be claiming a precision the layer cannot have.
+    """
     low = {pattern.id for pattern in catalog.patterns if pattern.precision == "low"}
-    assert low == {"log.sensitive", "path.traversal"}
+    code_low = {
+        pattern.id
+        for pattern in catalog.patterns
+        if pattern.precision == "low" and pattern.layer == ("code",)
+    }
+    assert code_low == {"log.sensitive", "path.traversal"}
+
+    instruction = {pattern.id for pattern in catalog.patterns if pattern.layer == ("instruction",)}
+    assert instruction <= low, (
+        "an instruction-layer pattern claiming better than low precision: "
+        f"{sorted(instruction - low)}. FR-3.15 is a permanent constraint"
+    )
 
 
 def test_agent_config_rule_is_case_insensitive(catalog: Catalog) -> None:

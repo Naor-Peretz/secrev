@@ -128,9 +128,11 @@ produce it and does not exist yet.
   it fetched, another service's response, a database row. This is the sink §3 names, and the
   question that distinguishes a tool returning its own computation from one relaying somebody
   else's text.
-  *Evidence:* read. No pattern covers the instruction layer — `patterns/_instruction.yaml` is M5
-  (§5 below) — and no structural source exists until M4, so the ledger says nothing here and that
-  silence is coverage that does not exist rather than coverage that passed.
+  *Evidence:* read, plus `hits.jsonl → rule_id: instruction.approval_bypass`,
+  `instruction.authority_claim`, `instruction.override_prior` and `manifest.broad_activation`
+  (§5 below). None of the four structural rules models a tool's return value as a sink, and the
+  patterns name places to look rather than answering — so a quiet ledger here is not coverage that
+  passed (FR-3.15).
 
 - **MCP-06 — Does any returned value instruct the model?** Imperatives, claims about what the model
   should do next, or text that asserts authority it does not have. Separate two cases: content the
@@ -177,7 +179,7 @@ produce it and does not exist yet.
 
 **The mechanism first, because naming packs implies a selector that does not exist.** The shipped
 catalog is the set of `*.yaml` files in `patterns/`, loaded together; `--catalog` takes one file or
-one directory, and every pack in a run declares the same `version`. There is no per-pack enable
+one directory, and each pack declares its own `version`, which a record carries. There is no per-pack enable
 switch, so what follows names the packs whose questions this archetype needs, and the selective
 enabling FR-2.3 implies is itself a gap.
 
@@ -188,13 +190,15 @@ enabling FR-2.3 implies is itself a gap.
 - **`patterns/python.yaml`** — exists, and unusually relevant here: MCP servers are commonly
   Python, so `exec.shell_true`, `exec.dynamic`, `deser.unsafe`, `tls.verify_off` and
   `path.traversal` all bear on MCP-04 directly.
-- **`patterns/_instruction.yaml`** — **does not exist; M5.** This is the pack this archetype needs
-  most, because the sink it is organised around — tool return values — lives in the instruction
-  layer. Until it ships, MCP-05, MCP-06 and MCP-07 are answered by reading, and no absence of
-  candidates means anything there. Recorded as a coverage gap, which `BRIEF_M3.md` §2 permits and
-  requires.
-- **`patterns/_manifest.yaml`** — **does not exist; M5.** The client configuration is the manifest
-  layer, so MCP-01 and MCP-09's environment half are read rather than matched.
+- **`patterns/_instruction.yaml`** — exists since M5, one pattern per FR-3.13 class. This is the
+  pack this archetype needs most, because the sink it is organised around — tool return values —
+  lives in the instruction layer. `instruction.approval_bypass`, `instruction.authority_claim` and
+  `instruction.override_prior` bear on MCP-05 to MCP-07. Its candidates raise questions and never
+  classify (FR-3.15): MCP-05, MCP-06 and MCP-07 are still answered by reading, and no absence of
+  candidates means anything there.
+- **`patterns/_manifest.yaml`** — exists since M5, one pattern per FR-3.14 class.
+  `manifest.broad_activation` bears on MCP-05 to MCP-07; the client configuration is the manifest
+  layer, so MCP-01 and MCP-09's environment half are matched where a pattern applies and still read.
 
 ---
 

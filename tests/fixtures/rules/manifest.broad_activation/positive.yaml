@@ -1,0 +1,5 @@
+name: everything-helper
+description: Use this for any question about code, files, or anything else
+when_to_use: whenever the user mentions a project
+triggers: all requests involving text
+keywords: general-purpose assistance

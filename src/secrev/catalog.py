@@ -111,10 +111,44 @@ class Pattern:
     owasp: str | None
     references: tuple[str, ...]
 
+    # The version of the pack this pattern was loaded from, written onto every
+    # record it produces as `catalog_version` (M5, owner decision 2026-10-07).
+    #
+    # **Per pack, not per catalog**, and the decision is worth keeping with its
+    # reasoning. `ledger.Hit.catalog_version` is documented as "the version of
+    # the ruleset that produced this record", and that is already how the other
+    # two sources behave: a surface record carries the kinds file's version and a
+    # structural record carries the rule file's. The pattern source was the odd
+    # one out, because it is the only source with more than one file.
+    #
+    # The alternative considered and rejected was one version for the whole
+    # catalog, derived as the maximum of the packs'. It hides a bump: with
+    # `_instruction.yaml` at 2026.10.1, correcting a pattern in `_base.yaml` and
+    # bumping that pack to 2026.09.4 leaves the maximum unchanged, so
+    # `catalog_version` does not move, FR-4.6 never fires, and the verifications
+    # the corrected pattern now reaches stay in force. Making that work would
+    # require every bump to clear the highest version in the catalog — a
+    # convention no loader can enforce, because it cannot know what was there
+    # before.
+    #
+    # Per-pack also gives FR-4.6 the granularity it asks for: a change to the
+    # instruction pack invalidates verifications against instruction records and
+    # leaves code records alone. And it needs no version grammar, which the
+    # maximum does: "2026.09.10" sorts below "2026.09.3" as a string.
+    pack_version: str
+
 
 @dataclass(frozen=True)
 class Catalog:
-    version: str
+    """The packs as one catalog, with each pack's version kept distinct.
+
+    `versions` is `(pack filename, version)` pairs sorted by filename — a tuple
+    rather than a mapping so the dataclass's `frozen=True` means what it says,
+    and sorted so `run.json`'s record of it does not depend on the order the
+    files were given. `cli.py` turns it into a mapping to write it down.
+    """
+
+    versions: tuple[tuple[str, str], ...]
     patterns: tuple[Pattern, ...]
 
 
@@ -175,7 +209,46 @@ def _layer(raw: Any, pattern_id: str) -> tuple[str, ...]:
     return layer
 
 
-def _pattern(raw: Any, index: int) -> Pattern:
+# Which pack a layer's patterns must live in, and the only patterns that pack
+# may hold (M5, `BRIEF_M5.md` §6 Q2 and A6).
+#
+# The decision was that both new packs sit in `patterns/` beside the code
+# patterns, because they are the same schema and the same `sweep` — what differs
+# is the *resolution* semantics (FR-3.15: never auto-classify), which M7 reads
+# off `layer`. The rule here is what keeps the filename `scope-guard.sh` checks
+# and the semantics the loader checks from coming apart: a guard can check a
+# name and cannot check a `layer`, so the loader checks the correspondence.
+#
+# Both directions. A rule that only refuses passes by refusing everything, so
+# the permit is asserted too (A6).
+_PACK_FOR_LAYER = {"instruction": "_instruction.yaml", "manifest": "_manifest.yaml"}
+_LAYER_FOR_PACK = {pack: layer for layer, pack in _PACK_FOR_LAYER.items()}
+
+
+def _check_pack_layer(pattern: Pattern, filename: str) -> None:
+    """§6 Q2's rule: a pack's filename and its patterns' `layer` must agree."""
+    layer = pattern.layer[0]
+    required = _PACK_FOR_LAYER.get(layer)
+    if required is not None and filename != required:
+        _fail(
+            f"`layer: [{layer}]` may only appear in `{required}`, and this is "
+            f"`{filename}`. The filename is what `scope-guard.sh` can check and the "
+            "layer is what decides how M7 resolves the record (FR-3.15); letting the "
+            "two disagree is how a question changes pack without anything noticing",
+            pattern_id=pattern.id,
+        )
+    expected = _LAYER_FOR_PACK.get(filename)
+    if expected is not None and layer != expected:
+        _fail(
+            f"`{filename}` holds `layer: [{expected}]` patterns and nothing else, and "
+            f"this one is `layer: [{layer}]`. A code pattern here would be refused by "
+            "FR-3.15's never-auto-classify rule in M7 while having been written as a "
+            "code rule",
+            pattern_id=pattern.id,
+        )
+
+
+def _pattern(raw: Any, index: int, pack_version: str) -> Pattern:
     if not isinstance(raw, dict):
         _fail(f"entry {index} in `patterns` is not a mapping")
     entry: dict[str, Any] = raw
@@ -247,6 +320,7 @@ def _pattern(raw: Any, index: int) -> Pattern:
         ),
         owasp=owasp,
         references=_require_str_list(entry.get("references", []), "references", pattern_id),
+        pack_version=pack_version,
     )
 
 
@@ -291,7 +365,7 @@ def load_file(path: Path) -> Catalog:
     patterns: list[Pattern] = []
     seen: set[str] = set()
     for index, raw in enumerate(raw_patterns):
-        pattern = _pattern(raw, index)
+        pattern = _pattern(raw, index, version)
         if pattern.id in seen:
             _fail(
                 "duplicate id — two patterns sharing one id collapse two questions "
@@ -299,18 +373,34 @@ def load_file(path: Path) -> Catalog:
                 pattern_id=pattern.id,
             )
         seen.add(pattern.id)
+        _check_pack_layer(pattern, path.name)
         patterns.append(pattern)
 
-    return Catalog(version=version, patterns=tuple(patterns))
+    return Catalog(versions=((path.name, version),), patterns=tuple(patterns))
 
 
 def load(paths: list[Path]) -> Catalog:
-    """Several catalog files as one catalog.
+    """Several catalog files as one catalog, each keeping its own version.
 
-    Every file must carry the same `version`. The version is a property of the
-    catalog a run executed against, not of one pack within it: two packs
-    disagreeing would make `catalog_version` on a hit ambiguous, and FR-4.6
-    invalidates verifications on exactly that field.
+    **Every file used to have to carry the same `version`, and that rule is
+    gone** (M5, owner decision 2026-10-07). It said the version is a property of
+    the catalog rather than of one pack, which sounds right and does not
+    survive a second pack being added: bumping one pack means editing every
+    other pack's version line, so adding `_instruction.yaml` would have meant
+    editing `_base.yaml` and `python.yaml` — M1's closed catalog, which
+    `scope-guard.sh` refuses by name, for a change that is not a correction to
+    any pattern in them.
+
+    A single version derived as the maximum was considered and rejected: it
+    hides a bump. See `Pattern.pack_version`, which carries the reasoning and is
+    where the version now travels. `catalog_version` on a record is the version
+    of the pack whose pattern produced it, which is what
+    `ledger.Hit.catalog_version` has always said the field means and what the
+    surface and structural sources already do.
+
+    Nothing asserted the agreement rule, which is worth recording: it was
+    removable without a test turning red, so the only thing holding it was the
+    docstring that argued for it.
 
     Patterns are sorted by id. Determinism is the reason (NFR-3) — the order
     files arrive in is an argument-order accident, and it would otherwise
@@ -319,24 +409,28 @@ def load(paths: list[Path]) -> Catalog:
     if not paths:
         raise CatalogError("no catalog files given")
 
-    version: str | None = None
-    version_source = ""
+    versions: dict[str, str] = {}
     merged: dict[str, Pattern] = {}
 
     for path in sorted(paths, key=lambda item: item.name):
         catalog = load_file(path)
-        if version is None:
-            version, version_source = catalog.version, path.name
-        elif catalog.version != version:
-            raise CatalogError(
-                f"catalog version mismatch: {version_source} declares {version}, "
-                f"{path.name} declares {catalog.version}. One run has one catalog_version"
-            )
+        for name, version in catalog.versions:
+            if name in versions:
+                # Two files with one basename make `versions` ambiguous, and the
+                # record would name a pack a reader cannot find. It cannot
+                # happen within one directory and can across two `--catalog`
+                # arguments.
+                raise CatalogError(
+                    f"two catalog files are both named {name}; a pack's version is "
+                    "recorded under its filename, so the two cannot be told apart"
+                )
+            versions[name] = version
         for pattern in catalog.patterns:
             if pattern.id in merged:
                 _fail("duplicate id, also defined in another pack", pattern_id=pattern.id)
             merged[pattern.id] = pattern
 
-    if version is None:  # pragma: no cover - the empty-paths guard above precludes it
-        raise CatalogError("no catalog files given")
-    return Catalog(version=version, patterns=tuple(merged[key] for key in sorted(merged)))
+    return Catalog(
+        versions=tuple(sorted(versions.items())),
+        patterns=tuple(merged[key] for key in sorted(merged)),
+    )
