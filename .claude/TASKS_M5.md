@@ -758,6 +758,77 @@ a low-precision prose rule is supposed to cost.
       and still not a check — the quiet version of the same gap is the one worth looking for when
       someone adds 3.13.
 
+- [ ] **H-3's claim is asserted and not held: the guards are an enumeration of tool names, and a
+      second enumeration behind it permits silently.** `CLAUDE.md` says "Between them, no tool that
+      can write to a protected path is unwatched (H-3)", and STACK.md §8 H-3 says guards cover
+      "every tool that **can** write, not every tool that usually writes". Raised by the owner
+      (2026-10-12) and **measured** against the real hooks through `attack.py`'s own runner, with
+      the decision read from stdout rather than from the exit code — an ask is JSON on exit 0, and
+      the first version of the probe read `rc` alone and reported its own control as a permit.
+
+      **Two independent gaps, both denylists by omission.**
+
+      1. *The matcher names four tools.* `.claude/settings.json:76` is `Bash` and `:89` is
+         `Write|Edit|MultiEdit`; nothing asserts anywhere that the list is complete, and
+         `git grep -n "Write|Edit|MultiEdit"` over `tests/harness/` returns one *comment* and no
+         assertion. Any tool the client adds is permitted by default. In this session's own tool
+         list that already includes `NotebookEdit`, which writes files and reaches no guard.
+      2. *The guard names one input field.* `scope-guard.sh:62` and
+         `self-application-guard.sh:50` both do `read_field file_path`. Measured: with the hook
+         reached, a payload carrying the same protected path under `notebook_path`, under `path`,
+         or under `target_file` is a **silent permit** — `read_field` yields empty,
+         `is_scoped_path ""` fails, `exit 0`, no output. The controls in the same run ask and
+         refuse correctly, so this is the guard's behaviour and not the probe's.
+
+      **Gap 2 is the trap laid for whoever fixes gap 1.** Adding `NotebookEdit` to the matcher
+      produces a hook that *runs* and permits, because that tool's path field is `notebook_path`.
+      The result reads as coverage and is not, which is H-1's collapse — "I could not find a path
+      to check" answered as "nothing to check" — and H-9's, since the guard does not refuse when it
+      cannot read the state it gates on. Gap 1 is live today and gap 2 is latent: every tool the
+      matcher currently routes uses `file_path`, so nothing is slipping through gap 2 *yet*.
+
+      **And the polarity is H-2's own error one level up.** H-2 forbids enumerating write *verbs*
+      inside `Bash` because `tee`, heredocs, `>`, `cp`, `dd` is not a closeable list. The matcher
+      enumerates write *tools*, which is the same list one layer out, and the project's founding
+      finding was a denylist bypass.
+
+      **The inventory, with the unknowns left as unknowns.** Beside `NotebookEdit`: `Artifact`
+      publishes a named local file outward, which is not a write but is the mirror of one and is
+      watched by nothing; the browser and Playwright tools execute code outside `Bash` and
+      therefore outside `bash-guard.sh`; `Agent` and `Workflow` spawn subagents, and `isolation:
+      "worktree"` gives one its own checkout of *this* repository. **Whether `PreToolUse` fires for
+      a subagent's calls at all is not known here and is not guessed** — it is the first thing to
+      establish, because it decides whether the matcher question matters once or many times. One
+      piece of good news, measured: `is_scoped_path` uses H-5's unanchored double-glob form, so a
+      worktree path like `…/worktree-x/src/secrev/closure.py` still matches. The path layer
+      survives; the tool layer is what does not.
+
+      **Recommendation, and it is not "add the missing names".** Three shapes:
+      *(A)* one `PreToolUse` entry with a universal matcher that dispatches by tool name inside,
+      **asks** on any tool it does not know, and — the half that matters — refuses rather than
+      exits 0 when a payload names no field it recognises. Ask rather than deny keeps the session
+      usable and makes novelty visible, which is the polarity `.claude/` already uses for
+      `Write`/`Edit` so that repairing a guard stays possible *and* visible.
+      *(B)* extend the matcher with each write-capable name. This is the current shape with more
+      names in it, and by H-2's own argument reaching for another name is the signal the polarity
+      is wrong. **Not recommended**, and recorded as rejected rather than unconsidered.
+      *(C)* move enforcement off tool names entirely — `permissions.deny` rules the client enforces
+      without a hook reading anything, HARNESS-CI's check on protected paths after the code leaves
+      the machine, and file ownership (HARNESS-FS). This is what H-2's own closing note already
+      prescribes: "enforcement of the harness's own files belongs to layers that do not read shell
+      text".
+      **A now, C as the actual answer, never B** — and *before* any of them, the assertion, because
+      H-8 makes an untried guard an assumption and this claim has never been tried. The assertion
+      has a shape that does not need to know the client's tool list: once (A) exists, "a
+      `PreToolUse` entry with a universal matcher exists, and a payload with an unrecognised field
+      spelling does not exit 0" is checkable and complete, where "every write-capable tool is
+      named" never can be.
+
+      **Not fixed here.** Harness work, not a defect in anything M5 adds, so this milestone's rule
+      records it. It is also the one finding in this file that argues for its own priority: every
+      other guard in the table is a control over *what* a write touches, and this is a control over
+      whether the guard is consulted at all.
+
 ---
 
 ## Carried into M5, open, and not scheduled

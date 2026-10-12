@@ -39,7 +39,7 @@ names the ids that gained or lost a row.
 
 ## The rows
 
-178 candidates, 178 rows.
+181 candidates, 181 rows.
 
 | candidate | rule | where | class | instance-level fact |
 |---|---|---|---|---|
@@ -77,6 +77,9 @@ names the ids that gained or lost a row.
 | `644f558c56c64f9d` | `manifest.wildcard_grant` | `TASKS_M5.md:538` | `repository-record` | in a record written for people reading the history: `that line, because `"Read(**/.env)"` reads identically` |
 | `3a95914773628fd5` | `instruction.write_outside` | `TASKS_M5.md:552` | `repository-record` | in a record written for people reading the history: ``Write` and `Edit` on `~/.claude/**` — including` |
 | `e887e56a7801ddb7` | `instruction.approval_bypass` | `TASKS_M5.md:568` | `repository-record` | in a record written for people reading the history: `*arguing for removing* auto-approved rules; `install_component` |
+| `ab7a75e159fd7f93` | `manifest.hook_rewrite_event` | `TASKS_M5.md:799` | `repository-record` | in a record written for people reading the history: `repository. **Whether `PreToolUse` fires for` |
+| `8b516e904abb98f7` | `manifest.hook_rewrite_event` | `TASKS_M5.md:807` | `repository-record` | in a record written for people reading the history: `*(A)* one `PreToolUse` entry with a universal` |
+| `5312025cf71b7e47` | `manifest.hook_rewrite_event` | `TASKS_M5.md:823` | `repository-record` | in a record written for people reading the history: ``PreToolUse` entry with a universal` |
 | `432e057144833f00` | `instruction.conceal_action` | `agents/documentation-architect.md:303` | `loaded-with-subagent` | in a subagent definition: `5. **Show don't tell** - Code examples > long` |
 | `2bde19984a128153` | `manifest.broad_activation` | `agents/plan-reviewer.md:3` | `loaded-with-subagent` | in a subagent definition: `description: Reviews an implementation plan against the secrev specification before any code is written. Checks` |
 | `5cbf4b8c49069d22` | `instruction.conceal_action` | `agents/python-reviewer.md:85` | `loaded-with-subagent` | in a subagent definition: `Do not report what these already caught` |
