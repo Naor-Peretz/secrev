@@ -49,6 +49,7 @@ from secrev.inventory import (
     split_lines,
     walk,
 )
+from secrev.ledger import redact
 
 # Files whose name marks them as tests, for `security_process.test_files`.
 _TEST_FILE = re.compile(r"(^|/)(test_[^/]+|[^/]+_test)\.[a-z]+$|(^|/)tests?/")
@@ -345,7 +346,21 @@ def _entrypoints(root: Path, found: frozenset[str], unreadable: list[str]) -> di
     # on it (owner decision, 2026-09-22), and M3.5 settled that the number a
     # reader sees and the number the exit code came from must be the same one.
     return {
-        "declared": sorted(declared),
+        # **G-3, and this field is why the sweep for the class was worth running
+        # rather than fixing the site the owner named.** `closure.json` was found
+        # leaking a credential out of a reference; `declared` leaks one out of a
+        # *declaration*, `probe = probe.<secret>:main` from `[project.scripts]`
+        # or a `bin` entry, which is target text composed by this function and
+        # not a path the reviewer follows. Measured with a marker planted in
+        # every position target text reaches an artifact from.
+        #
+        # Sorted before redaction, never after: two declarations differing only
+        # in the secret would otherwise become one string, and a duplicate that
+        # looks like a single entry is a count a reader cannot check. Redacting
+        # at composition is safe *here* and would not be in `closure.py` — this
+        # value feeds no identity, no grouping key and no digest; nothing joins
+        # on it, and `closure` reads the manifests itself rather than reusing it.
+        "declared": [redact(item) for item in sorted(declared)],
         "workflows": workflows,
         "unreadable": sorted(unreadable),
     }

@@ -744,7 +744,98 @@ a low-precision prose rule is supposed to cost.
       bindings — CORE-18's "enumerated set" sentence is the accurate one and the
       pattern is the noisy addition to it, not the authority replacing it.
 
-### Harness findings raised during M5
+### Two defects in M5's own code, found after the close and fixed before the merge
+
+Both reported by the owner reviewing `ec9e654`, both in `closure.py`, so both
+are M5's by the standing rule rather than carried.
+
+- [x] **G-3 was missing from `closure.json` entirely.** A line naming
+      `https://admin:<secret>@host/config` had the credential redacted in
+      `hits.jsonl`, through `excerpt`, and written verbatim into
+      `unresolved[].reference`. One source redacting and another not is the
+      whole of it: G-3 says no secrets in artifacts and `closure.json` is an
+      artifact. `reference` and `reason` now pass through `ledger.redact` **at
+      serialisation**, which is the only correct place — redacting at extraction
+      would feed a masked string to `_lexical_join`, to the grouping key and to
+      `ids.assign`, so two different credentials in one position would become one
+      candidate, which is the opposite of what G-3 is for. A test asserts two
+      different secrets still give two different ids.
+
+      **The sweep the owner asked for found a second site, and it was not in
+      `closure.py`.** A marker was planted in every position target text reaches
+      an artifact from — prose, URL userinfo, an assignment, a `[project.scripts]`
+      target, a `bin` entry, `.mcp.json` args, a filename, a surface
+      declaration, the invocation, a workflow name — and all five commands run
+      over it. `recon.json`'s `entrypoints.declared` carried the secret out of a
+      *declaration*: `demo = demo.<secret>:main`, composed target text rather
+      than a path. Fixed in `recon.py`, which M5 already edits, with the field
+      sorted before redaction so two declarations differing only in the secret
+      do not collapse into one row.
+
+      **Three positions still carry target text unredacted, all of them paths,
+      and that is a decision rather than a residue.** A path is the locator a
+      reviewer follows, and `redact` replaces any 32-character run of
+      credential-shaped characters — so a digest-named file would be masked into
+      something nobody can open, which costs more than the case it covers. A
+      `coverage_gaps` line says so, naming `members`, `unreachable` and
+      `referenced_from`. A credential that is itself part of a *filename*
+      therefore reaches the artifact.
+
+- [x] **Absolute and home-relative references were invisible, and the
+      home-relative half was worse than invisible.** `_PATH`'s left guard
+      excludes a token preceded by `/`, so in `/etc/app/config.yaml` the only
+      position that could start a match is the one the guard blocks, and no
+      token may begin with `~`. The owner's line — `~/.claude/settings.json`,
+      `/etc/app/config.yaml`, `~/.ssh/id_rsa` — produced **zero** records, with
+      nothing anywhere saying a line had been skipped. `_lexical_join`'s own
+      docstring claimed "an absolute reference leaves the root by definition",
+      and that branch was reachable only through a Markdown link target.
+
+      The `~/` half: it does not start with `/`, so a reference that did arrive
+      was joined *into* the root as `<root>/~/.ssh/id_rsa` and reported as a file
+      the target was missing. A read of the reviewer's own home directory,
+      recorded as a hole in the artifact.
+
+      `_ABSOLUTE` now feeds that branch and `~/` is tested in the join. **No
+      suffix is required**, which is the difference from `_PATH`: `~/.ssh/id_rsa`
+      names a file and carries no extension, and here the finding is the escape
+      rather than the file.
+
+      **Four corrections to my own first version, every one found by running it
+      rather than by reading it.** The final segment swallowed the full stop of
+      the sentence it sat in, so `~/.claude/settings.json.` was the reference and
+      the same path mid-sentence was a *different* one — one file, two
+      identities, which FR-4.6 would expire separately. The segment now permits a
+      leading dot and forbids a trailing one, because `~/.bashrc` must still
+      resolve. **An absolute path needs two segments**: of 35 single-segment
+      matches over this repository, none was a file — they were slash commands,
+      **closing XML tags** (`</reason>`, where `<` is not in the guard and `>`
+      ends the match), bare directories named in prose, and fragments of
+      templated paths. And two of my assertions were weaker than the mechanisms
+      they named, both caught by the defeat check rather than by review: the
+      URL-overlap test passed with the overlap skip removed, because the left
+      guard covers an ordinary URL and only a *query* (`?next=/etc/x`) puts a
+      character outside the guard before the slash; and the glob test passed with
+      `*` removed from the guard, because the two-segment rule rejects
+      `**/.env` on its own account and only a multi-segment glob tests the guard.
+
+      **Measured on this repository**, which is what the volume question needs:
+      913 records before, 1,250 with the first version, **1,186** after the
+      two-segment rule — 73 escaping references producing 246 of them, and the
+      whole list is genuine (`/bin/sh`, `/usr/bin/python3`, `/dev/null`,
+      `/etc/passwd`, `/Users/runner`, `~/.ssh/id_rsa`). `/dev/null` at 36 records
+      and `/bin/sh` at 35 are the largest contributors and are correct rather
+      than noise: a shebang names the interpreter a bundled script runs under,
+      which is a real question about an artifact and one no source asked before.
+
+      The fixture gained `helpers/absolute.md`, one shape per paragraph including
+      the agent-config path, and it earned its place immediately: `/bin/sh` from
+      the fixture's own existing `run.sh` shebang had been outside the closure
+      for as long as the fixture has existed, and the new agent-config line fires
+      M1's `fs.agent_config_write` — the pattern catalog already treats that path
+      as the high-precision case.
+
+## Harness findings raised during M5
 
 - [ ] **Nothing asserts that the current milestone has a ledger, or that a named one exists.**
       Found by the owner's question "is everything in the milestone?", and the proof is this file:

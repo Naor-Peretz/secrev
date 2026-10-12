@@ -34,11 +34,21 @@
       "path": "closure/entry.md",
       "kind": "data",
       "load": "direct",
-      "size": 2115,
-      "sha256": "bd8b5f62c4bc2ef4eac35ea8aa72e8242b7a9cfe56a67915506e00918319308b",
+      "size": 2317,
+      "sha256": "e4cb7ee392dbfde01c0674737d901362f2eea8e592beb884bda39707c69fa746",
       "referenced_from": [
         "closure/SKILL.md:12",
         "closure/helpers/cyclé.md:10"
+      ]
+    },
+    {
+      "path": "closure/helpers/absolute.md",
+      "kind": "data",
+      "load": "direct",
+      "size": 1572,
+      "sha256": "8d2f73113ec9de10d744dd21560a35ec126ccb3c033e929596b4ea996d247f3b",
+      "referenced_from": [
+        "closure/entry.md:46"
       ]
     },
     {
@@ -250,6 +260,24 @@
       ]
     },
     {
+      "reference": "/bin/sh",
+      "load": "direct",
+      "rule_id": "closure.escaping_reference",
+      "reason": "resolves outside the target root and was not read (P9)",
+      "referenced_from": [
+        "closure/helpers/run.sh:1"
+      ]
+    },
+    {
+      "reference": "/etc/app/config.yaml",
+      "load": "direct",
+      "rule_id": "closure.escaping_reference",
+      "reason": "resolves outside the target root and was not read (P9)",
+      "referenced_from": [
+        "closure/helpers/absolute.md:13"
+      ]
+    },
+    {
       "reference": "helpers/absent.md",
       "load": "direct",
       "rule_id": "closure.missing_reference",
@@ -265,6 +293,15 @@
       "reason": "names a https resource; nothing here fetches it (STACK.md §2.1 forbids runtime network calls)",
       "referenced_from": [
         "closure/entry.md:25"
+      ]
+    },
+    {
+      "reference": "https://example.invalid/etc/app/config.yaml",
+      "load": "fetch",
+      "rule_id": "closure.remote_resource",
+      "reason": "names a https resource; nothing here fetches it (STACK.md §2.1 forbids runtime network calls)",
+      "referenced_from": [
+        "closure/helpers/absolute.md:27"
       ]
     },
     {
@@ -284,6 +321,24 @@
       "referenced_from": [
         "mcp/.mcp.json:10"
       ]
+    },
+    {
+      "reference": "~/.claude/settings.json",
+      "load": "direct",
+      "rule_id": "closure.escaping_reference",
+      "reason": "resolves outside the target root and was not read (P9)",
+      "referenced_from": [
+        "closure/helpers/absolute.md:9"
+      ]
+    },
+    {
+      "reference": "~/.ssh/id_rsa",
+      "load": "direct",
+      "rule_id": "closure.escaping_reference",
+      "reason": "resolves outside the target root and was not read (P9)",
+      "referenced_from": [
+        "closure/helpers/absolute.md:16"
+      ]
     }
   ],
   "prose": [
@@ -293,7 +348,11 @@
     },
     {
       "path": "closure/entry.md",
-      "lines": 45
+      "lines": 49
+    },
+    {
+      "path": "closure/helpers/absolute.md",
+      "lines": 28
     },
     {
       "path": "closure/helpers/cyclé.md",
@@ -386,7 +445,9 @@
     "closure: members in an extension naming no language this tool knows — so no rule set claims it and nothing decided whether it is code: closure/uv.lock",
     "closure: 59 inventoried file(s) are reached by no declared entry point and are therefore outside the closure: README.md, assets/blob.bin, cli/pyproject.toml, crlf_module.py, exports/__init__.py, and 54 more — the full list is unreachable[]. Each is either loaded by a mechanism this tool did not see or not loaded at all; which one is a question for the reader (P9)",
     "closure: references are read line by line, so a path built from variables, concatenated, or split across lines is not seen",
-    "closure: a reference is recognised by its file suffix or by a Markdown link target, so a directory, an extensionless script, or a bare module name named in prose is not followed",
+    "closure: a reference is recognised by its file suffix, by a Markdown link target, or by a leading `/` or `~/`, so a directory, an extensionless script, or a bare module name named in prose is not followed",
+    "closure: an absolute or home-relative reference is recognised by a leading `/` or `~/` only, and an absolute one needs at least two segments — so another user's home (`~someone/.ssh/id_rsa`), a path built from a variable (`$HOME/...`, `%APPDATA%\\...`), a Windows path (`C:\\Users\\...`) and a file directly at the filesystem root (`/Makefile`) are not seen. The two-segment rule is measured rather than assumed: every single-segment match over this tool's own repository was a slash command, a closing XML tag, a bare directory named in prose, or a fragment of a templated path, and none was a file",
+    "closure: a path is written to this artifact unredacted, while a reference and a reason pass through G-3 redaction — a path is the locator a reviewer follows, and redaction would mask a digest-named file into something nobody can open. So a credential that is itself part of a *filename* reaches `members`, `unreachable`, `referenced_from` and the gap line above",
     "closure: whether a member is loaded conditionally is read from words on the referring line, which paraphrase defeats — the label never removes a member from the closure, so a wrong label costs a row and not a file",
     "closure: a resource named for fetching is recorded and never fetched (STACK.md §2.1 forbids runtime network calls), so what it would have contained is unreviewed by construction (FR-1.2)",
     "closure: a member that is binary, unreadable, not a regular file, or past the size bound is in the closure and is not read, so references inside it are not followed",

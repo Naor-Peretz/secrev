@@ -6,11 +6,11 @@
     "sha": null
   },
   "inventory": {
-    "files_total": 79,
+    "files_total": 80,
     "by_language": {
       "javascript": 1,
       "json": 8,
-      "markdown": 21,
+      "markdown": 22,
       "python": 25,
       "shell": 1,
       "text": 8,
@@ -18,7 +18,7 @@
       "typescript": 7,
       "yaml": 4
     },
-    "loc_total": 821,
+    "loc_total": 853,
     "binary": [
       "assets/blob.bin",
       "closure/helpers/payload.bin"

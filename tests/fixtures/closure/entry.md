@@ -43,3 +43,7 @@ all.
 helpers/esm.ts holds the TypeScript ESM shapes, where the specifier names the
 emitted file and the tree contains the source.
 
+helpers/absolute.md holds the absolute and home-relative shapes, including the
+agent-config path. Those leave the root by definition and are recorded as such
+rather than as files this tree is missing.
+

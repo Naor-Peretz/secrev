@@ -93,6 +93,7 @@ from secrev.ledger import (
     WINDOW_SPEC,
     Hit,
     excerpt,
+    redact,
     window,
 )
 
@@ -281,6 +282,60 @@ _PATH = re.compile(
         (?: [\w@.+-]{1,128} / ){0,16}
         [\w@+-]{1,128}
         (?P<suffix> \. [A-Za-z0-9]{1,8} )
+    )
+    (?![\w/-])
+    """
+)
+
+# An absolute or home-relative reference, which `_PATH` cannot see at all: its
+# left guard excludes a token preceded by `/`, so in `/etc/app/config.yaml` the
+# only position that could start a match is the one the guard blocks, and a token
+# cannot begin with `~` either. The owner found it by reading a line this source
+# produced nothing for — `~/.claude/settings.json`, `/etc/app/config.yaml`,
+# `~/.ssh/id_rsa`, three references and zero records.
+#
+# **No suffix is required, and that is the difference from `_PATH`.**
+# `~/.ssh/id_rsa` names a file and carries no extension; here the finding is the
+# *escape* rather than the file, and a suffix is evidence about a file. Requiring
+# one would have recognised two of the owner's three shapes and missed the
+# credential.
+#
+# `*` is in the left guard, which `_PATH`'s is not, because a glob is neither
+# absolute nor home-relative: `Read(**/.env)` in a permission rule would
+# otherwise be read as a reference to `/.env` on the review machine. `:` is there
+# so a scheme-relative `//host/path` inside a URL cannot start a match; the
+# caller also skips anything overlapping a `_URL` span, because a guard that
+# depends on the character before the match is one spelling away from being
+# wrong and the span is a fact.
+# The final segment may *begin* with a dot and may not *end* with one, which is
+# two decisions rather than one. Beginning: `~/.bashrc` and `~/.gitconfig` are
+# the dotfiles an agentic artifact most often names, and a profile script is
+# exactly what `settings.local.json` grants write access to here — forbidding a
+# leading dot would have skipped them. Ending: `[\w@.+-]{1,128}` swallowed the
+# full stop of the sentence it sat in, so `~/.claude/settings.json.` was the
+# reference, and the same path mid-sentence was a *different* reference — one
+# file, two identities, which FR-4.6 would expire separately. Found by an
+# assertion over the fixture rather than by reading the pattern.
+#
+# **An absolute path needs two segments; a home-relative one needs one.** `~/`
+# already says what it is, so `~/.bashrc` is unambiguous — but a bare `/word` is
+# almost never a root-level file in the artifacts this tool reviews, and
+# measuring it on this repository said so: of 35 single-segment matches, zero
+# were paths. They were slash commands (`/check`, `/commit`, `/compact`),
+# **closing XML tags** (`</reason>`, `</session-context>` — `<` is not in the
+# guard and `>` ends the match, so a tag reads as a path), bare directory stubs
+# named in prose (`/tmp`, `/usr`, `/opt`), and fragments of templated paths
+# (`<repo>/SKILL.md`). Every genuine reference in the same measurement had two
+# segments or a `~`: `/bin/sh`, `/usr/bin/python3`, `/dev/null`, `/etc/...`,
+# `~/.ssh/id_rsa`. The cost — a real file directly at the filesystem root — is
+# in `coverage_gaps`.
+_ABSOLUTE = re.compile(
+    r"""(?x)
+    (?<![\w./@+~*:-])
+    (?P<path>
+        (?: ~ / (?: [\w@.+-]{1,128} / ){0,16}
+          |   / (?: [\w@.+-]{1,128} / ){1,16} )
+        [\w@.+-]{0,127} [\w@+-]
     )
     (?![\w/-])
     """
@@ -497,9 +552,23 @@ _PRECISIONS = {
 _CLOSURE_GAPS = (
     "closure: references are read line by line, so a path built from variables, "
     "concatenated, or split across lines is not seen",
-    "closure: a reference is recognised by its file suffix or by a Markdown link "
-    "target, so a directory, an extensionless script, or a bare module name "
-    "named in prose is not followed",
+    "closure: a reference is recognised by its file suffix, by a Markdown link "
+    "target, or by a leading `/` or `~/`, so a directory, an extensionless "
+    "script, or a bare module name named in prose is not followed",
+    "closure: an absolute or home-relative reference is recognised by a leading "
+    "`/` or `~/` only, and an absolute one needs at least two segments — so "
+    "another user's home (`~someone/.ssh/id_rsa`), a path built from a variable "
+    "(`$HOME/...`, `%APPDATA%\\...`), a Windows path (`C:\\Users\\...`) and a "
+    "file directly at the filesystem root (`/Makefile`) are not seen. The "
+    "two-segment rule is measured rather than assumed: every single-segment "
+    "match over this tool's own repository was a slash command, a closing XML "
+    "tag, a bare directory named in prose, or a fragment of a templated path, "
+    "and none was a file",
+    "closure: a path is written to this artifact unredacted, while a reference "
+    "and a reason pass through G-3 redaction — a path is the locator a reviewer "
+    "follows, and redaction would mask a digest-named file into something nobody "
+    "can open. So a credential that is itself part of a *filename* reaches "
+    "`members`, `unreachable`, `referenced_from` and the gap line above",
     "closure: whether a member is loaded conditionally is read from words on the "
     "referring line, which paraphrase defeats — the label never removes a member "
     "from the closure, so a wrong label costs a row and not a file",
@@ -710,11 +779,20 @@ def _lexical_join(from_path: str, reference: str) -> str | None:
     `recon`, where containment held for every file the walk discovered and
     failed for every file something went looking for by name.
 
-    An absolute reference is not joined at all. It names a location on the
-    machine running the review rather than one in the artifact, so it is a
-    reference that leaves the root by definition.
+    An absolute or home-relative reference is not joined at all. It names a
+    location on the machine running the review rather than one in the artifact,
+    so it is a reference that leaves the root by definition.
+
+    **Both halves of that sentence were unreachable until the owner measured
+    it.** `_PATH` cannot produce a token starting with `/` or `~`, so the branch
+    below was reached only through a Markdown link target — and `~/` was worse
+    than unreachable: it does not start with `/`, so a reference that did arrive
+    was joined *into* the root as `<root>/~/.ssh/id_rsa`, a path that exists
+    nowhere and would have been reported as a file the target is missing rather
+    than as a read of the reviewer's home directory. `_ABSOLUTE` feeds this
+    branch now and `~/` is tested here.
     """
-    if reference.startswith("/"):
+    if reference.startswith(("/", "~/")):
         return None
     base = from_path.rsplit("/", 1)[0] if "/" in from_path else ""
     parts: list[str] = []
@@ -742,9 +820,23 @@ def _references_on_line(from_path: str, number: int, line: str) -> list[_Referen
     load = LOAD_CONDITIONAL if _CONDITIONAL.search(line) else LOAD_DIRECT
     found: list[_Reference] = []
 
+    url_spans: list[tuple[int, int]] = []
     for match in _URL.finditer(line):
+        url_spans.append(match.span())
         found.append(
             _Reference(from_path=from_path, line=number, raw=match.group(0), load=LOAD_FETCH)
+        )
+
+    # Absolute and home-relative references, skipping anything a URL has already
+    # claimed — `https://host/etc/x.conf` carries `/etc/x.conf` inside it, and
+    # the URL is the reference. Resolution then answers both the same way, since
+    # `_lexical_join` refuses a leading `/` or `~/`.
+    for match in _ABSOLUTE.finditer(line):
+        start, end = match.span("path")
+        if any(start < url_end and url_start < end for url_start, url_end in url_spans):
+            continue
+        found.append(
+            _Reference(from_path=from_path, line=number, raw=match.group("path"), load=load)
         )
 
     # A Markdown target first, then bare tokens. A target carrying a suffix is
@@ -1599,6 +1691,26 @@ def to_json(result: Closure) -> str:
     `sort_keys=False` because the key order is the contract rather than an
     accident of insertion — the same reasoning as `recon.to_json`, and the two
     artifacts are read side by side.
+
+    **G-3 is applied here, at serialisation, and it was missing entirely until
+    the owner found it.** A reference and a reason are text copied out of the
+    target, so a URL carrying userinfo — `https://admin:hunter2@host/config` —
+    reached this file verbatim while `hits.jsonl` redacted the same characters
+    through `excerpt`. G-3 says no secrets in artifacts, and `closure.json` is an
+    artifact; one source redacting and another not is the whole of the defect.
+
+    **Serialisation is the only correct place for it.** Redacting at extraction
+    would feed a masked string to `_lexical_join`, to the grouping key, and to
+    `ids.assign`, so two different credentials in the same position would become
+    one candidate — the opposite of what G-3 is for. The raw value stays
+    everywhere identity is computed, exactly as `window_sha256` covers unredacted
+    window text, and the mask appears only in what is written out.
+
+    **Paths are deliberately not redacted**, and the limit is stated in
+    `coverage_gaps` rather than left to be discovered: a path is the locator a
+    reviewer follows, and `redact` would replace any 32-character run of
+    credential-shaped characters — so a digest-named file would be masked into
+    something nobody can open, which costs more than the case it would cover.
     """
     document = {
         "closure_version": CLOSURE_RULES_VERSION,
@@ -1622,10 +1734,13 @@ def to_json(result: Closure) -> str:
         ],
         "unresolved": [
             {
-                "reference": item.reference,
+                # Both fields carry target text: the reference verbatim, and the
+                # reason verbatim too where it lists the paths a grouped record
+                # covers or the two digests of a changed member.
+                "reference": redact(item.reference),
                 "load": item.load,
                 "rule_id": item.rule_id,
-                "reason": item.reason,
+                "reason": redact(item.reason),
                 "referenced_from": list(item.referenced_from),
             }
             for item in result.unresolved

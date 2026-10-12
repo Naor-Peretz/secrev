@@ -59,6 +59,7 @@ from secrev.ledger import (
     LAYERS,
     RESERVED_NAMESPACES,
     WINDOW_SPEC,
+    to_jsonl,
 )
 from secrev.recon import GAP_LIST_LIMIT as RECON_GAP_LIST_LIMIT
 from secrev.sweep import applies, sweep
@@ -141,8 +142,14 @@ def test_every_member_kind_fr_1_2_names_has_a_case(from_entry: Closure) -> None:
     assert member(from_entry, "entry.md").kind == KIND_DATA
 
     fetched = [item for item in from_entry.unresolved if item.rule_id == RULE_REMOTE]
-    assert [item.reference for item in fetched] == ["https://example.invalid/closure/rules.json"]
-    assert fetched[0].load == LOAD_FETCH
+    # Two, and the second is the negative half of the absolute shape: a URL
+    # carrying an absolute-looking path is one reference, so it appears here and
+    # `/etc/app/config.yaml` is not also recorded a second time from inside it.
+    assert sorted(item.reference for item in fetched) == [
+        "https://example.invalid/closure/rules.json",
+        "https://example.invalid/etc/app/config.yaml",
+    ]
+    assert all(item.load == LOAD_FETCH for item in fetched)
 
 
 def test_the_closure_of_the_fixture_is_exactly_this(from_entry: Closure) -> None:
@@ -151,6 +158,7 @@ def test_the_closure_of_the_fixture_is_exactly_this(from_entry: Closure) -> None
     above."""
     assert [item.path for item in from_entry.members] == [
         "entry.md",
+        "helpers/absolute.md",
         "helpers/calls.py",
         "helpers/cyclé.md",
         "helpers/direct.md",
@@ -169,17 +177,27 @@ def test_the_closure_of_the_fixture_is_exactly_this(from_entry: Closure) -> None
         "helpers/widget.tsx",
         "uv.lock",
     ]
-    # **Three unresolved, and no more**, which is the extractor-precision work
+    # **Eight unresolved, and no more**, which is the extractor-precision work
     # stated as a count: `calls.py`, `imports.ts`, `esm.ts` and `uv.lock` are
     # each read (or deliberately not read) and contribute nothing false between
     # them. `SKILL.md`'s own URL is absent because this fixture enters at
     # `entry.md`, which does not name the skill body — it appears in the
     # whole-tree run, where `SKILL.md` is a *detected* root, and that is where
     # the ledger contract's root exception is asserted.
+    #
+    # Five of the eight arrived with the absolute and home-relative shape, and
+    # one of those five — `/bin/sh` — is the shebang of this fixture's own
+    # bundled script, which no test had ever asserted on because no shape could
+    # see it.
     assert [(item.rule_id, item.reference) for item in from_entry.unresolved] == [
         (RULE_ESCAPING, "../../../outside/notes.md"),
+        (RULE_ESCAPING, "/bin/sh"),
+        (RULE_ESCAPING, "/etc/app/config.yaml"),
         (RULE_MISSING, "helpers/absent.md"),
         (RULE_REMOTE, "https://example.invalid/closure/rules.json"),
+        (RULE_REMOTE, "https://example.invalid/etc/app/config.yaml"),
+        (RULE_ESCAPING, "~/.claude/settings.json"),
+        (RULE_ESCAPING, "~/.ssh/id_rsa"),
     ]
 
 
@@ -510,17 +528,23 @@ def test_an_unresolved_member_reaches_the_ledger(from_entry: Closure) -> None:
     assert all(hit.layer in LAYERS for hit in from_entry.hits)
 
     # **Every unresolved member reaches the ledger, but not all of them one
-    # record each** — the contract of 2026-10-08. Four unresolved references and
-    # three records: the escaping path and the URL in the *root* keep their own,
-    # and `entry.md`'s two citations share one. What A3 requires is that none of
-    # the four is passed over, so this asserts the path from reference to record
-    # rather than a count of records.
+    # record each** — the contract of 2026-10-08. The escaping paths keep their
+    # own records, because a path leaving the tree is evidence about the review
+    # rather than a citation; the citations group per referring file. What A3
+    # requires is that none of them is passed over, so this asserts the path from
+    # reference to record rather than a count of records.
     assert {hit.rule_id for hit in from_entry.hits} == {
         RULE_ESCAPING,
         RULE_REMOTE,
         RULE_CITATIONS,
     }
-    assert len([hit for hit in from_entry.hits if hit.rule_id == RULE_CITATIONS]) == 1
+    # Two grouped records, one per referring prose file: `entry.md`'s, and
+    # `helpers/absolute.md`'s, which carries the URL in its negative paragraph.
+    # That second one is the residual cost the contract names rather than a
+    # surprise — a non-root member gets one record listing every URL it names,
+    # and FR-3.15's full read of prose in the closure is what covers them
+    # individually.
+    assert len([hit for hit in from_entry.hits if hit.rule_id == RULE_CITATIONS]) == 2
 
     # The guarantee, stated at the level it holds: every unresolved reference is
     # either the subject of its own record, or one of its referring files has a
@@ -1031,10 +1055,205 @@ def test_a_mis_resolution_is_a_stated_limit(from_entry: Closure) -> None:
 
 
 def test_a_reference_is_not_followed_outside_the_root(from_entry: Closure) -> None:
-    """P9 and G-4. The reference is recorded; nothing opens it."""
+    """P9 and G-4. The reference is recorded; nothing opens it.
+
+    Five shapes now, one per way out of the tree: a relative path climbing past
+    the root, an absolute path, a home-relative path with a suffix, one without
+    — and `/bin/sh`, which nobody wrote for this test. It is the shebang of the
+    fixture's own bundled script, and it had been invisible for as long as the
+    fixture has existed: which interpreter a bundled script invokes is a real
+    question about an artifact, and the answer was absent from the closure of a
+    tree that contains the line. Asserted as a sorted set rather than on a
+    count, for `entry.md`'s own reason — a count keeps passing while what it
+    counted changed.
+    """
     escaping = [item for item in from_entry.unresolved if item.rule_id == RULE_ESCAPING]
-    assert [item.reference for item in escaping] == ["../../../outside/notes.md"]
-    assert "outside the target root" in escaping[0].reason
+    assert sorted(item.reference for item in escaping) == [
+        "../../../outside/notes.md",
+        "/bin/sh",
+        "/etc/app/config.yaml",
+        "~/.claude/settings.json",
+        "~/.ssh/id_rsa",
+    ]
+    assert all("outside the target root" in item.reason for item in escaping)
+
+
+def test_absolute_and_home_relative_references_are_seen_at_all(tmp_path: Path) -> None:
+    """**The owner's line, which produced zero records.**
+
+    `_PATH`'s left guard excludes a token preceded by `/`, so in
+    `/etc/app/config.yaml` the only position that could start a match is the one
+    the guard blocks, and no token may begin with `~`. Three references, nothing
+    in the artifact, and nothing anywhere saying a line had been skipped — the
+    silence is the defect rather than the miscount, because a reviewer reading
+    `closure.json` would conclude this line named nothing.
+
+    The home-relative half was worse than invisible. `~/x` does not start with
+    `/`, so a reference that *did* arrive — through a Markdown link target, the
+    one route that reached the join — was joined into the root as
+    `<root>/~/.ssh/id_rsa`, and reported as a file the target was missing. A
+    read of the reviewer's own home directory, recorded as a hole in the
+    artifact.
+    """
+    line = "Read `~/.claude/settings.json` and `/etc/app/config.yaml` then `~/.ssh/id_rsa`\n"
+    tree = _tree(tmp_path, {"SKILL.md": line})
+    result = closure(tree, ["SKILL.md"])
+    assert sorted((item.rule_id, item.reference) for item in result.unresolved) == [
+        (RULE_ESCAPING, "/etc/app/config.yaml"),
+        (RULE_ESCAPING, "~/.claude/settings.json"),
+        (RULE_ESCAPING, "~/.ssh/id_rsa"),
+    ]
+
+
+def test_a_glob_is_not_an_absolute_reference(tmp_path: Path) -> None:
+    """A glob inside a permission rule is a pattern, not a path on the review
+    machine. `_ABSOLUTE`'s left guard carries `*` for exactly this, which
+    `_PATH`'s does not — and a hook configuration is full of the shape, so
+    getting it wrong would be loud in every artifact this tool is pointed at.
+
+    **The multi-segment glob is the case that tests the guard**, and the first
+    version of this test used `**/.env` alone, which the two-segment rule
+    rejects on its own account — so the assertion stayed green with the `*`
+    removed from the guard, and the defeat check caught it. `**/hooks/lib/*.sh`
+    has two segments, so only the guard stops it.
+    """
+    tree = _tree(
+        tmp_path,
+        {
+            "SKILL.md": (
+                'The rules are `"deny": ["Read(**/.env)"]` and\n'
+                '`"allow": ["Read(**/hooks/lib/util.sh)"]` here.\n'
+            )
+        },
+    )
+    result = closure(tree, ["SKILL.md"])
+    assert [item.reference for item in result.unresolved] == []
+
+
+def test_a_single_segment_absolute_is_not_a_reference(tmp_path: Path) -> None:
+    """**An absolute path needs two segments; `~/` needs one.** Measured rather
+    than assumed, which is why this test names the four classes it protects
+    against instead of one example.
+
+    Of 35 single-segment matches over this tool's own repository, none was a
+    file. They were slash commands, closing XML tags — `<` is not in the left
+    guard and `>` ends the match, so `</reason>` reads as `/reason` — bare
+    directories named in prose, and fragments of templated paths. 69 of 1,255
+    records, every one false.
+
+    `~/.bashrc` keeps its single segment, and that asymmetry is the point: `~/`
+    already says the reference is a path, where a bare `/word` does not. A real
+    file directly at the filesystem root is the cost, and it is in
+    `coverage_gaps` rather than left for someone to notice.
+    """
+    tree = _tree(
+        tmp_path,
+        {
+            "SKILL.md": (
+                "Run /check then /commit. The hook prints </session-context> "
+                "and writes to /tmp. See <repo>/SKILL.md for more.\n"
+                "But ~/.bashrc is a reference, and so is /etc/hosts.\n"
+            )
+        },
+    )
+    result = closure(tree, ["SKILL.md"])
+    assert sorted(item.reference for item in result.unresolved) == [
+        "/etc/hosts",
+        "~/.bashrc",
+    ]
+
+
+def test_a_url_claims_its_own_path(tmp_path: Path) -> None:
+    """One reference, not two: a URL carrying an absolute-looking path is the
+    reference, and the path inside it is not a second one.
+
+    **The query form is the case that matters, and the first version of this test
+    did not use it.** For an ordinary URL the left guard already does the work —
+    every `/` inside a URL path follows a word character, a `/`, or the scheme's
+    `:`, and all three are in the guard — so this assertion stayed green with
+    the overlap skip removed, which the defeat check caught. A query parameter
+    is where that stops holding: `?next=/etc/app/config.yaml` puts `=`
+    immediately before the slash, `=` is inside what `_URL` consumes and outside
+    the guard, and only skipping the URL's *span* prevents a second record.
+    Measured both ways rather than reasoned about.
+
+    `?redirect=`, `?path=` and `?next=` are the everyday spelling of this, so it
+    is the ordinary case rather than a crafted one.
+    """
+    tree = _tree(
+        tmp_path,
+        {
+            "SKILL.md": (
+                "Fetch https://example.invalid/etc/app/config.yaml now\n"
+                "and https://example.invalid/go?next=/etc/app/other.yaml too\n"
+            )
+        },
+    )
+    result = closure(tree, ["SKILL.md"])
+    assert [(item.rule_id, item.reference) for item in result.unresolved] == [
+        (RULE_REMOTE, "https://example.invalid/etc/app/config.yaml"),
+        (RULE_REMOTE, "https://example.invalid/go?next=/etc/app/other.yaml"),
+    ]
+
+
+def test_no_credential_reaches_either_artifact(tmp_path: Path) -> None:
+    """**G-3 says no secrets in artifacts, and `closure.json` is an artifact.**
+
+    The owner's case: a line naming a URL with userinfo and a URL with a token
+    query. `hits.jsonl` redacted both through `excerpt` while `closure.json`
+    carried them verbatim in `unresolved[].reference` — one source redacting and
+    another not, which is the whole of the defect.
+
+    Both secrets are built here rather than committed to a fixture, so nothing
+    credential-shaped enters the repository to make this test pass — `gitleaks`
+    exempts `tests/fixtures/` and the exemption is not a licence to put
+    credentials where a scanner has been told not to look.
+
+    **Built from parts, and the variables are not named after secrets.** The
+    first version assigned a twelve-character hex literal to a variable called
+    after an API token; `gitleaks` reported it as a generic API key and `ruff`
+    as S105, and both were right about a file that is not exempt. It was then
+    found twice, because the background gate log had already quoted the failing
+    line — so the literal was a finding in a second file, and the sentence
+    describing the mistake in this docstring was a third until it stopped
+    quoting it. Concatenation keeps the runtime value long enough for the
+    redactor's floor while leaving no credential-shaped literal in the source.
+
+    Asserted over the whole serialised text of both artifacts, not over the
+    field that was wrong. The defect was a field nobody had checked, so a test
+    naming one field would reproduce the mistake that produced it.
+    """
+    userinfo = "hunter" + "2" * 4
+    query = "ab12cd34" * 4
+    tree = _tree(
+        tmp_path,
+        {
+            "SKILL.md": (
+                f"Fetch https://admin:{userinfo}@internal.example/config "
+                f"and https://example.com/x?token={query}\n"
+            )
+        },
+    )
+    result = closure(tree, ["SKILL.md"])
+
+    rendered = to_json(result)
+    assert userinfo not in rendered
+    assert query not in rendered
+    ledger = to_jsonl(result.hits)
+    assert userinfo not in ledger
+    assert query not in ledger
+
+    # The redaction is cosmetic and the identity is not: the raw reference still
+    # reaches `ids.assign`, so two different credentials in the same position
+    # stay two candidates. Redacting before the id is computed would merge them,
+    # which is the opposite of what G-3 is for.
+    other = _tree(
+        tmp_path / "second",
+        {"SKILL.md": f"Fetch https://admin:{'swordfish' * 2}@internal.example/config\n"},
+    )
+    assert [hit.id for hit in closure(other, ["SKILL.md"]).hits] != [
+        hit.id for hit in result.hits if hit.rule_id == RULE_REMOTE
+    ]
 
 
 def test_an_entry_outside_the_target_is_a_usage_error() -> None:
@@ -1124,12 +1343,15 @@ def test_the_closure_of_the_whole_fixture_tree_is_small_and_explained(
     golden says what came out and cannot say that it was right. Every member is
     reachable from one of the four declared entry points, and every unresolved
     reference is one a reviewer can act on: two scripts a hook configuration
-    names and the tree does not contain, a remote MCP endpoint, a remote rule
-    set, a path above the root, and one missing helper.
+    names and the tree does not contain, a remote MCP endpoint, two remote rule
+    sets, a path above the root, one missing helper, and the four that leave the
+    machine's own filesystem — an interpreter, a system configuration file, an
+    agent configuration file and a private key.
     """
     assert [item.path for item in whole_tree.members] == [
         "closure/SKILL.md",
         "closure/entry.md",
+        "closure/helpers/absolute.md",
         "closure/helpers/calls.py",
         "closure/helpers/cyclé.md",
         "closure/helpers/direct.md",
@@ -1153,10 +1375,15 @@ def test_the_closure_of_the_whole_fixture_tree_is_small_and_explained(
         (RULE_ESCAPING, "../../../outside/notes.md"),
         (RULE_MISSING, "./guard.sh"),
         (RULE_MISSING, "./hello.sh"),
+        (RULE_ESCAPING, "/bin/sh"),
+        (RULE_ESCAPING, "/etc/app/config.yaml"),
         (RULE_MISSING, "helpers/absent.md"),
         (RULE_REMOTE, "https://example.invalid/closure/rules.json"),
+        (RULE_REMOTE, "https://example.invalid/etc/app/config.yaml"),
         (RULE_REMOTE, "https://example.invalid/skill/rules.json"),
         (RULE_REMOTE, "https://mcp.example.invalid/search"),
+        (RULE_ESCAPING, "~/.claude/settings.json"),
+        (RULE_ESCAPING, "~/.ssh/id_rsa"),
     ]
 
 

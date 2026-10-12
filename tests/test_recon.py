@@ -734,6 +734,33 @@ def test_entrypoints_are_declared_metadata_only(tmp_path: Path) -> None:
     assert result.entrypoints["declared"] == ["demo = demo.cli:main"]
 
 
+def test_no_credential_reaches_a_declared_entry_point(tmp_path: Path) -> None:
+    """**G-3, found by sweeping for the class rather than fixing the site.**
+
+    The owner reported `closure.json` carrying a credential in a reference. The
+    sweep that followed planted a marker in every position target text reaches
+    an artifact from, and this is the second one it found: a declaration is
+    composed from target text too, so a secret inside a `[project.scripts]`
+    target or a `bin` entry reached `recon.json` verbatim.
+
+    The secret is built here rather than committed, for the reason `gitleaks`
+    exempts only `tests/fixtures/` — an exemption is a place a scanner has been
+    told not to look, not a place to put credentials.
+
+    Asserted over the whole serialised artifact, not over the field: the defect
+    was a field nobody had checked, so naming one field would repeat the mistake
+    that produced it.
+    """
+    secret = "ab12cd34" * 5
+    (tmp_path / "pyproject.toml").write_text(
+        f'[project.scripts]\ndemo = "demo.{secret}:main"\n', encoding="utf-8"
+    )
+    (tmp_path / "package.json").write_text(
+        f'{{"bin": {{"demo": "./{secret}.js"}}}}', encoding="utf-8"
+    )
+    assert secret not in to_json(recon(tmp_path))
+
+
 @pytest.mark.parametrize(
     ("name", "body", "reason"),
     [
