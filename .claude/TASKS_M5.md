@@ -579,8 +579,9 @@ a low-precision prose rule is supposed to cost.
 
 ## Raised during implementation and not fixed here
 
-- [ ] **Thirteen false claims in twelve passages of two closed milestones'
-      files, and M5 may write neither directory.** Ten were made false by M5 and
+- [x] **Thirteen false claims in twelve passages of two closed milestones'
+      files — CLOSED by the owner (2026-10-12), all four files in one apply.**
+      Ten were made false by M5 and
       three by M4; MCP-05's evidence sentence carries one of each, which is why
       the passages number one fewer than the claims. Found by F2's sweep —
       `git grep` from the root with no pathspec. Sorted into CLAUDE.md's three
@@ -667,8 +668,24 @@ a low-precision prose rule is supposed to cost.
       as existing without naming that limit replaces a false claim with a
       misleading one, which is the more expensive of the two.
 
-- [ ] **F2's fourteenth passage is in a file M5 owns, and it is a quotation
-      rather than a claim.** `patterns/_instruction.yaml:26-38` quotes three of
+      **How it was applied, because the route is the finding.** `scope-guard.sh`
+      refuses all four files to this session, so the edit could not come from
+      here; the owner ran `git apply`. Three attempts failed first, and each
+      failure is worth a line: a commit the owner reported as landed was absent
+      from the branch and from GitHub twice (`422 No commit found for SHA`), and
+      the heredoc that would have written the patch had never run. What closed it
+      was the owner executing one command in their own terminal against a patch
+      file this session wrote from their text — their content, their act, the
+      session holding neither.
+      **The verification is a hash, not a reading.** Their patch header declared
+      the post-image blob hashes; the file the apply ran from carried no `index`
+      lines, so git computed them from the result, and `git diff` printed
+      `1f2864f`, `ec1de82`, `64fc0f6` and `126d9ee` — the four declared. A
+      transcription of 150 lines by hand cannot be trusted to a check that only
+      tests context, and this one is not.
+
+- [x] **F2's fourteenth passage is in a file M5 owns, and it is a quotation
+      rather than a claim — CLOSED in the same commit that ticked F2.** `patterns/_instruction.yaml:26-38` quotes three of
       the passages above verbatim — `skill.md` §5's "does not exist; M5" bullet
       and `_agentic-core.md`'s CORE-05 evidence line — under the heading "Where
       these came from", as the pack's provenance. The quotes are **historical**
@@ -828,6 +845,31 @@ a low-precision prose rule is supposed to cost.
       records it. It is also the one finding in this file that argues for its own priority: every
       other guard in the table is a control over *what* a write touches, and this is a control over
       whether the guard is consulted at all.
+
+      **A third measurement, found while closing F2, and it is the argument for (C) rather than
+      (A).** `bash-guard.sh` **permits** `git apply /tmp/f2.patch` and `patch -p1 < /tmp/f2.patch`,
+      and refuses the same intent written as `git apply threat-models/skill.md.patch` or
+      `python3 -c "open('threat-models/skill.md','w')"`. The paths being written live *inside the
+      file*, so the spelling test cannot see them — and what that defeats is not a weak default but
+      `scope-guard.sh`'s **refusal**, in force under M5, of those exact four paths. The class is
+      already named in `bash_guard.py`'s KNOWN LIMIT, which lists `tar -x` beside the glob and
+      variable evasions. What the limit does not say, and what this measures, is that the class
+      **inverts the milestone's own scope decision** rather than merely weakening a trigger, and
+      that it does so through a single ordinary-looking command with no protected token anywhere in
+      it — the shape any session asked to apply a patch reaches for first.
+
+      Stated precisely, because the overstatement is tempting: it is not invisible.
+      `commit-review.sh` puts the staged set with protected paths flagged in front of the owner at
+      every commit, so the control still fires one step later. What is lost is the refusal, and with
+      it the milestone boundary — the one thing `scope-guard.sh` exists to hold. **This session did
+      not use it**: the apply was the owner's command in their own terminal, which is authorisation
+      rather than evasion, and the distinction is the whole reason the route was chosen.
+
+      It belongs with the two gaps above because it is the same sentence from a third angle:
+      **enforcement that reads text cannot see a write the text does not spell.** `permissions.deny`
+      rules the client applies, HARNESS-CI's check on protected paths after the code leaves the
+      machine, and file ownership are all unaffected by which command carried the bytes. That is
+      why (C) is the answer and (A) is only the thing to do first.
 
 ---
 

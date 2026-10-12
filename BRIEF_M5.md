@@ -197,12 +197,21 @@ prevent, and M4's F2 found three documents asserting mechanisms that had been re
       a docstring or in `hook_ask.py`'s `"hookEventName": "PreToolUse"`, which is the protocol's
       own field in the code that emits it. A fact that is checked rather than asserted is what
       surfaced them.
-- [ ] **F2 — Every document claim this milestone makes is true or gone**, searched with
+- [x] **F2 — Every document claim this milestone makes is true or gone**, searched with
       `git grep -n "<old name>"` from the root, **no pathspec**, with the candidate names derived
       from `git log -p` rather than recalled. Every hit sorted into false, true-for-the-old-reason,
       or historical.
 
-      **The sweep is done; thirteen claims remain and this box is the owner's to close.**
+      **Closed by the owner's own edit to all four files, applied by their command and verified
+      here before staging.** `scope-guard.sh` refuses the three `threat-models/` files and
+      `patterns/python.yaml` to this session — measured, `exit 2`, with M3's-closed and
+      M1's-catalog-is-closed as the reasons — so the owner ran the apply. The verification that
+      matters is not that the patch applied but that it said what they wrote: their patch header
+      declared the post-image blob hashes, the file the apply ran from carried no `index` lines, and
+      `git diff` afterwards computed `1f2864f`, `ec1de82`, `64fc0f6` and `126d9ee` — the four they
+      declared. A hash-level check, which a context-only check is not.
+
+      **The sweep was done before that; thirteen claims, and the box was the owner's to close.**
       `git grep` from the root with no pathspec. Ten were made false by M5: seven in
       `threat-models/` saying the two packs do not exist, two saying every pack declares the same
       `version`, and `patterns/python.yaml:19` stating the superseded version rule in a

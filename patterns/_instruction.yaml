@@ -23,6 +23,15 @@
 # **Where these came from.** Not the FR list alone: three milestones recorded
 # the gap these close, and the overlays name the shapes.
 #
+# **The three quotations below are the overlays' wording *before* this pack
+# shipped, and searching for them in those files now will not find them.** F2
+# corrected all three once the pack existed, which is right — a document saying
+# the pack does not exist is false the moment it does. They are kept here
+# verbatim because they are the evidence of the gap that justified the pack, and
+# a pack whose stated reason is edited to match the world after the fact has no
+# stated reason. Historical, in the third of CLAUDE.md's three categories, and
+# not to be "fixed" into the current wording.
+#
 #   * `threat-models/skill.md` §5: "`patterns/_instruction.yaml` — does not
 #     exist; M5. This is the pack this archetype needs most, because a skill is
 #     mostly prose and its behaviour lives in the instruction layer. Until it

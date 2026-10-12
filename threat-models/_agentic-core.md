@@ -81,9 +81,9 @@ executable parts has reviewed the wrong artifact.
   reading because of this artifact, and for each name the furthest-upstream writer you can
   establish. "The artifact's own author" is a valid answer; "unknown" is a valid answer and a more
   interesting one.
-  *Evidence:* `hits.jsonl → layer: instruction` records, plus reading. The instruction layer is
-  thin today — the catalog's instruction pack is M5, so most of this is read rather than matched,
-  and the ledger's silence here is coverage that does not exist yet rather than coverage that
+  *Evidence:* `hits.jsonl → layer: instruction` records (`instruction.*`, M5's pack), plus
+  reading. Instruction-layer patterns raise questions and never classify (FR-3.15), so most of
+  this is still read rather than matched, and the ledger's silence here is not coverage that
   passed.
 
 - **CORE-06 — Does any of that text address an agent?** Distinguish two cases that look alike and
@@ -97,8 +97,10 @@ executable parts has reviewed the wrong artifact.
   summary or an error message built by interpolation is an injection point with none of the syntax
   that would make one recognisable. Name each place the artifact builds text it will later present,
   and what can reach the interpolated part.
-  *Evidence:* read. There is no pattern for this shape, and there is no structural source until M4;
-  recording which places were examined is the coverage claim.
+  *Evidence:* read. There is no pattern for this shape, and none of the four structural rules asks
+  it — `structure.built_value_into_sink` covers interpolation into a call that executes, queries or
+  fetches, not into text the artifact presents. Recording which places were examined is the
+  coverage claim.
 
 ---
 
@@ -283,8 +285,8 @@ reason to reach the network and the ability to do so has a finding before any tr
   reachable at that call — the conversation, file contents already read, environment variables,
   credentials the process holds. Trace what is available where the send happens.
   *Evidence:* `hits.jsonl → rule_id: log.sensitive` marks values named as credentials near an
-  output; the rest is read, because what a process holds at a point is a structural question and
-  the structural source is M4.
+  output; the rest is read, because what a process holds at a point is a structural question that
+  none of the four structural rules asks.
 
 - **CORE-27 — Would the user notice?** What is shown when data leaves, and what would be in a log
   afterwards. As with CORE-20, "nothing" is a common answer and it changes what everything upstream
