@@ -21,6 +21,21 @@
 # Bumping: Dependabot opens the PR (.github/dependabot.yml watches this
 # directory). Regenerate the transitive block with `pip freeze` from a clean
 # install of the two direct pins.
+#
+# A Dependabot PR against a line below is a signal, not a patch to merge. It
+# names one package, and what this block has to be is the whole resolution of
+# the two direct pins — so merging the single line pins a version the resolver
+# does not produce. PR #18 was the demonstration: it offered filelock 4.0.0
+# while a clean install resolved 4.2.2, and its green CI had run four weeks and
+# one milestone earlier. Take the PR as notice that the block has drifted, do
+# the regeneration above, and close it.
+#
+# `pip freeze` is the source of the versions, not of the text. This block is
+# sorted case-insensitively ignoring `-` and `_`, and spells each name as PyPI
+# does; `pip freeze` prints the dist-info spelling (`pip_api`) and sorts its own
+# way, so pasting its output wholesale produces a thirty-line diff in which the
+# two real changes cannot be seen. Compare by normalised name and edit the
+# versions that moved.
 
 # Direct
 pip-audit==2.10.1
@@ -34,7 +49,7 @@ certifi==2026.7.22
 charset-normalizer==3.5.2
 cyclonedx-python-lib==11.12.0
 defusedxml==0.7.1
-filelock==3.32.6
+filelock==4.2.2
 idna==3.20
 license-expression==30.4.4
 markdown-it-py==4.2.0
@@ -44,7 +59,7 @@ packageurl-python==0.17.6
 packaging==26.3
 pip-api==0.0.35
 pip-requirements-parser==32.0.1
-platformdirs==4.12.4
+platformdirs==4.13.4
 prettytable==3.18.0
 Pygments==2.21.0
 pyparsing==3.3.3
