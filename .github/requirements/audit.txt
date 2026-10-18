@@ -25,10 +25,12 @@
 # A Dependabot PR against a line below is a signal, not a patch to merge. It
 # names one package, and what this block has to be is the whole resolution of
 # the two direct pins — so merging the single line pins a version the resolver
-# does not produce. PR #18 was the demonstration: it offered filelock 4.0.0
-# while a clean install resolved 4.2.2, and its green CI had run four weeks and
-# one milestone earlier. Take the PR as notice that the block has drifted, do
-# the regeneration above, and close it.
+# does not produce. PR #18 demonstrated that twice: it offered filelock 4.0.0,
+# was force-pushed to 4.2.0 while being reviewed, and a clean install resolved
+# 4.2.2 both times. Its CI was green on the second of those, which is the whole
+# point — a green tick on a single-package bump says the tree still builds, not
+# that the pin is the one a clean install produces. Take the PR as notice that
+# the block has drifted, do the regeneration above, and close it.
 #
 # `pip freeze` is the source of the versions, not of the text. This block is
 # sorted case-insensitively ignoring `-` and `_`, and spells each name as PyPI
