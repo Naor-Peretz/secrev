@@ -23,9 +23,9 @@
 # Do not describe this file as hash-locked until it is.
 
 # Direct
-mypy==2.4.0
-pytest==9.1.1
-ruff==0.17.2
+mypy==2.4.1
+pytest==9.2.0
+ruff==0.17.3
 
 # Transitive, pinned so the resolution is reproducible rather than merely
 # constrained. Generated from a working environment with `pip freeze`.
